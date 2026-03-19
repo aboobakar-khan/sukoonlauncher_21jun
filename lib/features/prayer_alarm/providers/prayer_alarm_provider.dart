@@ -161,73 +161,129 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
           fetchTodayPrayerTimes();
         }
 
-        // Prefetch tomorrow's times after 9 PM so midnight transition is seamless
-        _prefetchTomorrowIfNeeded();
-
-        // Clean up old cached entries (older than 7 days)
-        _cleanStaleCacheEntries();
+        // Ensure ±10 day rolling cache is populated (non-blocking)
+        _ensureRollingCache();
       }
     } catch (e) {
       state = state.copyWith(error: 'Failed to initialize: $e');
     }
   }
 
-  /// Prefetch tomorrow's prayer times if it's after 9 PM and not yet cached.
-  /// This ensures that when midnight rolls over, the widget can immediately
-  /// show tomorrow's times from cache without waiting for a network request.
-  Future<void> _prefetchTomorrowIfNeeded() async {
+  /// ── ±10 Day Rolling Cache ──────────────────────────────────────────────
+  ///
+  /// Ensures the Hive `_timesBox` contains base prayer times for
+  /// today ± 10 days (21 dates total). Only fetches dates not already
+  /// cached. Prunes entries outside the range.
+  ///
+  /// This runs non-blocking after init and on midnight date changes.
+  static const int _cacheRadius = 10;
+
+  Future<void> _ensureRollingCache() async {
+    if (_timesBox == null) return;
+    if (state.config.latitude == 0.0 && state.config.longitude == 0.0) return;
+
     final now = DateTime.now();
-    if (now.hour < 21) return; // Only prefetch after 9 PM
+    final rangeStart = now.subtract(Duration(days: _cacheRadius));
+    final rangeEnd = now.add(Duration(days: _cacheRadius));
 
-    final tomorrow = now.add(const Duration(days: 1));
-    final tomorrowKey = dateKeyFor(tomorrow);
-    final cached = _timesBox?.get(tomorrowKey);
-    if (cached != null) return; // Already cached
+    // Build the set of required date keys
+    final requiredKeys = <String>{};
+    final missingDates = <DateTime>[];
+    for (int i = -_cacheRadius; i <= _cacheRadius; i++) {
+      final date = now.add(Duration(days: i));
+      final key = dateKeyFor(date);
+      requiredKeys.add(key);
+      if (_timesBox!.get(key) == null) {
+        missingDates.add(date);
+      }
+    }
 
+    // Prune entries outside the ±10 range
+    final keysToRemove = <String>[];
+    for (final key in _timesBox!.keys) {
+      if (key is String && !requiredKeys.contains(key)) {
+        keysToRemove.add(key);
+      }
+    }
+    for (final key in keysToRemove) {
+      await _timesBox!.delete(key);
+    }
+
+    // Nothing to fetch — cache is complete
+    if (missingDates.isEmpty) {
+      _updateCacheRange(rangeStart, rangeEnd);
+      return;
+    }
+
+    // Batch-fetch all missing dates
     try {
-      final times = await AladhanApiService.fetchPrayerTimes(
+      final fetched = await AladhanApiService.fetchBatchPrayerTimes(
         latitude: state.config.latitude,
         longitude: state.config.longitude,
         method: state.config.calculationMethod,
-        date: tomorrow,
-        school: state.config.asrCalculationSchool, // Use configured Asr school
+        dates: missingDates,
+        school: state.config.asrCalculationSchool,
       );
 
-      final dailyTimes = DailyPrayerTimes(
-        dateKey: tomorrowKey,
-        fajr: times['Fajr'] ?? '05:00',
-        sunrise: times['Sunrise'] ?? '',
-        dhuhr: times['Dhuhr'] ?? '12:00',
-        asr: times['Asr'] ?? '15:30',
-        maghrib: times['Maghrib'] ?? '18:00',
-        isha: times['Isha'] ?? '19:30',
-      );
+      for (final entry in fetched.entries) {
+        final dt = DailyPrayerTimes(
+          dateKey: entry.key,
+          fajr: entry.value['Fajr'] ?? '05:00',
+          sunrise: entry.value['Sunrise'] ?? '',
+          dhuhr: entry.value['Dhuhr'] ?? '12:00',
+          asr: entry.value['Asr'] ?? '15:30',
+          maghrib: entry.value['Maghrib'] ?? '18:00',
+          isha: entry.value['Isha'] ?? '19:30',
+        );
+        await _timesBox!.put(entry.key, dt);
+      }
 
-      await _timesBox?.put(tomorrowKey, dailyTimes);
-    } catch (_) {
-      // Non-critical — will fetch tomorrow morning instead
-    }
-  }
-
-  /// Remove cached prayer time entries older than 7 days to prevent
-  /// unbounded Hive box growth.
-  Future<void> _cleanStaleCacheEntries() async {
-    if (_timesBox == null) return;
-    try {
-      final cutoff = DateTime.now().subtract(const Duration(days: 7));
-      final cutoffKey = dateKeyFor(cutoff);
-      final keysToRemove = <String>[];
-      for (final key in _timesBox!.keys) {
-        if (key is String && key.compareTo(cutoffKey) < 0) {
-          keysToRemove.add(key);
+      // Update today's times in state if we just fetched them
+      final todayKey = todayDateKey();
+      if (fetched.containsKey(todayKey)) {
+        final fresh = _timesBox!.get(todayKey);
+        if (fresh != null) {
+          state = state.copyWith(todayTimes: fresh);
+          await _scheduleAlarms();
         }
       }
-      for (final key in keysToRemove) {
-        await _timesBox!.delete(key);
-      }
     } catch (_) {
-      // Non-critical cleanup — ignore errors
+      // Non-critical — cached dates are still available offline
     }
+
+    _updateCacheRange(rangeStart, rangeEnd);
+  }
+
+  /// Persist the cache range boundaries in the config.
+  Future<void> _updateCacheRange(DateTime start, DateTime end) async {
+    final updated = state.config.copyWith(
+      cacheRangeStart: dateKeyFor(start),
+      cacheRangeEnd: dateKeyFor(end),
+    );
+    await _configBox?.put('config', updated);
+    state = state.copyWith(config: updated);
+  }
+
+  /// Invalidate all cached prayer times and re-fetch.
+  /// Called when location, calculation method, or Asr school changes.
+  Future<void> _invalidateCacheAndRefresh() async {
+    // Clear all cached base times
+    await _timesBox?.clear();
+
+    // Clear range tracking
+    final cleared = state.config.copyWith(
+      cacheRangeStart: null,
+      cacheRangeEnd: null,
+      lastFetchDate: null,
+    );
+    await _configBox?.put('config', cleared);
+    state = state.copyWith(config: cleared, todayTimes: null);
+
+    // Re-fetch today immediately (blocking — user needs to see times)
+    await fetchTodayPrayerTimes();
+
+    // Fill ±10 day cache in background
+    _ensureRollingCache();
   }
 
   /// Migrate old alarm mode strings to new naming convention.
@@ -305,8 +361,8 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
       // Reschedule alarms with new times
       await _scheduleAlarms();
 
-      // Also prefetch tomorrow if it's evening
-      _prefetchTomorrowIfNeeded();
+      // Slide the rolling cache window if a new day started
+      _ensureRollingCache();
     } catch (e) {
       // Offline-first: keep showing cached times if available
       state = state.copyWith(
@@ -374,8 +430,8 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
     await _configBox?.put('config', updated);
     state = state.copyWith(config: updated, isSetupComplete: true);
 
-    // Fetch with new config
-    await fetchTodayPrayerTimes();
+    // Location changed — invalidate all cached times and re-fetch
+    await _invalidateCacheAndRefresh();
   }
 
   /// Update calculation method only.
@@ -392,7 +448,7 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
     final updated = state.config.copyWith(asrCalculationSchool: school);
     await _configBox?.put('config', updated);
     state = state.copyWith(config: updated);
-    await fetchTodayPrayerTimes();
+    await _invalidateCacheAndRefresh();
   }
 
   // ── Reminder settings ──────────────────────────────

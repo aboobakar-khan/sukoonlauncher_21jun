@@ -35,6 +35,14 @@ class PrayerAlarmConfig extends HiveObject {
   @HiveField(6)
   int asrCalculationSchool;
 
+  /// Start of the cached prayer times range (yyyy-MM-dd)
+  @HiveField(7)
+  String? cacheRangeStart;
+
+  /// End of the cached prayer times range (yyyy-MM-dd)
+  @HiveField(8)
+  String? cacheRangeEnd;
+
   PrayerAlarmConfig({
     this.calculationMethod = 2,
     this.latitude = 0.0,
@@ -43,6 +51,8 @@ class PrayerAlarmConfig extends HiveObject {
     this.locationLabel = '',
     this.lastFetchDate,
     this.asrCalculationSchool = 0, // Default to Shafi'i
+    this.cacheRangeStart,
+    this.cacheRangeEnd,
   });
 
   PrayerAlarmConfig copyWith({
@@ -53,6 +63,8 @@ class PrayerAlarmConfig extends HiveObject {
     String? locationLabel,
     String? lastFetchDate,
     int? asrCalculationSchool,
+    String? cacheRangeStart,
+    String? cacheRangeEnd,
   }) {
     return PrayerAlarmConfig(
       calculationMethod: calculationMethod ?? this.calculationMethod,
@@ -62,6 +74,8 @@ class PrayerAlarmConfig extends HiveObject {
       locationLabel: locationLabel ?? this.locationLabel,
       lastFetchDate: lastFetchDate ?? this.lastFetchDate,
       asrCalculationSchool: asrCalculationSchool ?? this.asrCalculationSchool,
+      cacheRangeStart: cacheRangeStart ?? this.cacheRangeStart,
+      cacheRangeEnd: cacheRangeEnd ?? this.cacheRangeEnd,
     );
   }
 }

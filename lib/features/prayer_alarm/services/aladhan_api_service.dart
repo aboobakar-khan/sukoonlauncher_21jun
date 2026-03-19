@@ -65,21 +65,21 @@ class AladhanApiService {
     throw lastError ?? Exception('Failed to fetch prayer times');
   }
 
-  /// Fetch prayer times for multiple days (batch for weekly scheduling).
+  /// Fetch prayer times for a specific list of dates (batch).
   /// Returns map keyed by yyyy-MM-dd.
-  static Future<Map<String, Map<String, String>>> fetchWeekPrayerTimes({
+  /// Only fetches the given dates — caller filters out already-cached ones.
+  static Future<Map<String, Map<String, String>>> fetchBatchPrayerTimes({
     required double latitude,
     required double longitude,
     required int method,
-    required DateTime startDate,
-    int days = 7,
+    required List<DateTime> dates,
     int school = 0, // 0 = Shafi'i, 1 = Hanafi
   }) async {
     final results = <String, Map<String, String>>{};
 
     // Fetch sequentially to avoid rate limiting
-    for (int i = 0; i < days; i++) {
-      final date = startDate.add(Duration(days: i));
+    for (int i = 0; i < dates.length; i++) {
+      final date = dates[i];
       final dateKey = '${date.year}-'
           '${date.month.toString().padLeft(2, '0')}-'
           '${date.day.toString().padLeft(2, '0')}';
@@ -90,7 +90,7 @@ class AladhanApiService {
           longitude: longitude,
           method: method,
           date: date,
-          school: school, // Pass school parameter
+          school: school,
         );
       } catch (e) {
         // Skip failed days — will use previous cache
@@ -98,7 +98,7 @@ class AladhanApiService {
       }
 
       // Small delay between requests to respect rate limits
-      if (i < days - 1) {
+      if (i < dates.length - 1) {
         await Future.delayed(const Duration(milliseconds: 300));
       }
     }

@@ -246,39 +246,85 @@ class _CalmWatchScreenState extends ConsumerState<CalmWatchScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Calm Watch',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w300,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _showAddSheet,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: accent.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: accent.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          child: Text(
-                            '+ Add',
+                      Row(
+                        children: [
+                          const Text(
+                            'Calm Watch',
                             style: TextStyle(
-                              color: accent.withValues(alpha: 0.8),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w400,
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w300,
+                              letterSpacing: 0.3,
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: accent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(
+                                color: accent.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Text(
+                              'BETA',
+                              style: TextStyle(
+                                color: accent.withValues(alpha: 0.6),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: _showInfoSheet,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.info_outline_rounded,
+                                color: Colors.white.withValues(alpha: 0.35),
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: _showAddSheet,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: accent.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: accent.withValues(alpha: 0.25),
+                                ),
+                              ),
+                              child: Text(
+                                '+ Add',
+                                style: TextStyle(
+                                  color: accent.withValues(alpha: 0.8),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 10),
                   if (tags.isNotEmpty)
                     SingleChildScrollView(
@@ -807,7 +853,121 @@ class _CalmWatchScreenState extends ConsumerState<CalmWatchScreen>
     );
   }
 
+  void _showInfoSheet() {
+    final accent = ref.read(themeColorProvider).color;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF131313),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              // Title
+              Row(
+                children: [
+                  Icon(Icons.play_circle_outline_rounded,
+                      color: accent.withValues(alpha: 0.7), size: 22),
+                  const SizedBox(width: 10),
+                  Text(
+                    'What is Calm Watch?',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'A distraction-free space for Islamic content. Save YouTube videos '
+                'and watch them without ads recommendations, or endless scrolling.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Method 1
+              _InfoMethodCard(
+                accent: accent,
+                number: '1',
+                title: 'Copy & Paste link',
+                steps: [
+                  'Copy a YouTube video or playlist URL',
+                  'Tap the "+ Add" button above',
+                  'Paste the link and save',
+                ],
+              ),
+              const SizedBox(height: 14),
+              // Method 2
+              _InfoMethodCard(
+                accent: accent,
+                number: '2',
+                title: 'Share from YouTube',
+                steps: [
+                  'Open a video in the YouTube app',
+                  'Tap the Share button',
+                  'Find "Sukoon" in the share list',
+                  'Video is auto-added to your Calm Watch',
+                ],
+              ),
+              const SizedBox(height: 20),
+              // Tip
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: accent.withValues(alpha: 0.12)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline_rounded,
+                        color: accent.withValues(alpha: 0.5), size: 16),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'You can disable Calm Watch from Settings → Widgets.',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showAddSheet() {
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF131313),
@@ -2156,6 +2316,95 @@ class _CollectionTile extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.5), size: 16),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Info method card (used in info sheet) ─────────────────────────────────────
+
+class _InfoMethodCard extends StatelessWidget {
+  final Color accent;
+  final String number;
+  final String title;
+  final List<String> steps;
+
+  const _InfoMethodCard({
+    required this.accent,
+    required this.number,
+    required this.title,
+    required this.steps,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  number,
+                  style: TextStyle(
+                    color: accent.withValues(alpha: 0.8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.75),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...steps.asMap().entries.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${e.key + 1}. ',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        fontSize: 12,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        e.value,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ],
       ),
     );
   }

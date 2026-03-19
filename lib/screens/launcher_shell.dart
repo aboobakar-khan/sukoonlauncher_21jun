@@ -33,6 +33,7 @@ import '../services/app_update_service.dart';
 import '../features/calm_watch/screens/calm_watch_screen.dart';
 import '../features/calm_watch/services/share_intent_service.dart';
 import '../features/calm_watch/providers/calm_watch_provider.dart';
+import '../features/calm_watch/providers/calm_watch_enabled_provider.dart';
 import '../providers/page_indicator_provider.dart';
 
 /// Launcher page physics — any horizontal swipe from a non-home page
@@ -182,8 +183,10 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
   /// Whether to show the Calm Watch swipe-left hint (one-time only).
   bool _showCalmWatchHint = false;
 
-  // Home is at index 2 (middle)
-  static const int _homeIndex = 3;
+  // Home index shifts when CalmWatch is disabled:
+  //   CalmWatch ON:  [CalmWatch, Islamic, Widget, Home, Apps, Productivity] → Home = 3
+  //   CalmWatch OFF: [Islamic, Widget, Home, Apps, Productivity]             → Home = 2
+  int get _homeIndex => ref.read(calmWatchEnabledProvider) ? 3 : 2;
 
   static const _launcherChannel = MethodChannel('com.sukoon.launcher/launcher');
 
@@ -228,6 +231,21 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
     // This ensures that locking/unlocking the phone never drops the user back
     // to the home page when they were on the Quran, App List, Settings, etc.
     _restoreLastPage();
+
+    // ── CalmWatch toggle: rebuild PageController when page count changes ──
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.listen<bool>(calmWatchEnabledProvider, (prev, next) {
+        if (prev != next && mounted) {
+          // Recreate PageController with the new home index
+          final newHome = next ? 3 : 2;
+          _pageController.dispose();
+          _pageController = PageController(initialPage: newHome, viewportFraction: 1.0);
+          ref.read(launcherPageControllerProvider.notifier).state = _pageController;
+          setState(() {});
+        }
+      });
+    });
 
     // 🧘 ZEN MODE SURVIVAL: Check if Zen Mode is active (survives restart/reboot)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -371,8 +389,14 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       final isScreenOffCycle = _wasScreenOff || pauseDuration.inSeconds < 3;
       _wasScreenOff = false;
 
-      // Only take action for genuine app returns (> 3s away, not a lock cycle).
-      final isGenuineReturn = !isScreenOffCycle && pauseDuration.inMilliseconds > 3000;
+      // Only take action for genuine app returns (> 8s away, not a lock cycle
+      // and not a quick permission dialog).
+      //
+      // WHY 8s? Permission dialogs, location settings, battery optimization
+      // popups, and notification permission flows often take 3-10 seconds.
+      // With the old 3s threshold, these were falsely detected as "genuine
+      // returns" causing the homepage jump the user reported.
+      final isGenuineReturn = !isScreenOffCycle && pauseDuration.inMilliseconds > 8000;
 
       if (isScreenOffCycle) {
         // Lock/unlock: restore the saved page silently — no route popping,
@@ -381,15 +405,16 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       } else if (isGenuineReturn) {
         final hasModalRoute = Navigator.of(context).canPop();
 
-        // ALWAYS jump to home on genuine app-switch returns (> 3s).
-        // The user expects to land on the home page after using any
-        // external app — matching Samsung One UI / stock launcher behaviour.
-        // Screen-off cycles are already excluded above via isScreenOffCycle.
         if (hasModalRoute) {
+          // User had a pushed screen open (Settings, Prayer, etc.).
+          // Pop back to the base launcher — but do NOT also jump the
+          // PageView to home. They expect to land on the page they
+          // were browsing before they pushed the sub-screen.
           Navigator.of(context).popUntil((route) => route.isFirst);
-        }
-
-        if (_pageController.hasClients) {
+        } else {
+          // No modal routes — user was on a raw PageView page.
+          // Jump to home (Samsung One UI / stock launcher behaviour).
+          if (_pageController.hasClients) {
             final currentPage = _pageController.page?.round() ?? _homeIndex;
             if (currentPage != _homeIndex) {
               _pageController.jumpToPage(_homeIndex);
@@ -397,6 +422,10 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             }
           }
         }
+      }
+      // Else (not screen-off AND not genuine return): user was briefly
+      // away (permission dialog, share sheet, etc). Do nothing — keep
+      // the exact page and route state they had before.
 
       // Schedule non-critical visual updates for AFTER the first frame.
       // These don't affect interactivity, so they can wait.
@@ -564,7 +593,7 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
   }
 
   // ── Calm Watch page index (first page in the PageView) ──
-  static const int _calmWatchPageIndex = 0;
+  static const int _calmWatchPageIndex = 0; // only valid when CalmWatch is enabled
 
   /// Handle a YouTube URL received from an Android share intent.
   ///
@@ -591,8 +620,9 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       return;
     }
 
-    // Navigate to Calm Watch page
-    if (_pageController.hasClients) {
+    // Navigate to Calm Watch page (only if CalmWatch is enabled)
+    final calmWatchOn = ref.read(calmWatchEnabledProvider);
+    if (calmWatchOn && _pageController.hasClients) {
       // Pop any sub-routes first
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -885,11 +915,19 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
-          final currentPage = _pageController.page?.round() ?? _homeIndex;
-          if (currentPage != _homeIndex) {
-            _goHome(popRoutes: true);
+          // If a sub-route is pushed (Settings, Prayer, etc.), pressing
+          // back should just pop that screen — NOT also jump the PageView.
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          } else {
+            // No pushed routes — user is on a raw PageView page.
+            // Navigate the PageView to home.
+            final currentPage = _pageController.page?.round() ?? _homeIndex;
+            if (currentPage != _homeIndex) {
+              _navigateToHome();
+            }
+            // If already on home: launchers never exit — do nothing.
           }
-          // If already on home: launchers never exit — do nothing.
         }
       },
       child: Scaffold(
@@ -953,12 +991,13 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
                     // pages stay mounted in memory permanently.
                     // Their gesture recognizers stay attached.
                     // NO rebuild on resume = instant input response.
-                    ScrollConfiguration(
-                      behavior: const _PageInnerScrollBehavior(),
-                      child: RepaintBoundary(
-                        child: CalmWatchScreen(key: CalmWatchScreen.playItemKey),
+                    if (ref.watch(calmWatchEnabledProvider))
+                      ScrollConfiguration(
+                        behavior: const _PageInnerScrollBehavior(),
+                        child: RepaintBoundary(
+                          child: CalmWatchScreen(key: CalmWatchScreen.playItemKey),
+                        ),
                       ),
-                    ),
                     ScrollConfiguration(
                       behavior: const _PageInnerScrollBehavior(),
                       child: RepaintBoundary(

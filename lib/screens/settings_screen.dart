@@ -42,6 +42,7 @@ import '../providers/zen_mode_provider.dart';
 import '../providers/screen_time_provider.dart';
 import '../providers/fasting_provider.dart';
 import '../services/backup_restore_service.dart';
+import '../features/calm_watch/providers/calm_watch_enabled_provider.dart';
 import '../utils/smooth_page_route.dart';
 
 /// Settings Screen - Customization options
@@ -206,6 +207,7 @@ class SettingsScreen extends ConsumerWidget {
                       
                         isLight: isLight,
                       ),
+                      _buildCalmWatchToggle(context, ref),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -1670,7 +1672,99 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Widget _buildCalmWatchToggle(BuildContext context, WidgetRef ref) {
+    final isEnabled = ref.watch(calmWatchEnabledProvider);
+    final themeColor = ref.watch(themeColorProvider);
+    final accent = themeColor.color;
+    final isLight = themeColor.isLight;
+    final primaryText = isLight ? const Color(0xFF0D0D0D) : Colors.white;
+    final itemBg = isLight
+        ? Colors.black.withValues(alpha: 0.04)
+        : Colors.white.withValues(alpha: 0.03);
+    final toggleTrackOff = isLight
+        ? Colors.black.withValues(alpha: 0.12)
+        : Colors.white.withValues(alpha: 0.1);
+    final toggleThumbOff = isLight ? Colors.black.withValues(alpha: 0.3) : Colors.white38;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: itemBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.play_circle_outline_rounded,
+                color: accent.withValues(alpha: 0.6), size: 18),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Calm Watch',
+                  style: TextStyle(
+                    color: primaryText.withValues(alpha: 0.85),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  isEnabled ? 'Swipe-left page visible' : 'Page hidden',
+                  style: TextStyle(
+                    color: primaryText.withValues(alpha: 0.35),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ref.read(calmWatchEnabledProvider.notifier).toggle();
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 44,
+              height: 24,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: isEnabled
+                    ? accent.withValues(alpha: 0.3)
+                    : toggleTrackOff,
+              ),
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 200),
+                alignment: isEnabled ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isEnabled ? accent : toggleThumbOff,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildKeyboardAutoOpenToggle(BuildContext context, WidgetRef ref, Color accent) {
+
     final isEnabled = ref.watch(keyboardAutoOpenProvider);
     final isLight = ref.watch(themeColorProvider).isLight;
     final primaryText = isLight ? const Color(0xFF0D0D0D) : Colors.white;

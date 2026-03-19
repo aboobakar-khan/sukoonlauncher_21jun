@@ -23,9 +23,9 @@ class CalmWatchItemAdapter extends TypeAdapter<CalmWatchItem> {
       isPlaylist: fields[3] as bool,
       originalUrl: fields[4] as String,
       addedAt: fields[5] as DateTime,
-      isCompleted: fields[6] == null ? false : fields[6] as bool,
-      reflection: fields[7] == null ? '' : fields[7] as String,
-      tag: fields[8] == null ? '' : fields[8] as String,
+      isCompleted: fields[6] as bool,
+      reflection: fields[7] as String,
+      tag: fields[8] as String,
     );
   }
 

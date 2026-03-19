@@ -23,14 +23,16 @@ class PrayerAlarmConfigAdapter extends TypeAdapter<PrayerAlarmConfig> {
       timezone: fields[3] as String,
       locationLabel: fields[4] as String,
       lastFetchDate: fields[5] as String?,
-      asrCalculationSchool: (fields[6] as int?) ?? 0,
+      asrCalculationSchool: fields[6] as int,
+      cacheRangeStart: fields[7] as String?,
+      cacheRangeEnd: fields[8] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PrayerAlarmConfig obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.calculationMethod)
       ..writeByte(1)
@@ -44,7 +46,11 @@ class PrayerAlarmConfigAdapter extends TypeAdapter<PrayerAlarmConfig> {
       ..writeByte(5)
       ..write(obj.lastFetchDate)
       ..writeByte(6)
-      ..write(obj.asrCalculationSchool);
+      ..write(obj.asrCalculationSchool)
+      ..writeByte(7)
+      ..write(obj.cacheRangeStart)
+      ..writeByte(8)
+      ..write(obj.cacheRangeEnd);
   }
 
   @override
@@ -75,7 +81,7 @@ class DailyPrayerTimesAdapter extends TypeAdapter<DailyPrayerTimes> {
       asr: fields[3] as String,
       maghrib: fields[4] as String,
       isha: fields[5] as String,
-      sunrise: fields[6] as String? ?? '',
+      sunrise: fields[6] as String,
     );
   }
 
@@ -137,18 +143,18 @@ class PrayerReminderSettingsAdapter
       vibrationEnabled: fields[12] as bool,
       snoozeDurationMinutes: fields[13] as int,
       customSoundPath: fields[14] as String,
-      fajrNotifType: fields[15] as String? ?? 'notification',
-      dhuhrNotifType: fields[16] as String? ?? 'notification',
-      asrNotifType: fields[17] as String? ?? 'notification',
-      maghribNotifType: fields[18] as String? ?? 'notification',
-      ishaNotifType: fields[19] as String? ?? 'notification',
-      sunriseNotifType: fields[20] as String? ?? 'notification',
-      fajrAdjustment: (fields[21] as int?) ?? 0,
-      sunriseAdjustment: (fields[22] as int?) ?? 0,
-      dhuhrAdjustment: (fields[23] as int?) ?? 0,
-      asrAdjustment: (fields[24] as int?) ?? 0,
-      maghribAdjustment: (fields[25] as int?) ?? 0,
-      ishaAdjustment: (fields[26] as int?) ?? 0,
+      fajrNotifType: fields[15] as String,
+      dhuhrNotifType: fields[16] as String,
+      asrNotifType: fields[17] as String,
+      maghribNotifType: fields[18] as String,
+      ishaNotifType: fields[19] as String,
+      sunriseNotifType: fields[20] as String,
+      fajrAdjustment: fields[21] as int,
+      sunriseAdjustment: fields[22] as int,
+      dhuhrAdjustment: fields[23] as int,
+      asrAdjustment: fields[24] as int,
+      maghribAdjustment: fields[25] as int,
+      ishaAdjustment: fields[26] as int,
     );
   }
 
