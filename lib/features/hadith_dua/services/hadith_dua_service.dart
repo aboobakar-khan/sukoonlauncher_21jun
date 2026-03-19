@@ -4,446 +4,348 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/hadith_dua_models.dart';
 
-/// Service for fetching Hadith and Dua from APIs
+/// Service for fetching Hadith and Dua — powered by hadithapi.com
 class HadithDuaService {
-  // Primary and fallback API URLs
-  static const String _primaryUrl = 'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1';
-  static const String _fallbackUrl = 'https://raw.githubusercontent.com/fawazahmed0/hadith-api/1';
-  
-  // Cache for loaded collections
+  // ── hadithapi.com configuration ──
+  static const String _baseUrl = 'https://hadithapi.com/api';
+  // API key stored as constant to avoid dotenv $-sign interpolation issues
+  static const String _apiKey = r'$2y$10$bBYkOiuMdXrRm3td9KtzWuBt3XM6WX0FOUuvXxSxJ7hXyKwoHmai';
+
+  // ── In-memory caches ──
   final Map<String, List<Hadith>> _hadithCache = {};
+  final Map<String, List<HadithChapter>> _chaptersCache = {};
   final Map<String, Map<String, String>> _sectionsCache = {};
-  
-  /// Fetch from primary URL with fallback
-  Future<http.Response?> _fetchWithFallback(String path) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_primaryUrl$path'),
-      ).timeout(const Duration(seconds: 30));
-      
-      if (response.statusCode == 200) {
-        return response;
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  HTTP helper – single attempt + one retry
+  // ═══════════════════════════════════════════════════════════════════
+
+  Future<http.Response?> _get(String url) async {
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 30));
+        if (response.statusCode == 200) return response;
+        debugPrint('HadithDuaService: HTTP ${response.statusCode} on attempt $attempt for $url');
+      } catch (e) {
+        debugPrint('HadithDuaService: attempt $attempt failed for $url → $e');
+        if (attempt == 0) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
       }
-    } catch (e) {
-      // Primary failed, try fallback
     }
-    
-    try {
-      final response = await http.get(
-        Uri.parse('$_fallbackUrl$path'),
-      ).timeout(const Duration(seconds: 30));
-      
-      if (response.statusCode == 200) {
-        return response;
-      }
-    } catch (e) {
-      // Both failed
-    }
-    
     return null;
   }
 
-  /// Fetch hadiths from a specific collection
-  Future<List<Hadith>> fetchHadiths(HadithCollection collection) async {
-    // Cache key includes API key to support multiple languages per collection
-    final cacheKey = collection.apiKey;
-    
-    // Return cached if available
-    if (_hadithCache.containsKey(cacheKey)) {
-      return _hadithCache[cacheKey]!;
-    }
-
-    try {
-      // Use minified version for faster loading
-      final response = await _fetchWithFallback('/editions/${collection.apiKey}.min.json');
-      
-      if (response != null) {
-        final data = json.decode(response.body) as Map<String, dynamic>;
-        
-        // Get sections for reference
-        final metadata = data['metadata'] as Map<String, dynamic>?;
-        final sections = metadata?['section'] as Map<String, dynamic>? ?? {};
-        _sectionsCache[collection.id] = sections.map(
-          (key, value) => MapEntry(key, value.toString()),
-        );
-        
-        // Parse hadiths with enhanced data
-        final hadithsData = data['hadiths'] as List<dynamic>? ?? [];
-        final hadiths = <Hadith>[];
-        
-        for (final h in hadithsData) {
-          try {
-            var hadith = Hadith.fromJson(
-              h as Map<String, dynamic>,
-              collection: collection.name,
-              section: _getSectionForHadith(collection.id, h['hadithnumber'] as int? ?? 0),
-              sectionDetails: _sectionsCache[collection.id],
-            );
-            
-            // Apply default grade for sahih collections if not graded
-            if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
-              hadith = hadith.copyWith(grade: collection.defaultGrade);
-            }
-            
-            hadiths.add(hadith);
-          } catch (e) {
-            // Skip malformed hadith
-            continue;
-          }
-        }
-
-        _hadithCache[cacheKey] = hadiths;
-        return hadiths;
-      }
-    } catch (e) {
-      // Return empty on error
-    }
-    return [];
+  String _url(String path, [Map<String, String>? queryParams]) {
+    // Build query string manually — do NOT percent-encode the apiKey because
+    // bcrypt keys contain '$' which Uri.encodeComponent would turn into %24.
+    final buffer = StringBuffer('$_baseUrl$path?apiKey=$_apiKey');
+    queryParams?.forEach((k, v) {
+      buffer.write('&$k=${Uri.encodeQueryComponent(v)}');
+    });
+    return buffer.toString();
   }
 
-  /// Download hadiths for offline storage - ALWAYS fetches fresh from API
-  /// This bypasses the in-memory cache to ensure we get the actual data
-  Future<List<Hadith>> downloadHadithsForOffline(HadithCollection collection, {Function(int, int)? onProgress}) async {
-    debugPrint('HadithDuaService: Starting FRESH download for ${collection.name}...');
-    
-    try {
-      final url = '/editions/${collection.apiKey}.min.json';
-      debugPrint('HadithDuaService: Fetching from $url');
-      
-      final response = await _fetchWithFallback(url);
-      
-      if (response == null) {
-        debugPrint('HadithDuaService: Failed to fetch ${collection.name} - no response');
-        return [];
-      }
-      
-      debugPrint('HadithDuaService: Got response for ${collection.name}, parsing...');
-      final data = json.decode(response.body) as Map<String, dynamic>;
-      
-      // Get sections for reference
-      final metadata = data['metadata'] as Map<String, dynamic>?;
-      final sections = metadata?['section'] as Map<String, dynamic>? ?? {};
-      _sectionsCache[collection.id] = sections.map(
-        (key, value) => MapEntry(key, value.toString()),
-      );
-      
-      // Parse hadiths with enhanced data
-      final hadithsData = data['hadiths'] as List<dynamic>? ?? [];
-      final hadiths = <Hadith>[];
-      
-      debugPrint('HadithDuaService: Parsing ${hadithsData.length} hadiths from ${collection.name}...');
-      
-      for (int i = 0; i < hadithsData.length; i++) {
-        final h = hadithsData[i];
-        try {
-          var hadith = Hadith.fromJson(
-            h as Map<String, dynamic>,
-            collection: collection.name,
-            section: _getSectionForHadith(collection.id, h['hadithnumber'] as int? ?? 0),
-            sectionDetails: _sectionsCache[collection.id],
-          );
-          
-          // Apply default grade for sahih collections if not graded
-          if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
-            hadith = hadith.copyWith(grade: collection.defaultGrade);
-          }
-          
-          hadiths.add(hadith);
-          
-          // Report progress every 500 hadiths
-          if (onProgress != null && i % 500 == 0) {
-            onProgress(i, hadithsData.length);
-          }
-        } catch (e) {
-          // Skip malformed hadith
-          continue;
-        }
-      }
+  // ═══════════════════════════════════════════════════════════════════
+  //  Chapters (Kitabs) for a book
+  // ═══════════════════════════════════════════════════════════════════
 
-      // Also update in-memory cache (use apiKey for language-aware caching)
-      _hadithCache[collection.apiKey] = hadiths;
-      
-      debugPrint('HadithDuaService: ✓ Downloaded ${hadiths.length} hadiths from ${collection.name}');
-      return hadiths;
+  /// Fetch chapters/kitabs for a given collection.
+  Future<List<HadithChapter>> getChapters(HadithCollection collection) async {
+    if (_chaptersCache.containsKey(collection.bookSlug)) {
+      return _chaptersCache[collection.bookSlug]!;
+    }
+
+    final url = _url('/${collection.bookSlug}/chapters');
+    final response = await _get(url);
+    if (response == null) return [];
+
+    try {
+      final body = json.decode(response.body);
+      final chaptersRaw = body['chapters'] as List<dynamic>? ?? [];
+      final chapters = chaptersRaw
+          .map((c) => HadithChapter.fromJson(c as Map<String, dynamic>))
+          .toList();
+      _chaptersCache[collection.bookSlug] = chapters;
+
+      // Also populate legacy _sectionsCache for backward compat
+      final sectionMap = <String, String>{};
+      for (final ch in chapters) {
+        sectionMap[ch.chapterNumber.toString()] = ch.chapterEnglish;
+      }
+      _sectionsCache[collection.id] = sectionMap;
+
+      return chapters;
     } catch (e) {
-      debugPrint('HadithDuaService: Error downloading ${collection.name}: $e');
+      debugPrint('HadithDuaService: Error parsing chapters: $e');
       return [];
     }
   }
 
-  /// Fetch a specific range of hadiths (for faster loading)
-  Future<List<Hadith>> fetchHadithsRange(HadithCollection collection, int start, int end) async {
-    final hadiths = <Hadith>[];
-    
-    for (int i = start; i <= end; i++) {
+  // ═══════════════════════════════════════════════════════════════════
+  //  Hadiths – paginated from hadithapi.com
+  // ═══════════════════════════════════════════════════════════════════
+
+  /// Fetch hadiths for a collection, optionally filtered by chapter.
+  /// hadithapi.com returns paginated results; we fetch up to [maxPages] pages.
+  Future<List<Hadith>> fetchHadiths(
+    HadithCollection collection, {
+    int? chapterId,
+    int maxPages = 5,
+    String language = 'eng',
+  }) async {
+    // Cache key includes language so switching language fetches fresh data
+    final cacheKey = '${collection.bookSlug}_${chapterId ?? 'all'}_$language';
+    if (_hadithCache.containsKey(cacheKey)) {
+      return _hadithCache[cacheKey]!;
+    }
+
+    final allHadiths = <Hadith>[];
+    int page = 1;
+
+    while (page <= maxPages) {
+      final params = <String, String>{
+        'book': collection.bookSlug,
+        'page': page.toString(),
+        'paginate': '50',   // fetch 50 per page (API max) for efficiency
+        'language': language,
+      };
+      if (chapterId != null) params['chapter'] = chapterId.toString();
+
+      final url = _url('/hadiths', params);
+      final response = await _get(url);
+      if (response == null) break;
+
       try {
-        final response = await _fetchWithFallback('/editions/${collection.apiKey}/$i.min.json');
-        
-        if (response != null) {
-          final data = json.decode(response.body) as Map<String, dynamic>;
-          final hadithsData = data['hadiths'] as List<dynamic>? ?? [];
-          
-          for (final h in hadithsData) {
-            try {
-              var hadith = Hadith.fromJson(
-                h as Map<String, dynamic>,
-                collection: collection.name,
-              );
-              
-              if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
-                hadith = hadith.copyWith(grade: collection.defaultGrade);
-              }
-              
-              hadiths.add(hadith);
-            } catch (e) {
-              continue;
+        final body = json.decode(response.body);
+        final data = body['hadiths']?['data'] as List<dynamic>? ?? [];
+        if (data.isEmpty) break;
+
+        for (final h in data) {
+          try {
+            var hadith = Hadith.fromJson(
+              h as Map<String, dynamic>,
+              collection: collection.name,
+            );
+            if (hadith.grade == HadithGrade.unknown &&
+                collection.defaultGrade != HadithGrade.unknown) {
+              hadith = hadith.copyWith(grade: collection.defaultGrade);
             }
+            allHadiths.add(hadith);
+          } catch (e) {
+            continue;
           }
         }
+
+        final lastPage = body['hadiths']?['last_page'] as int? ?? page;
+        if (page >= lastPage) break;
+        page++;
       } catch (e) {
-        continue;
+        debugPrint('HadithDuaService: Error parsing hadiths page $page: $e');
+        break;
       }
     }
-    
-    return hadiths;
+
+    if (allHadiths.isNotEmpty) {
+      _hadithCache[cacheKey] = allHadiths;
+    }
+    return allHadiths;
   }
 
-  /// Fetch a few random sections for quick loading
-  Future<List<Hadith>> fetchRandomSections(HadithCollection collection, {int sections = 3}) async {
-    final hadiths = <Hadith>[];
-    final random = Random();
-    final maxSection = _getMaxSection(collection.id);
-    final fetchedSections = <int>{};
-    
-    while (fetchedSections.length < sections) {
-      final section = random.nextInt(maxSection) + 1;
-      if (fetchedSections.contains(section)) continue;
-      fetchedSections.add(section);
-      
+  /// Download ALL hadiths for offline storage (fetches every page).
+  Future<List<Hadith>> downloadHadithsForOffline(
+    HadithCollection collection, {
+    Function(int, int)? onProgress,
+  }) async {
+    debugPrint('HadithDuaService: Starting FULL download for ${collection.name}...');
+
+    final allHadiths = <Hadith>[];
+    int page = 1;
+    int totalPages = 1;
+
+    while (page <= totalPages) {
+      final params = <String, String>{
+        'book': collection.bookSlug,
+        'page': page.toString(),
+        'paginate': '50',
+      };
+      final url = _url('/hadiths', params);
+      final response = await _get(url);
+      if (response == null) break;
+
       try {
-        final response = await _fetchWithFallback('/editions/${collection.apiKey}/$section.min.json');
-        
-        if (response != null) {
-          final data = json.decode(response.body) as Map<String, dynamic>;
-          final hadithsData = data['hadiths'] as List<dynamic>? ?? [];
-          
-          for (final h in hadithsData) {
-            try {
-              var hadith = Hadith.fromJson(
-                h as Map<String, dynamic>,
-                collection: collection.name,
-              );
-              
-              if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
-                hadith = hadith.copyWith(grade: collection.defaultGrade);
-              }
-              
-              hadiths.add(hadith);
-            } catch (e) {
-              continue;
+        final body = json.decode(response.body);
+        totalPages = body['hadiths']?['last_page'] as int? ?? 1;
+        final data = body['hadiths']?['data'] as List<dynamic>? ?? [];
+        if (data.isEmpty) break;
+
+        for (final h in data) {
+          try {
+            var hadith = Hadith.fromJson(
+              h as Map<String, dynamic>,
+              collection: collection.name,
+            );
+            if (hadith.grade == HadithGrade.unknown &&
+                collection.defaultGrade != HadithGrade.unknown) {
+              hadith = hadith.copyWith(grade: collection.defaultGrade);
             }
+            allHadiths.add(hadith);
+          } catch (e) {
+            continue;
           }
         }
+
+        onProgress?.call(page, totalPages);
+        page++;
       } catch (e) {
-        continue;
+        debugPrint('HadithDuaService: Error on page $page: $e');
+        break;
       }
     }
-    
-    return hadiths;
-  }
 
-  int _getMaxSection(String collectionId) {
-    switch (collectionId) {
-      case 'bukhari': return 97;
-      case 'muslim': return 56;
-      case 'abudawud': return 43;
-      case 'tirmidhi': return 49;
-      case 'nasai': return 51;
-      case 'ibnmajah': return 37;
-      default: return 30;
+    if (allHadiths.isNotEmpty) {
+      _hadithCache['${collection.bookSlug}_all'] = allHadiths;
     }
+
+    debugPrint('HadithDuaService: ✓ Downloaded ${allHadiths.length} hadiths from ${collection.name}');
+    return allHadiths;
   }
 
-  String? _getSectionForHadith(String collectionId, int hadithNumber) {
-    final sections = _sectionsCache[collectionId];
-    if (sections == null || sections.isEmpty) return null;
-    
-    // The API sections are keyed by book number (e.g. "1", "2", …).
-    // Each hadith has a `reference.book` field that indicates which book
-    // it belongs to. We can't determine book from hadith number alone
-    // without the reference, so return null here — the mapping is done
-    // in fromJson via sectionDetails + reference.book → chapterName.
-    return null;
-  }
+  // ═══════════════════════════════════════════════════════════════════
+  //  Legacy compatibility helpers
+  // ═══════════════════════════════════════════════════════════════════
 
   /// Get cached sections for a collection (book number → chapter name).
-  /// Returns null if not yet fetched.
   Map<String, String>? getSections(String collectionId) {
     return _sectionsCache[collectionId];
   }
 
-  /// Get a random hadith from a collection
+  // ═══════════════════════════════════════════════════════════════════
+  //  Random hadith
+  // ═══════════════════════════════════════════════════════════════════
+
   Future<Hadith?> getRandomHadith({String? collectionId}) async {
     final collection = collectionId != null
         ? HadithCollection.fromId(collectionId)
         : HadithCollection.collections[Random().nextInt(HadithCollection.collections.length)];
 
-    // Try to get from cache first (use apiKey for language-aware lookup)
-    if (_hadithCache.containsKey(collection.apiKey) && _hadithCache[collection.apiKey]!.isNotEmpty) {
-      final hadiths = _hadithCache[collection.apiKey]!;
+    final cacheKey = '${collection.bookSlug}_all';
+    if (_hadithCache.containsKey(cacheKey) && _hadithCache[cacheKey]!.isNotEmpty) {
+      final hadiths = _hadithCache[cacheKey]!;
       return hadiths[Random().nextInt(hadiths.length)];
     }
 
-    // Fetch a random section
     final random = Random();
-    final section = random.nextInt(_getMaxSection(collection.id)) + 1;
-    
+    final randomPage = random.nextInt(10) + 1;
+    final params = <String, String>{'book': collection.bookSlug, 'page': randomPage.toString()};
+    final url = _url('/hadiths', params);
+    final response = await _get(url);
+    if (response == null) return null;
+
     try {
-      final response = await _fetchWithFallback('/editions/${collection.apiKey}/$section.min.json');
-      
-      if (response != null) {
-        final data = json.decode(response.body) as Map<String, dynamic>;
-        final hadithsData = data['hadiths'] as List<dynamic>? ?? [];
-        
-        if (hadithsData.isNotEmpty) {
-          final randomIndex = random.nextInt(hadithsData.length);
-          var hadith = Hadith.fromJson(
-            hadithsData[randomIndex] as Map<String, dynamic>,
-            collection: collection.name,
-          );
-          
-          if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
-            hadith = hadith.copyWith(grade: collection.defaultGrade);
-          }
-          
-          return hadith;
-        }
+      final body = json.decode(response.body);
+      final data = body['hadiths']?['data'] as List<dynamic>? ?? [];
+      if (data.isEmpty) return null;
+      var hadith = Hadith.fromJson(data[random.nextInt(data.length)] as Map<String, dynamic>, collection: collection.name);
+      if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
+        hadith = hadith.copyWith(grade: collection.defaultGrade);
       }
+      return hadith;
     } catch (e) {
-      // Return null on error
+      debugPrint('HadithDuaService: Error getting random hadith: $e');
+      return null;
     }
-    
-    return null;
   }
 
-  /// Get multiple random hadiths for the "Load More" feature
   Future<List<Hadith>> getMultipleRandomHadiths({
-    String? collectionId,
-    int count = 5,
-    List<int>? excludeNumbers,
+    String? collectionId, int count = 5, List<int>? excludeNumbers,
   }) async {
-    final results = <Hadith>[];
     final collection = collectionId != null
         ? HadithCollection.fromId(collectionId)
         : HadithCollection.collections[Random().nextInt(HadithCollection.collections.length)];
-
-    // Fetch from multiple random sections
+    final results = <Hadith>[];
     final random = Random();
-    final fetchedSections = <int>{};
     int attempts = 0;
-    
-    while (results.length < count && attempts < 10) {
+    while (results.length < count && attempts < 5) {
       attempts++;
-      final section = random.nextInt(_getMaxSection(collection.id)) + 1;
-      if (fetchedSections.contains(section)) continue;
-      fetchedSections.add(section);
-      
+      final params = <String, String>{'book': collection.bookSlug, 'page': (random.nextInt(10) + 1).toString()};
+      final url = _url('/hadiths', params);
+      final response = await _get(url);
+      if (response == null) continue;
       try {
-        final response = await _fetchWithFallback('/editions/${collection.apiKey}/$section.min.json');
-        
-        if (response != null) {
-          final data = json.decode(response.body) as Map<String, dynamic>;
-          final hadithsData = data['hadiths'] as List<dynamic>? ?? [];
-          
-          for (final h in hadithsData) {
-            if (results.length >= count) break;
-            
-            try {
-              final hadithNum = h['hadithnumber'] as int? ?? 0;
-              if (excludeNumbers?.contains(hadithNum) ?? false) continue;
-              
-              var hadith = Hadith.fromJson(
-                h as Map<String, dynamic>,
-                collection: collection.name,
-              );
-              
-              if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
-                hadith = hadith.copyWith(grade: collection.defaultGrade);
-              }
-              
-              results.add(hadith);
-            } catch (e) {
-              continue;
+        final body = json.decode(response.body);
+        final data = body['hadiths']?['data'] as List<dynamic>? ?? [];
+        for (final h in data) {
+          if (results.length >= count) break;
+          try {
+            var hadith = Hadith.fromJson(h as Map<String, dynamic>, collection: collection.name);
+            if (excludeNumbers?.contains(hadith.hadithNumber) ?? false) continue;
+            if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
+              hadith = hadith.copyWith(grade: collection.defaultGrade);
             }
-          }
+            results.add(hadith);
+          } catch (e) { continue; }
         }
-      } catch (e) {
-        continue;
-      }
+      } catch (e) { continue; }
     }
-    
     return results;
   }
 
-  /// Get hadiths by category
+  // ═══════════════════════════════════════════════════════════════════
+  //  Category & Search
+  // ═══════════════════════════════════════════════════════════════════
+
   Future<List<Hadith>> getHadithsByCategory({
-    required HadithCategory category,
-    String? collectionId,
-    int limit = 20,
+    required HadithCategory category, String? collectionId, int limit = 20,
   }) async {
     final collections = collectionId != null
         ? [HadithCollection.fromId(collectionId)]
         : HadithCollection.collections;
-
     final results = <Hadith>[];
-
     for (final collection in collections) {
       final hadiths = await fetchHadiths(collection);
-      results.addAll(
-        hadiths.where((h) => h.categories.contains(category)),
-      );
+      results.addAll(hadiths.where((h) => h.categories.contains(category)));
       if (results.length >= limit) break;
     }
-
     return results.take(limit).toList();
   }
 
-  /// Search hadiths by text with optional filters
+  /// Search hadiths — uses hadithapi.com server-side search.
   Future<List<Hadith>> searchHadiths(
     String query, {
-    String? collectionId,
-    HadithGrade? gradeFilter,
-    HadithCategory? categoryFilter,
+    String? collectionId, HadithGrade? gradeFilter, HadithCategory? categoryFilter,
   }) async {
-    final collections = collectionId != null
-        ? [HadithCollection.fromId(collectionId)]
-        : HadithCollection.collections;
-
-    final results = <Hadith>[];
-    final queryLower = query.toLowerCase();
-
-    for (final collection in collections) {
-      final hadiths = await fetchHadiths(collection);
-      var filtered = hadiths.where((h) => h.text.toLowerCase().contains(queryLower));
-      
-      // Apply grade filter
-      if (gradeFilter != null) {
-        filtered = filtered.where((h) => h.grade == gradeFilter);
-      }
-      
-      // Apply category filter
-      if (categoryFilter != null) {
-        filtered = filtered.where((h) => h.categories.contains(categoryFilter));
-      }
-      
-      results.addAll(filtered);
-      
-      // Limit results
-      if (results.length >= 50) break;
+    if (query.trim().isEmpty) return [];
+    final params = <String, String>{'hadithEnglish': query};
+    if (collectionId != null) {
+      params['book'] = HadithCollection.fromId(collectionId).bookSlug;
     }
-
-    return results.take(50).toList();
+    final url = _url('/hadiths', params);
+    final response = await _get(url);
+    if (response == null) return [];
+    try {
+      final body = json.decode(response.body);
+      final data = body['hadiths']?['data'] as List<dynamic>? ?? [];
+      var results = <Hadith>[];
+      for (final h in data) {
+        try {
+          results.add(Hadith.fromJson(h as Map<String, dynamic>, collection: collectionId ?? ''));
+        } catch (e) { continue; }
+      }
+      if (gradeFilter != null) results = results.where((h) => h.grade == gradeFilter).toList();
+      if (categoryFilter != null) results = results.where((h) => h.categories.contains(categoryFilter)).toList();
+      return results.take(50).toList();
+    } catch (e) {
+      debugPrint('HadithDuaService: Search error: $e');
+      return [];
+    }
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  Dua methods — fully preserved, local data only
+  // ═══════════════════════════════════════════════════════════════════
 
   /// Get curated duas (embedded since API might not be reliable)
   List<Dua> getCuratedDuas() {
@@ -466,7 +368,6 @@ class HadithDuaService {
     ).toList();
   }
 
-  // Curated collection of authentic duas
   static final List<Dua> _curatedDuas = [
     // Morning & Evening
     Dua(

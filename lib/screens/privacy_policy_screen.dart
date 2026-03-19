@@ -58,7 +58,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSection(
-          title: 'Last updated: 2 March 2026',
+          title: 'Last updated: 17 March 2026',
           content:
               'Sukoon Launcher ("we", "our", or "the app") is a peaceful Islamic launcher application designed for a focused, mindful digital life. Your privacy is very important to us. This Privacy Policy explains how we handle information when you use our application.\n\nBy using this app, you agree to the practices described in this policy.',
         ),
@@ -67,7 +67,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
           title: '1. Information We Collect',
           content:
               '• We do not collect, store, or sell any personal data.\n\n'
-              '• All user preferences — including wallpaper selection, favorites, hidden apps, prayer records, dhikr counts, Pomodoro history, app block rules, fasting logs, charity logs, and settings — are stored locally on your device only using Hive local storage.\n\n'
+              '• All user preferences — including wallpaper selection, favorites, hidden apps, prayer records, dhikr counts, Pomodoro history, app block rules, fasting logs, charity logs, Calm Watch saved videos, and settings — are stored locally on your device only using Hive local storage.\n\n'
               '• We do not require you to create an account.\n\n'
               '• No analytics, tracking, or telemetry data is collected or transmitted.',
         ),
@@ -155,9 +155,11 @@ class PrivacyPolicyScreen extends StatelessWidget {
           title: '11. Internet Access',
           content:
               '• Internet permission is used for:\n\n'
-              '  – Fetching prayer times from the Aladhan API based on your location.\n\n'
+              '  – Fetching prayer times from the Aladhan API.\n\n'
               '  – Processing voluntary donations via Razorpay.\n\n'
-              '  – No personal data is ever transmitted over the network.',
+              '  – Fetching video titles from YouTube\'s public oEmbed API when you save a link to Calm Watch.\n\n'
+              '• Calm Watch uses the YouTube IFrame Player API (YouTube\'s official embedding method) to play videos inside the app. No personal data is sent to YouTube.\n\n'
+              '• No other personal data is ever transmitted over the network.',
         ),
         const SizedBox(height: 24),
         _buildSection(
@@ -170,9 +172,11 @@ class PrivacyPolicyScreen extends StatelessWidget {
         _buildSection(
           title: '13. Third-Party Services',
           content:
-              'The app may use trusted third-party services such as:\n\n'
+              'The app uses trusted third-party services including:\n\n'
               '• Aladhan API (for prayer time calculation)\n\n'
               '• Razorpay (for voluntary donation processing)\n\n'
+              '• YouTube IFrame Player API (for Calm Watch in-app video playback)\n\n'
+              '• YouTube oEmbed API (for fetching video titles in Calm Watch)\n\n'
               'These services operate under their own privacy policies. No personal data is shared with any third-party service.',
         ),
         const SizedBox(height: 24),

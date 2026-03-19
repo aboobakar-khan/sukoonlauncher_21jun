@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -55,16 +54,43 @@ class _PrayerAlarmScreenState extends ConsumerState<PrayerAlarmScreen>
     // Immersive mode
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Play the Namaz reminder sound on loop
+    // Register native volume-key stop callback
+    PrayerAlarmService.onStopAlarmSoundRequested = () {
+      if (mounted) {
+        _stopAlarmSound();
+        setState(() => _soundEnabled = false);
+      }
+    };
+
+    // Also register a Flutter-level global key handler as a reliable fallback.
+    // HardwareKeyboard.instance.addHandler works regardless of widget focus
+    // and fires before the system processes the volume change — it is the
+    // most reliable way to intercept volume keys inside a Flutter Activity.
+    HardwareKeyboard.instance.addHandler(_handleHardwareKey);
+
+    // Play the adhan sound (plays once, no loop)
     _startAlarmSound();
     
-    // Start 75-second auto-close timer (middle of 60-90 range)
+    // Auto-close timer: 228s = full adhan duration (3m48s)
     _startAutoCloseTimer();
   }
 
-  /// Auto-close alarm after 75 seconds if user doesn't respond
+  /// Intercepts hardware key events at the Flutter engine level.
+  /// Returns true to consume the event (prevent volume change), false to pass through.
+  bool _handleHardwareKey(KeyEvent event) {
+    if (event is KeyDownEvent &&
+        (event.logicalKey == LogicalKeyboardKey.audioVolumeUp ||
+         event.logicalKey == LogicalKeyboardKey.audioVolumeDown)) {
+      _stopAlarmSound();
+      if (mounted) setState(() => _soundEnabled = false);
+      return true; // consume — don't change volume
+    }
+    return false;
+  }
+
+  /// Auto-close alarm after 228 seconds (3m48s = full adhan duration)
   void _startAutoCloseTimer() {
-    _autoCloseTimer = Timer(const Duration(seconds: 75), () {
+    _autoCloseTimer = Timer(const Duration(seconds: 228), () {
       if (mounted) {
         _autoCloseAlarm();
       }
@@ -108,18 +134,10 @@ class _PrayerAlarmScreenState extends ConsumerState<PrayerAlarmScreen>
         ),
       );
       
-      await _alarmPlayer!.setReleaseMode(ReleaseMode.loop);
+      // Play adhan once (no loop) — use bundled adhan_madinah.mp3
+      await _alarmPlayer!.setReleaseMode(ReleaseMode.release);
       await _alarmPlayer!.setVolume(1.0);
-
-      // Use custom audio file if the user has picked one
-      final settings = ref.read(prayerAlarmProvider).reminderSettings;
-      if (settings.soundType == 'custom' &&
-          settings.customSoundPath.isNotEmpty &&
-          File(settings.customSoundPath).existsSync()) {
-        await _alarmPlayer!.play(DeviceFileSource(settings.customSoundPath));
-      } else if (settings.soundType != 'vibrate_only') {
-        await _alarmPlayer!.play(AssetSource('sounds/namaz_reminder.mp3'));
-      }
+      await _alarmPlayer!.play(AssetSource('sounds/adhan_madinah.mp3'));
     } catch (_) {}
   }
 
@@ -149,8 +167,11 @@ class _PrayerAlarmScreenState extends ConsumerState<PrayerAlarmScreen>
 
   @override
   void dispose() {
-    _autoCloseTimer?.cancel(); // Cancel auto-close timer
+    _autoCloseTimer?.cancel();
     _stopAlarmSound();
+    // Unregister hardware key handler and native callback
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
+    PrayerAlarmService.onStopAlarmSoundRequested = null;
     _pulseController.dispose();
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.edgeToEdge,
@@ -165,7 +186,14 @@ class _PrayerAlarmScreenState extends ConsumerState<PrayerAlarmScreen>
     final alarmState = ref.watch(prayerAlarmProvider);
     final snoozeMins = alarmState.reminderSettings.snoozeDurationMinutes;
 
-    return Scaffold(
+    // Volume up/down are handled via native dispatchKeyEvent →
+    // MethodChannel → PrayerAlarmService.onStopAlarmSoundRequested.
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) await _stopAlarmSound();
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Padding(
@@ -280,7 +308,8 @@ class _PrayerAlarmScreenState extends ConsumerState<PrayerAlarmScreen>
           ),
         ),
       ),
-    );
+      ), // Scaffold
+    ); // PopScope
   }
 
   // ── Sound toggle row ────────────────────────────────

@@ -955,13 +955,12 @@ class _DonationScreenState extends ConsumerState<DonationScreen>
                 Navigator.pop(ctx);
                 try {
                   await launchUrl(
-                    Uri.parse('https://paypal.me/khnnabubakar786'),
+                    Uri.parse('https://www.paypal.com/webapps/shoppingcart?flowlogging_id=f897778242485&mfid=1773517838347_f897778242485#/checkout/openButton'),
                     mode: LaunchMode.externalApplication,
                   );
                 } catch (_) {
                   await launchUrl(
-                    Uri.parse(
-                        'https://www.paypal.com/send?email=khnnabubakar786@gmail.com'),
+                    Uri.parse('https://paypal.me/khnnabubakar786'),
                     mode: LaunchMode.externalApplication,
                   );
                 }
@@ -1043,10 +1042,11 @@ class _DonationScreenState extends ConsumerState<DonationScreen>
   }
 
   Widget _buildPayPalButton(Color accent) {
-    // paypal.me/<username> is the correct short-link format.
-    // paypal.com/paypalme/<username> returns 404 — wrong domain.
-    const paypalUrl = 'https://paypal.me/khnnabubakar786';
-    const paypalEmail = 'khnnabubakar786@gmail.com';
+    // Direct checkout link — opens PayPal cart/checkout page.
+    // paypal.me/<username> kept as fallback.
+    const paypalUrl = 'https://www.paypal.com/webapps/shoppingcart?flowlogging_id=f897778422485&mfid=1773517838347_f897778242485#/checkout/openButton';
+    const paypalFallback = 'https://paypal.me/khnnabubakar786';
+    const paypalEmail = 'khnnabubakar786@gmail.com'; // shown for manual send
 
     return GestureDetector(
       onTap: () async {
@@ -1054,9 +1054,9 @@ class _DonationScreenState extends ConsumerState<DonationScreen>
         try {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
         } catch (_) {
-          // Fallback: open PayPal send-money page with email pre-filled
+          // Fallback: open PayPal.me profile
           await launchUrl(
-            Uri.parse('https://www.paypal.com/send?email=$paypalEmail'),
+            Uri.parse(paypalFallback),
             mode: LaunchMode.externalApplication,
           );
         }

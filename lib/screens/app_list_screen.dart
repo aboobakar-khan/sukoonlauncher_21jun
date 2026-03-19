@@ -135,7 +135,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     final page = _pageController?.page;
     if (page == null) return;
 
-    final onAppListPage = (page - 3).abs() < 0.08;
+    final onAppListPage = (page - 4).abs() < 0.08;
 
     if (onAppListPage && !_wasOnAppListPage) {
       _wasOnAppListPage = true;
@@ -313,10 +313,10 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     // We also persist the home-page index so that _restoreLastPage (called on
     // every screen-off/on cycle) also puts them back on home, not app list.
     if (_pageController != null && _pageController!.hasClients) {
-      _pageController!.jumpToPage(2); // 2 = Home page
+      _pageController!.jumpToPage(3); // 3 = Home page
     }
     SharedPreferences.getInstance().then((prefs) {
-      prefs.setInt('launcher_last_page_index', 2);
+      prefs.setInt('launcher_last_page_index', 3);
     });
   }
 

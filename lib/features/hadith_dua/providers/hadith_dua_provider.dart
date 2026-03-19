@@ -438,37 +438,19 @@ final selectedCollectionProvider = StateProvider<String>((ref) => 'bukhari');
 final selectedBookFilterProvider = StateProvider<int?>((ref) => null);
 
 /// Provider for available chapters/books in the selected collection.
-/// Returns a map of book number → chapter name from the API sections data.
+/// Returns a map of chapter number → chapter name from hadithapi.com.
 final collectionChaptersProvider = FutureProvider<Map<int, String>>((ref) async {
   final service = ref.read(hadithDuaServiceProvider);
   final collectionId = ref.watch(selectedCollectionProvider);
-  final language = ref.watch(hadithLanguageProvider);
   final collection = HadithCollection.fromId(collectionId);
-  
-  // Build language-specific collection so sections come in the right language
-  final langApiKey = '${language.code}-${collection.id}';
-  final langCollection = HadithCollection(
-    id: collection.id,
-    name: collection.name,
-    shortName: collection.shortName,
-    apiKey: langApiKey,
-    totalHadiths: collection.totalHadiths,
-    arabicName: collection.arabicName,
-    defaultGrade: collection.defaultGrade,
-  );
 
-  // Ensure data is fetched (populates _sectionsCache)
-  await service.fetchHadiths(langCollection);
-  final sections = service.getSections(collectionId);
-  if (sections == null || sections.isEmpty) return {};
+  // Fetch chapters from hadithapi.com (cached internally)
+  final chapters = await service.getChapters(collection);
+  if (chapters.isEmpty) return {};
 
-  // Convert string keys to int, sort by book number
   final result = <int, String>{};
-  for (final entry in sections.entries) {
-    final bookNum = int.tryParse(entry.key);
-    if (bookNum != null) {
-      result[bookNum] = entry.value;
-    }
+  for (final ch in chapters) {
+    result[ch.chapterNumber] = ch.chapterEnglish;
   }
   return Map.fromEntries(
     result.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
@@ -488,33 +470,22 @@ final collectionHadithsProvider = FutureProvider<List<Hadith>>((ref) async {
   final gradeFilter = ref.watch(selectedGradeFilterProvider);
   final categoryFilter = ref.watch(selectedCategoryFilterProvider);
   final bookFilter = ref.watch(selectedBookFilterProvider);
-  final language = ref.watch(hadithLanguageProvider);
   
   final collection = HadithCollection.fromId(collectionId);
   
-  // Build language-specific API key: e.g. "eng-bukhari" → "urd-bukhari"
-  final langApiKey = '${language.code}-${collection.id}';
-  final langCollection = HadithCollection(
-    id: collection.id,
-    name: collection.name,
-    shortName: collection.shortName,
-    apiKey: langApiKey,
-    totalHadiths: collection.totalHadiths,
-    arabicName: collection.arabicName,
-    defaultGrade: collection.defaultGrade,
+  // Fetch from hadithapi.com — returns all languages in one response
+  var hadiths = await service.fetchHadiths(
+    collection,
+    chapterId: bookFilter,
   );
-  
-  // Try online fetch first
-  var hadiths = await service.fetchHadiths(langCollection);
   
   // If empty, try offline cache
   if (hadiths.isEmpty) {
     hadiths = await _getOfflineHadiths(collectionId);
-  }
-  
-  // Apply book/chapter filter
-  if (bookFilter != null) {
-    hadiths = hadiths.where((h) => h.book == bookFilter).toList();
+    // Apply book/chapter filter on offline data (not passed to API)
+    if (bookFilter != null) {
+      hadiths = hadiths.where((h) => h.book == bookFilter).toList();
+    }
   }
   
   // Apply filters

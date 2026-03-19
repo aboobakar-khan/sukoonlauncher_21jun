@@ -16,12 +16,11 @@ import '../models/prayer_alarm_config.dart';
 /// Called by AndroidAlarmManager in a background isolate.
 /// MUST be a top-level function, NOT a static class method.
 ///
-/// Behaviour by notification type:
-///  'notification' → shows a banner notification with system sound (no wake screen)
-///  'athan'        → native AlarmBroadcastReceiver already handles wake + full-screen;
-///                   this callback is NOT scheduled for 'athan' type (skipped in
-///                   scheduleDailyAlarms). Only runs as a fallback if native failed.
-///  'silent'       → never scheduled, so this never fires.
+/// Behaviour by alarm mode:
+///  'notify'       → shows a banner notification (no sound, no wake screen)
+///  'adhan'        → native AlarmBroadcastReceiver handles wake + adhan audio
+///  'fullscreen'   → native AlarmBroadcastReceiver handles wake + full-screen alarm
+///  'off'          → never scheduled, so this never fires.
 @pragma('vm:entry-point')
 Future<void> prayerAlarmCallback(int alarmId) async {
   // In isolate — re-init Hive
@@ -34,17 +33,17 @@ Future<void> prayerAlarmCallback(int alarmId) async {
     box = await Hive.openBox('prayer_pending_alarms');
   } catch (_) {
     // Can't read box — fire a plain notification as last resort
-    await PrayerAlarmService._showPrayerNotification('Prayer', 'notification');
+    await PrayerAlarmService._showPrayerNotification('Prayer', 'notify');
     return;
   }
 
   // Look up the prayer name AND notifType by the alarm ID
   String prayerName = 'Prayer';
-  String notifType = 'notification';
+  String notifType = 'notify';
   final data = box.get(alarmId.toString());
   if (data is Map) {
     prayerName = data['prayer'] as String? ?? 'Prayer';
-    notifType = data['notifType'] as String? ?? 'notification';
+    notifType = data['notifType'] as String? ?? 'notify';
   } else {
     // Fallback: derive from alarm ID
     const idToPrayer = {
@@ -62,13 +61,11 @@ Future<void> prayerAlarmCallback(int alarmId) async {
     prayerName = idToPrayer[alarmId] ?? 'Prayer';
   }
 
-  // 'athan' type is handled entirely by the native AlarmBroadcastReceiver.
-  // This Flutter callback is NOT scheduled for 'athan' alarms — but if it
-  // somehow fires (e.g. snooze fallback), skip the notification to avoid
-  // a duplicate banner on top of the native full-screen alarm.
-  if (notifType == 'athan') return;
+  // 'adhan' and 'fullscreen' are both handled by the native AlarmBroadcastReceiver.
+  // This Flutter callback is ONLY scheduled for 'notify' mode.
+  if (notifType == 'adhan' || notifType == 'fullscreen') return;
 
-  // 'notification' type: show a banner notification with system sound.
+  // 'notify' → show a system-sound notification banner.
   await PrayerAlarmService._showPrayerNotification(prayerName, notifType);
 }
 
@@ -91,8 +88,12 @@ class PrayerAlarmService {
 
   static bool _initialized = false;
 
-  /// Global navigator key — set this from your MaterialApp.
+  /// Called when the alarm screen is requested by native.
   static Function(String prayerName)? onAlarmScreenRequested;
+
+  /// Called when native requests sound to be stopped (e.g. volume key press).
+  /// Set this in PrayerAlarmScreen.initState and cleared in dispose.
+  static VoidCallback? onStopAlarmSoundRequested;
 
   /// Guard: recently dismissed prayers won't re-open the alarm screen.
   /// Maps prayer name → dismissal timestamp. Prevents resume-triggered re-open.
@@ -104,13 +105,25 @@ class PrayerAlarmService {
   static String? _alarmScreenShowing;
 
   /// Call this when the alarm screen is opened.
+  /// Also tells MainActivity to start intercepting volume keys.
   static void markAlarmScreenShowing(String prayerName) {
     _alarmScreenShowing = prayerName;
+    _setNativeAlarmScreenActive(true);
   }
 
   /// Call this when the alarm screen is closed (dismissed/prayed/snoozed).
+  /// Also tells MainActivity to stop intercepting volume keys.
   static void markAlarmScreenClosed() {
     _alarmScreenShowing = null;
+    _setNativeAlarmScreenActive(false);
+  }
+
+  /// Notifies native MainActivity whether the alarm screen is currently visible.
+  /// This gates the volume-key interception in dispatchKeyEvent.
+  static void _setNativeAlarmScreenActive(bool active) {
+    try {
+      _alarmActivityChannel.invokeMethod('setAlarmScreenActive', active);
+    } catch (_) {}
   }
 
   /// Whether an alarm screen is currently being displayed.
@@ -154,24 +167,39 @@ class PrayerAlarmService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    // Create high-priority notification channel for full-screen alarm type
-    const androidChannel = AndroidNotificationChannel(
-      'prayer_alarm',
-      'Prayer Alarms',
-      description: 'Full-screen alarm for Salah times (Athan mode)',
+    // Channel 1: 'prayer_reminder' — notify mode: system sound banner
+    const reminderChannel = AndroidNotificationChannel(
+      'prayer_reminder',
+      'Prayer Reminders',
+      description: 'Banner with system sound — Notify mode',
       importance: Importance.high,
-      playSound: false, // Native alarm handles sound for this channel
+      playSound: true,
       enableVibration: true,
       showBadge: true,
     );
 
-    // Create standard notification channel for banner reminder type
-    const reminderChannel = AndroidNotificationChannel(
-      'prayer_reminder',
-      'Prayer Reminders',
-      description: 'Banner notification with system sound (Notification mode)',
+    // Channel 2: 'prayer_adhan' — adhan mode: plays adhan mp3 from res/raw
+    // Sound URI references android/app/src/main/res/raw/adhan_madinah.mp3
+    final adhanChannel = AndroidNotificationChannel(
+      'prayer_adhan',
+      'Prayer Adhan',
+      description: 'Notification with Adhan sound — Adhan mode',
       importance: Importance.high,
       playSound: true,
+      sound: UriAndroidNotificationSound('android.resource://com.sukoon.launcher/raw/adhan_madinah'),
+      enableVibration: true,
+      showBadge: true,
+    );
+
+    // Channel 3: 'prayer_alarm' — fullscreen mode: native handles sound, no
+    // flutter sound on this channel (the native AlarmBroadcastReceiver plays
+    // audio via AudioManager on the ALARM stream which overrides DND).
+    const alarmChannel = AndroidNotificationChannel(
+      'prayer_alarm',
+      'Prayer Full Alarm',
+      description: 'Full-screen alarm wake — Full Alarm mode',
+      importance: Importance.max,
+      playSound: false,
       enableVibration: true,
       showBadge: true,
     );
@@ -179,18 +207,34 @@ class PrayerAlarmService {
     final androidPlugin = _notifications
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
-    await androidPlugin?.createNotificationChannel(androidChannel);
     await androidPlugin?.createNotificationChannel(reminderChannel);
+    await androidPlugin?.createNotificationChannel(adhanChannel);
+    await androidPlugin?.createNotificationChannel(alarmChannel);
 
-    // Listen for "showAlarmScreen" messages from AlarmActivity
-    // (AlarmActivity calls this when the Flutter engine is ready in that process)
+    // Listen for calls pushed from native (MainActivity)
     _alarmActivityChannel.setMethodCallHandler((call) async {
       if (call.method == 'showAlarmScreen') {
         final prayerName = call.arguments as String? ?? 'Prayer';
+        debugPrint('🕌 Native pushed showAlarmScreen: $prayerName');
+        // Clear SharedPrefs so checkNativeAlarmPending doesn't double-fire
+        try {
+          await _alarmActivityChannel.invokeMethod('clearPendingPrayer');
+        } catch (_) {}
         // Guard: don't push if alarm screen is already showing
         if (_alarmScreenShowing == null) {
+          // Check if recently dismissed
+          final dismissed = _recentlyDismissed[prayerName];
+          if (dismissed != null &&
+              DateTime.now().difference(dismissed).inMinutes < 10) {
+            return;
+          }
           onAlarmScreenRequested?.call(prayerName);
         }
+      } else if (call.method == 'stopAlarmSound') {
+        // Volume key pressed in MainActivity while alarm is visible.
+        // Delegate to the alarm screen's stop callback.
+        debugPrint('🔇 Volume key stop requested from native');
+        onStopAlarmSoundRequested?.call();
       }
     });
 
@@ -221,8 +265,8 @@ class PrayerAlarmService {
         }
         // Clear immediately so we don't re-show on the next resume
         await _alarmActivityChannel.invokeMethod('clearPendingPrayer');
-        // Give the widget tree time to finish building before pushing
-        await Future.delayed(const Duration(milliseconds: 600));
+        // Brief delay to let the widget tree finish any pending frame
+        await Future.delayed(const Duration(milliseconds: 200));
         onAlarmScreenRequested?.call(name);
       }
     } catch (_) {
@@ -257,14 +301,17 @@ class PrayerAlarmService {
     }
   }
 
-  /// Check for active prayer notifications and open the alarm screen.
+  /// Check for active native alarm notifications and open the alarm screen.
   /// Call this when the app comes to foreground.
+  /// Only reacts to native AlarmBroadcastReceiver notifications (IDs 3000-3004)
+  /// which correspond to 'fullscreen' mode. Flutter notify/adhan notifications
+  /// (IDs 2000-2004) are intentionally ignored — those should NOT open the
+  /// full-screen alarm screen, they just play a sound in the notification bar.
   static Future<void> checkActiveNotifications() async {
     // Guard: don't push another alarm screen if one is already showing
     if (_alarmScreenShowing != null) return;
 
     try {
-      // Check if there are active prayer alarm notifications
       final android = _notifications.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       if (android != null) {
@@ -272,20 +319,23 @@ class PrayerAlarmService {
         for (final notification in activeNotifications) {
           if (notification.id == null) continue;
           final id = notification.id!;
-          // Flutter notifications: IDs 2000-2004
-          // Native AlarmBroadcastReceiver notifications: IDs 3000-3004
-          final idToPrayer = {
-            2000: 'Fajr',  2001: 'Dhuhr',  2002: 'Asr',  2003: 'Maghrib',  2004: 'Isha',
-            3000: 'Fajr',  3001: 'Dhuhr',  3002: 'Asr',  3003: 'Maghrib',  3004: 'Isha',
+          // ONLY native AlarmBroadcastReceiver notifications (IDs 3000-3004)
+          // should trigger the full-screen alarm screen.
+          // Flutter notify/adhan notifications (2000-2004) are silent banners
+          // and should NEVER open the alarm screen.
+          const nativeToPrayer = {
+            3000: 'Fajr', 3001: 'Dhuhr', 3002: 'Asr',
+            3003: 'Maghrib', 3004: 'Isha',
           };
-          final prayerName = idToPrayer[id];
+          final prayerName = nativeToPrayer[id];
           if (prayerName != null) {
             // Check if recently dismissed — don't re-open
             final dismissed = _recentlyDismissed[prayerName];
             if (dismissed != null &&
                 DateTime.now().difference(dismissed).inMinutes < 10) {
-              continue; // Skip this — user already dismissed it
+              continue;
             }
+            if (_alarmScreenShowing != null) return;
             onAlarmScreenRequested?.call(prayerName);
             return; // Open only the first one found
           }
@@ -300,24 +350,18 @@ class PrayerAlarmService {
 
   /// Schedule all prayer alarms for a given day.
   ///
-  /// Two alarm paths based on per-prayer [notifType]:
+  /// Alarm paths based on per-prayer mode:
   ///
-  ///  'notification'  → Flutter AndroidAlarmManager only.
-  ///                    Fires [prayerAlarmCallback] in a background isolate which
-  ///                    posts a standard banner notification with the system
-  ///                    notification sound. Does NOT wake the screen.
+  ///  'notify'      → Flutter AndroidAlarmManager only.
+  ///                  Silent banner notification. Does NOT wake the screen.
   ///
-  ///  'athan'         → Native AlarmManager → AlarmBroadcastReceiver only.
-  ///                    Wakes screen, shows full-screen alarm, plays athan audio
-  ///                    and then opens the PrayerAlarmScreen over the lock screen.
-  ///                    The Flutter AndroidAlarmManager is NOT scheduled for this
-  ///                    type to prevent a duplicate banner notification.
+  ///  'adhan'       → Native AlarmManager → AlarmBroadcastReceiver.
+  ///                  Notification + adhan audio playback.
   ///
-  ///  'silent'        → Nothing is scheduled.
+  ///  'fullscreen'  → Native AlarmManager → AlarmBroadcastReceiver.
+  ///                  Wakes screen, full-page alarm + adhan audio.
   ///
-  /// [prayerTimes] = { 'Fajr': 'HH:mm', ... }
-  /// [enabledPrayers] = { 'Fajr': true, ... }
-  /// [reminderSettings] = per-prayer notification type config
+  ///  'off'         → Nothing is scheduled.
   static Future<void> scheduleDailyAlarms({
     required Map<String, String> prayerTimes,
     required Map<String, bool> enabledPrayers,
@@ -344,9 +388,9 @@ class PrayerAlarmService {
 
       if (!enabled) continue;
 
-      // Check per-prayer notification type — skip if silent
-      final notifType = reminderSettings?.notifTypeFor(prayerName) ?? 'notification';
-      if (notifType == 'silent') continue;
+      // Check per-prayer alarm mode — skip if off
+      final notifType = reminderSettings?.notifTypeFor(prayerName) ?? 'notify';
+      if (notifType == 'off') continue;
 
       final parts = timeStr.split(':');
       if (parts.length != 2) continue;
@@ -367,13 +411,11 @@ class PrayerAlarmService {
 
       final alarmId = _alarmIdForPrayer(prayerName);
 
-      if (notifType == 'notification') {
-        // ── NOTIFICATION PATH ────────────────────────────────────────────────
-        // Store notifType in Hive so the isolate callback knows what to show.
+      if (notifType == 'notify') {
+        // ── NOTIFY PATH ─────────────────────────────────────────────────────
+        // Flutter AlarmManager → prayerAlarmCallback → system-sound notification.
         await _storePendingAlarm(alarmId, prayerName, timeStr, notifType: notifType);
 
-        // Schedule Flutter alarm manager callback → shows banner notification
-        // with the system notification sound. No screen wake.
         await AndroidAlarmManager.oneShotAt(
           alarmTime,
           alarmId,
@@ -383,25 +425,19 @@ class PrayerAlarmService {
           allowWhileIdle: true,
           rescheduleOnReboot: true,
         );
-      } else if (notifType == 'athan') {
-        // ── ATHAN / FULL-SCREEN ALARM PATH ───────────────────────────────────
-        // Native AlarmManager → AlarmBroadcastReceiver → AlarmActivity →
-        // MainActivity → PrayerAlarmScreen (full-screen with sound + wake).
-        //
-        // We do NOT schedule a Flutter AndroidAlarmManager alarm here because:
-        //  1. The native path handles wakeup + notification already.
-        //  2. A parallel Flutter alarm would fire _showPrayerNotification()
-        //     producing a duplicate banner on top of the full-screen alarm.
-        //
-        // We still write to the Hive box so that if the native alarm fires
-        // while the app is alive, prayerAlarmCallback (if ever invoked) knows
-        // to skip the notification for this prayer.
+      } else if (notifType == 'adhan' || notifType == 'fullscreen') {
+        // ── ADHAN / FULLSCREEN PATH ──────────────────────────────────────────
+        // Both go through the native AlarmBroadcastReceiver which runs even
+        // from Doze mode. The receiver reads 'notifType' to decide:
+        //   'adhan'      → notification + MediaPlayer adhan at ALARM stream, no wake.
+        //   'fullscreen' → full wake + fullScreenIntent + Flutter alarm screen.
         await _storePendingAlarm(alarmId, prayerName, timeStr, notifType: notifType);
 
         try {
           await _alarmActivityChannel.invokeMethod('scheduleNativeAlarm', {
             'prayerName': prayerName,
             'triggerAtMillis': alarmTime.millisecondsSinceEpoch,
+            'notifType': notifType,   // ← pass mode to native
           });
         } catch (e) {
           debugPrint('Warning: Could not schedule native alarm for $prayerName: $e');
@@ -413,19 +449,19 @@ class PrayerAlarmService {
   /// Schedule a snooze alarm (re-notify after N minutes).
   ///
   /// [notifType] determines the path — same rules as [scheduleDailyAlarms]:
-  ///  'notification' → Flutter callback only (banner notification)
-  ///  'athan'        → Native AlarmManager only (full-screen wake alarm)
+  ///  'notify'      → Flutter callback only (banner notification)
+  ///  'adhan'/'fullscreen' → Native AlarmManager (full-screen wake alarm)
   static Future<void> scheduleSnooze({
     required String prayerName,
     required int minutes,
-    String notifType = 'athan',
+    String notifType = 'fullscreen',
   }) async {
     final snoozeTime = DateTime.now().add(Duration(minutes: minutes));
     final alarmId = _alarmIdForPrayer('${prayerName}_snooze');
 
     await _storePendingAlarm(alarmId, prayerName, '', notifType: notifType);
 
-    if (notifType == 'notification') {
+    if (notifType == 'notify') {
       // Banner notification path — no screen wake needed for snooze
       await AndroidAlarmManager.oneShotAt(
         snoozeTime,
@@ -436,8 +472,8 @@ class PrayerAlarmService {
         allowWhileIdle: true,
       );
     } else {
-      // 'athan' / full-screen alarm path
-      // Flutter callback as safety net (won't show notification for 'athan')
+      // 'adhan'/'fullscreen' alarm path
+      // Flutter callback as safety net
       await AndroidAlarmManager.oneShotAt(
         snoozeTime,
         alarmId,
@@ -527,66 +563,64 @@ class PrayerAlarmService {
 
   /// Shows a prayer notification appropriate for the given [notifType].
   ///
-  ///  'notification' → banner with system notification sound, no full-screen
-  ///                   intent, no screen wake. User sees it in the notification
-  ///                   shade and can tap to open the prayer screen.
+  ///  'notify' → silent banner notification, no sound, no full-screen.
   ///
-  ///  anything else  → this should normally not be called for 'athan' (native
-  ///                   handles it) but serves as a safety fallback banner if
-  ///                   the native alarm was cancelled by the system.
+  ///  anything else → safety fallback banner if native was cancelled.
   static Future<void> _showPrayerNotification(
     String prayerName,
     String notifType,
   ) async {
-    // Ensure notifications plugin is initialized (in isolate context)
+    // Ensure notifications plugin is initialized (in background isolate context)
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
     await _notifications.initialize(initSettings);
 
-    final bool isNotificationOnly = notifType == 'notification';
+    // Register the 'prayer_reminder' channel in the background isolate.
+    // Only 'notify' mode reaches here — 'adhan' and 'fullscreen' are handled
+    // entirely by the native AlarmBroadcastReceiver (MediaPlayer at alarm stream).
+    final androidPlugin = _notifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
 
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'prayer_reminder',
+        'Prayer Reminders',
+        description: 'Banner with system notification sound — Notify mode',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+        showBadge: true,
+      ),
+    );
+
+    // Show a standard system-sound notification banner.
     final androidDetails = AndroidNotificationDetails(
-      // Use a separate channel for plain notifications so they use the
-      // system sound and don't override the silent athan channel settings.
-      isNotificationOnly ? 'prayer_reminder' : 'prayer_alarm',
-      isNotificationOnly ? 'Prayer Reminders' : 'Prayer Alarms',
-      channelDescription: isNotificationOnly
-          ? 'Banner notification for Salah times'
-          : 'Full-screen alarm for Salah times',
+      'prayer_reminder',
+      'Prayer Reminders',
+      channelDescription: 'Banner with system notification sound',
       importance: Importance.high,
       priority: Priority.high,
-      category: isNotificationOnly
-          ? AndroidNotificationCategory.reminder
-          : AndroidNotificationCategory.alarm,
+      category: AndroidNotificationCategory.reminder,
       visibility: NotificationVisibility.public,
       autoCancel: true,
       ongoing: false,
-      // For 'notification' type: play system sound so the user actually hears
-      // something. The athan channel leaves sound off because native handles it.
-      playSound: isNotificationOnly,
+      playSound: true,        // uses channel default = device notification sound
+      sound: null,            // null = channel default sound
       enableVibration: true,
       vibrationPattern: Int64List.fromList([0, 500, 200, 500]),
-      // Only fire the full-screen intent for the athan fallback path.
-      fullScreenIntent: !isNotificationOnly,
-      timeoutAfter: isNotificationOnly ? 120000 : 90000,
-
-      // Rich notification styling
+      fullScreenIntent: false, // never full-screen from this path
+      timeoutAfter: 120000,
       styleInformation: BigTextStyleInformation(
         _getPrayerMessage(prayerName),
-        contentTitle: isNotificationOnly
-            ? '🕌 ${prayerName.toUpperCase()} TIME'
-            : '🕌 TIME FOR ${prayerName.toUpperCase()}',
-        summaryText: isNotificationOnly
-            ? 'Tap to mark as prayed'
-            : 'Tap to open prayer screen',
+        contentTitle: '🕌 ${prayerName.toUpperCase()} TIME',
+        summaryText: 'Tap to dismiss',
       ),
     );
 
     await _notifications.show(
       _notificationIdForPrayer(prayerName),
-      isNotificationOnly
-          ? '🕌 ${prayerName.toUpperCase()} TIME'
-          : '🕌 TIME FOR ${prayerName.toUpperCase()}',
+      '🕌 ${prayerName.toUpperCase()} TIME',
       _getPrayerMessage(prayerName),
       NotificationDetails(android: androidDetails),
       payload: prayerName,
@@ -601,11 +635,18 @@ class PrayerAlarmService {
     // Guard: don't push another alarm screen if one is already showing
     if (_alarmScreenShowing != null) return;
 
-    // Dismiss the notification via native NotificationManager
+    // Always cancel/dismiss the notification when tapped — this stops
+    // the adhan sound for the 'adhan' channel (system cancels channel audio).
     _cancelNotificationNative(_notificationIdForPrayer(prayerName));
 
-    // Request the alarm screen be shown
-    onAlarmScreenRequested?.call(prayerName);
+    // Look up what mode this prayer was set to.
+    // For 'notify' and 'adhan', tapping just dismisses the notification.
+    // The adhan sound stops automatically when the notification is cancelled.
+    // Only the 'fullscreen' path should open the alarm screen, but those
+    // notifications come from the native AlarmBroadcastReceiver (IDs 3000+),
+    // NOT through here (Flutter notifications are IDs 2000-2004).
+    // So: do NOT open the alarm screen from here.
+    // (The fullscreen alarm screen opens via the native 'showAlarmScreen' call.)
   }
 
   /// Dismiss the active notification for a prayer and mark as dismissed.
@@ -684,7 +725,7 @@ class PrayerAlarmService {
     int alarmId,
     String prayerName,
     String time, {
-    String notifType = 'notification',
+    String notifType = 'notify',
   }) async {
     try {
       final box = await HiveBoxManager.get('prayer_pending_alarms');
@@ -699,11 +740,11 @@ class PrayerAlarmService {
 
   static String _getPrayerMessage(String prayerName) {
     const messages = {
-      'Fajr': 'The Fajr time has started — start your day with light ☀️',
-      'Dhuhr': 'The Dhuhr time has started — pause and connect 🙏',
-      'Asr': 'The Asr time has started — the angels are watching 🌤️',
-      'Maghrib': 'The Maghrib time has started — a blessed sunset 🌅',
-      'Isha': 'The Isha time has started — end your day in peace 🌙',
+      'Fajr': 'Rise before the sun — the most beloved prayer to Allah ☀️',
+      'Dhuhr': 'Pause your day, reconnect with your Lord 🫶',
+      'Asr': 'Don\'t let this prayer slip away — the angels are witnessing 🌤️',
+      'Maghrib': 'The sun has set — rush to meet your Lord 🌅',
+      'Isha': 'Close your day with peace and forgiveness 🌙',
     };
     return messages[prayerName] ?? 'It\'s time for $prayerName prayer';
   }
@@ -738,6 +779,95 @@ class PrayerAlarmService {
       try {
         await openAppSettings();
       } catch (_) {}
+    }
+  }
+
+  /// Check if full-screen intent permission is granted (Android 14+).
+  /// On older versions, this always returns true.
+  /// Without this permission, the alarm notification's fullScreenIntent
+  /// won't launch the alarm Activity over the lock screen.
+  static Future<bool> canUseFullScreenIntent() async {
+    try {
+      final result = await _alarmActivityChannel
+          .invokeMethod<bool>('canUseFullScreenIntent');
+      return result ?? true;
+    } catch (_) {
+      return true; // Assume granted if channel unavailable
+    }
+  }
+
+  /// Open system settings for the user to grant full-screen intent permission.
+  /// Only relevant on Android 14+ (API 34+).
+  static Future<void> openFullScreenIntentSettings() async {
+    try {
+      await _alarmActivityChannel.invokeMethod('openFullScreenIntentSettings');
+    } catch (_) {
+      try {
+        await openAppSettings();
+      } catch (_) {}
+    }
+  }
+
+  // ── Test / Preview helpers ──────────────────────────────────────────
+
+  /// Show an instant preview notification banner for the given prayer.
+  /// Uses the standard notification channel — no sound or full-screen.
+  static Future<void> showPreviewNotification(String prayerName) async {
+    await initialize();
+
+    const channel = AndroidNotificationChannel(
+      'prayer_alarm_preview',
+      'Prayer Alarm Preview',
+      description: 'Example alarm notifications',
+      importance: Importance.high,
+    );
+
+    final android = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await android?.createNotificationChannel(channel);
+
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        channel.id,
+        channel.name,
+        channelDescription: channel.description,
+        importance: Importance.high,
+        priority: Priority.high,
+        playSound: true,
+        category: AndroidNotificationCategory.reminder,
+        styleInformation: BigTextStyleInformation(
+          _getPrayerMessage(prayerName),
+          contentTitle: '🕌 $prayerName — Example Preview',
+        ),
+      ),
+    );
+
+    // Use unique ID based on timestamp to avoid overwriting
+    await _notifications.show(
+      99900 + DateTime.now().millisecondsSinceEpoch % 100,
+      '🕌 $prayerName — Example Preview',
+      _getPrayerMessage(prayerName),
+      details,
+    );
+  }
+
+  /// Schedule a test alarm at a custom time using native AlarmManager.
+  /// Returns true if successful.
+  static Future<bool> scheduleTestAlarm({
+    required String prayerName,
+    required DateTime triggerAt,
+  }) async {
+    try {
+      final millis = triggerAt.millisecondsSinceEpoch;
+      await _alarmActivityChannel.invokeMethod('scheduleNativeAlarm', {
+        'prayerName': prayerName,
+        'triggerAtMillis': millis,
+      });
+      debugPrint('⏰ Test alarm scheduled at $triggerAt');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Test alarm scheduling failed: $e');
+      return false;
     }
   }
 }

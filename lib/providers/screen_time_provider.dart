@@ -232,7 +232,8 @@ class ScreenTimeNotifier extends StateNotifier<ScreenTimeState> {
       appConfigs: configs,
     );
 
-    // Load usage stats if feature is enabled
+    // Always refresh usage stats on startup when feature is enabled so the
+    // widget never shows yesterday's stale totals on a cold or warm start.
     if (enabled) {
       await refreshUsageStats();
     }
@@ -252,7 +253,19 @@ class ScreenTimeNotifier extends StateNotifier<ScreenTimeState> {
   // ── Master toggle ──
 
   Future<void> setEnabled(bool enabled) async {
-    state = state.copyWith(featureEnabled: enabled);
+    if (!enabled) {
+      // Turning OFF — clean up any active session so the native service
+      // doesn't fire "time's up" after the user disabled the feature.
+      final session = state.activeSession;
+      if (session != null) {
+        NativeAppBlockerService.endTimedSession(session.packageName);
+      }
+      state = state.copyWith(featureEnabled: false, clearSession: true);
+      // If no other features need the service, it will auto-stop on next poll
+      // (checkForegroundApp detects nothing to monitor → calls stopSelf)
+    } else {
+      state = state.copyWith(featureEnabled: true);
+    }
     await _save();
     if (enabled) await refreshUsageStats();
   }
@@ -272,6 +285,12 @@ class ScreenTimeNotifier extends StateNotifier<ScreenTimeState> {
   }
 
   Future<void> removeAppTimer(String packageName) async {
+    // If there's an active session for this app, end it on native side
+    final session = state.activeSession;
+    if (session != null && session.packageName == packageName) {
+      NativeAppBlockerService.endTimedSession(packageName);
+      state = state.copyWith(clearSession: true);
+    }
     final updated = Map<String, AppTimerConfig>.from(state.appConfigs);
     updated.remove(packageName);
     state = state.copyWith(appConfigs: updated);
@@ -281,6 +300,14 @@ class ScreenTimeNotifier extends StateNotifier<ScreenTimeState> {
   Future<void> updateAppTimer(String packageName, {int? defaultMinutes, bool? alwaysAsk, bool? enabled}) async {
     final current = state.appConfigs[packageName];
     if (current == null) return;
+    // If disabling this specific app's timer, end any active session for it
+    if (enabled == false) {
+      final session = state.activeSession;
+      if (session != null && session.packageName == packageName) {
+        NativeAppBlockerService.endTimedSession(packageName);
+        state = state.copyWith(clearSession: true);
+      }
+    }
     final updated = Map<String, AppTimerConfig>.from(state.appConfigs);
     updated[packageName] = current.copyWith(
       defaultMinutes: defaultMinutes,

@@ -10,6 +10,7 @@ import '../providers/clock_style_provider.dart';
 import '../providers/time_format_provider.dart';
 import '../providers/wallpaper_provider.dart';
 import '../providers/amoled_provider.dart';
+import '../providers/page_indicator_provider.dart';
 import '../providers/swipe_gesture_provider.dart';
 import '../providers/double_tap_provider.dart';
 import '../providers/installed_apps_provider.dart';
@@ -26,6 +27,7 @@ import 'credits_screen.dart';
 import '../widgets/swipe_back_wrapper.dart';
 import 'screen_time_settings_screen.dart';
 import 'notification_feed_screen.dart';
+import 'app_permissions_screen.dart';
 import 'weekly_spiritual_report_screen.dart';
 import '../providers/notification_filter_provider.dart';
 import '../providers/tasbih_provider.dart';
@@ -178,6 +180,7 @@ class SettingsScreen extends ConsumerWidget {
                         isLight: isLight,
                       ),
                       _buildAmoledToggle(context, ref, isAmoled),
+                      _buildPageIndicatorToggle(context, ref),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -343,6 +346,20 @@ class SettingsScreen extends ConsumerWidget {
                         isLight: isLight,
                       ),
                       _buildSettingsItem(
+                        icon: Icons.security_outlined,
+                        title: 'App Permissions',
+                        subtitle: 'See why each permission is used',
+                        accentColor: currentTheme.color,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            SmoothForwardRoute(
+                              child: const AppPermissionsScreen(),
+                            ),
+                          );
+                        },
+                        isLight: isLight,
+                      ),
+                      _buildSettingsItem(
                         icon: Icons.privacy_tip_outlined,
                         title: 'Privacy Policy',
                         subtitle: 'How we handle your data',
@@ -381,7 +398,7 @@ class SettingsScreen extends ConsumerWidget {
                           showLicensePage(
                             context: context,
                             applicationName: 'Sukoon Launcher',
-                            applicationVersion: '1.1.2',
+                            applicationVersion: '1.1.5',
                             applicationLegalese: '© 2026 Sukoon Launcher. All rights reserved.',
                           );
                         },
@@ -418,7 +435,7 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          '· v1.1.2',
+                          '· v1.1.5',
                           style: TextStyle(
                             color: primaryText.withValues(alpha: 0.18),
                             fontSize: 12,
@@ -1531,6 +1548,97 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () {
               HapticFeedback.selectionClick();
               ref.read(amoledProvider.notifier).toggle();
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 44,
+              height: 24,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: isEnabled
+                    ? accent.withValues(alpha: 0.3)
+                    : toggleTrackOff,
+              ),
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 200),
+                alignment: isEnabled ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isEnabled ? accent : toggleThumbOff,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageIndicatorToggle(BuildContext context, WidgetRef ref) {
+    final isEnabled = ref.watch(pageIndicatorProvider);
+    final themeColor = ref.watch(themeColorProvider);
+    final accent = themeColor.color;
+    final isLight = themeColor.isLight;
+    final primaryText = isLight ? const Color(0xFF0D0D0D) : Colors.white;
+    final itemBg = isLight
+        ? Colors.black.withValues(alpha: 0.04)
+        : Colors.white.withValues(alpha: 0.03);
+    final toggleTrackOff = isLight
+        ? Colors.black.withValues(alpha: 0.12)
+        : Colors.white.withValues(alpha: 0.1);
+    final toggleThumbOff = isLight ? Colors.black.withValues(alpha: 0.3) : Colors.white38;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: itemBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.more_horiz_rounded,
+                color: accent.withValues(alpha: 0.6), size: 18),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Page Indicator',
+                  style: TextStyle(
+                    color: primaryText.withValues(alpha: 0.85),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  isEnabled ? 'Dots visible on all pages' : 'Hidden',
+                  style: TextStyle(
+                    color: primaryText.withValues(alpha: 0.35),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ref.read(pageIndicatorProvider.notifier).toggle();
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),

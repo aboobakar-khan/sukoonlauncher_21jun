@@ -10,6 +10,7 @@ import 'deen_mode_screen.dart';
 import 'donation_screen.dart';
 import 'premium_paywall_screen.dart';
 import 'saved_verses_screen.dart';
+import 'settings_screen.dart';
 import '../utils/smooth_page_route.dart';
 import '../features/quran/providers/quran_provider.dart';
 import '../features/quran/widgets/tafseer_bottom_sheet.dart';
@@ -516,72 +517,81 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
     );
   }
 
-  // ── Rate Us — In-App Review (native Google dialog) ──
+  // ── Compact bottom row: Rate Sukoon + Settings ──
   Widget _buildRateUsRow(BuildContext context, Color accent) {
-    return GestureDetector(
-      onTap: () async {
-        HapticFeedback.lightImpact();
-        await requestSukoonReview();
-      },
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0D0D0D),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
+    return Row(
+      children: [
+        // Rate Sukoon
+        Expanded(
+          child: GestureDetector(
+            onTap: () async {
+              HapticFeedback.lightImpact();
+              await requestSukoonReview();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 13),
               decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.amber.withValues(alpha: 0.15)),
+                color: const Color(0xFF0D0D0D),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
               ),
-              child: Icon(
-                Icons.star_rounded,
-                size: 22,
-                color: Colors.amber.withValues(alpha: 0.8),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  Icon(Icons.star_rounded,
+                      size: 16, color: Colors.amber.withValues(alpha: 0.7)),
+                  const SizedBox(width: 7),
                   Text(
                     'Rate Sukoon',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Your review helps other Muslims find us',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.30),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w400,
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.open_in_new_rounded,
-              size: 16,
-              color: Colors.white.withValues(alpha: 0.45),
-            ),
-          ],
+          ),
         ),
-      ),
+        const SizedBox(width: 10),
+        // Settings
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              Navigator.push(
+                context,
+                SmoothForwardRoute(child: const SettingsScreen()),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D0D0D),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.settings_outlined,
+                      size: 15, color: Colors.white.withValues(alpha: 0.45)),
+                  const SizedBox(width: 7),
+                  Text(
+                    'Settings',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

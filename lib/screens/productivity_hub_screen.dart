@@ -59,11 +59,21 @@ class ProductivityHubScreen extends ConsumerStatefulWidget {
       _ProductivityHubScreenState();
 }
 
-class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen> {
+class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+
+  // Keep the page alive in the PageView so initState (and its expensive
+  // refreshUsageStats MethodChannel calls) only runs once, not every time
+  // the user swipes near this page.
+  @override
+  bool get wantKeepAlive => true;
+
+  // (unused _lastFetchedDate field removed — refresh always runs on resume)
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Ambient sound sync via listener (timer self-ticks inside PomodoroNotifier)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.listenManual(pomodoroProvider, (prev, next) {
@@ -71,7 +81,39 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen> {
           _syncAmbientSound(next.state);
         }
       });
+      // Refresh usage stats now so the widget shows today's data immediately
+      _refreshScreenTimeIfNeeded();
     });
+  }
+
+  /// Refresh screen time usage stats — always fetches today's window fresh.
+  /// Called on first build and whenever app resumes from background.
+  ///
+  /// IMPORTANT: The refresh is delayed so that it never competes with an
+  /// in-progress PageView swipe animation.  The native getUsageStats /
+  /// getDailyUsageStats calls iterate every UsageEvent for 7 days on the
+  /// Android main (platform) thread.  If they run mid-swipe they block
+  /// Flutter's frame delivery ➜ visible jank.  An 800 ms delay lets the
+  /// swipe settle before the platform thread is busy.
+  void _refreshScreenTimeIfNeeded() {
+    final st = ref.read(screenTimeProvider);
+    if (st.featureEnabled) {
+      // Defer the expensive MethodChannel calls so a concurrent PageView
+      // swipe animation completes first (typically < 500 ms).
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
+        ref.read(screenTimeProvider.notifier).refreshUsageStats();
+      });
+    }
+  }
+
+
+  /// Called by WidgetsBindingObserver when the app returns to the foreground.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    if (lifecycleState == AppLifecycleState.resumed) {
+      _refreshScreenTimeIfNeeded();
+    }
   }
 
   PomodoroState? _lastPomodoroState;
@@ -140,6 +182,7 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -173,6 +216,7 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required by AutomaticKeepAliveClientMixin
     final pomo = ref.watch(pomodoroProvider);
     final todos = ref.watch(todoProvider);
     final streak = ref.watch(focusStreakProvider);

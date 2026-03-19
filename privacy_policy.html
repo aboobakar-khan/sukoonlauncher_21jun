@@ -117,7 +117,7 @@
 <body>
     <div class="container">
         <h1>Privacy Policy</h1>
-        <p class="last-updated">Last updated: March 2, 2026</p>
+        <p class="last-updated">Last updated: March 17, 2026</p>
 
         <div class="intro">
             <p><strong>Sukoon Launcher</strong> ("we", "our", or "the app") is a peaceful Islamic launcher application designed for a focused, mindful digital life. Your privacy is very important to us. This Privacy Policy explains how we handle information when you use our application.</p>
@@ -127,7 +127,7 @@
         <h2>1. Information We Collect</h2>
         <ul>
             <li>We do not collect, store, or sell any personal data.</li>
-            <li>All user preferences — including wallpaper selection, favorites, hidden apps, prayer records, dhikr counts, Pomodoro history, app block rules, fasting logs, charity logs, and settings — are stored locally on your device only using Hive local storage.</li>
+            <li>All user preferences — including wallpaper selection, favorites, hidden apps, prayer records, dhikr counts, Pomodoro history, app block rules, fasting logs, charity logs, Calm Watch saved videos, and settings — are stored locally on your device only using Hive local storage.</li>
             <li>We do not require you to create an account.</li>
             <li>No analytics, tracking, or telemetry data is collected or transmitted.</li>
         </ul>
@@ -213,8 +213,10 @@
 
         <h2>12. Internet Access</h2>
         <ul>
-            <li>Internet permission is used for fetching prayer times from the Aladhan API based on your location and for processing donations via Razorpay.</li>
-            <li>No personal data is ever transmitted over the network.</li>
+            <li>Internet permission is used for: fetching prayer times from the Aladhan API; processing donations via Razorpay; and fetching video titles from the YouTube oEmbed API when you save a link to Calm Watch.</li>
+            <li>Calm Watch uses the YouTube IFrame Player API (YouTube's official embedding API) to play videos inside the app. No user data is sent to YouTube beyond what is inherent in loading a video (your IP address).</li>
+            <li>When saving a YouTube link to Calm Watch, the video title is fetched from YouTube's public oEmbed endpoint. No account data or personal information is transmitted.</li>
+            <li>No other personal data is ever transmitted over the network.</li>
         </ul>
 
         <h2>13. Storage & Media Access</h2>
@@ -228,6 +230,8 @@
         <ul>
             <li>Razorpay (for voluntary donation processing)</li>
             <li>Aladhan API (for prayer time calculation)</li>
+            <li>YouTube IFrame Player API (for Calm Watch in-app video playback)</li>
+            <li>YouTube oEmbed API (for fetching video titles in Calm Watch)</li>
             <li>Android on-device speech recognition</li>
         </ul>
         <p>These services operate under their own privacy policies. No personal data is shared with any third-party service.</p>

@@ -27,6 +27,7 @@ class PermissionSetupScreen extends ConsumerStatefulWidget {
 class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   bool _notif = false;
   bool _alarm = false;
+  bool _fullScreen = false;
   bool _overlay = false;
   bool _battery = false;
   bool _busy = false;
@@ -40,18 +41,19 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   Future<void> _checkAll() async {
     final n = await Permission.notification.isGranted;
     final a = await PrayerAlarmService.canScheduleExactAlarms();
+    final f = await PrayerAlarmService.canUseFullScreenIntent();
     final o = await Permission.systemAlertWindow.isGranted;
     final b = await Permission.ignoreBatteryOptimizations.isGranted;
     if (!mounted) return;
-    setState(() { _notif = n; _alarm = a; _overlay = o; _battery = b; });
-    if (n && a && o && b) {
+    setState(() { _notif = n; _alarm = a; _fullScreen = f; _overlay = o; _battery = b; });
+    if (n && a && f && o && b) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) widget.onAllGranted();
       });
     }
   }
 
-  int get _granted => [_notif, _alarm, _overlay, _battery].where((v) => v).length;
+  int get _granted => [_notif, _alarm, _fullScreen, _overlay, _battery].where((v) => v).length;
 
   Future<void> _request(int step) async {
     if (_busy) return;
@@ -76,10 +78,22 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
         }
         break;
       case 2:
+        // Full-Screen Intent (Android 14+)
+        final ok = await PrayerAlarmService.canUseFullScreenIntent();
+        if (!ok) {
+          await PrayerAlarmService.openFullScreenIntentSettings();
+          await Future.delayed(const Duration(milliseconds: 800));
+          final re = await PrayerAlarmService.canUseFullScreenIntent();
+          if (mounted) setState(() => _fullScreen = re);
+        } else {
+          if (mounted) setState(() => _fullScreen = ok);
+        }
+        break;
+      case 3:
         final s = await Permission.systemAlertWindow.request();
         if (mounted) setState(() => _overlay = s.isGranted);
         break;
-      case 3:
+      case 4:
         await PrayerAlarmService.openBatterySettings();
         await Future.delayed(const Duration(milliseconds: 800));
         final re = await Permission.ignoreBatteryOptimizations.isGranted;
@@ -90,7 +104,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
     if (mounted) setState(() => _busy = false);
 
     // Auto-complete if all granted
-    if (_notif && _alarm && _overlay && _battery) {
+    if (_notif && _alarm && _fullScreen && _overlay && _battery) {
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) widget.onAllGranted();
     }
@@ -128,6 +142,19 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
       }
     }
 
+    // Full-Screen Intent (Android 14+)
+    if (!_fullScreen) {
+      final ok = await PrayerAlarmService.canUseFullScreenIntent();
+      if (!ok) {
+        await PrayerAlarmService.openFullScreenIntentSettings();
+        await Future.delayed(const Duration(milliseconds: 800));
+        final re = await PrayerAlarmService.canUseFullScreenIntent();
+        if (mounted) setState(() => _fullScreen = re);
+      } else {
+        if (mounted) setState(() => _fullScreen = ok);
+      }
+    }
+
     // Overlay
     if (!_overlay) {
       final s = await Permission.systemAlertWindow.request();
@@ -144,7 +171,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
 
     if (mounted) setState(() => _busy = false);
 
-    if (_notif && _alarm) {
+    if (_notif && _alarm && _fullScreen) {
       await Future.delayed(const Duration(milliseconds: 400));
       if (mounted) widget.onAllGranted();
     }
@@ -229,7 +256,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final accent = ref.watch(themeColorProvider).color;
-    final allCritical = _notif && _alarm;
+    final allCritical = _notif && _alarm && _fullScreen;
 
     return Scaffold(
       backgroundColor: const Color(0xFF050507),
@@ -238,35 +265,35 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
-              const SizedBox(height: 48),
+              const SizedBox(height: 24),
 
               // Header
               Text(
                 'Setup Permissions',
                 style: TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w700,
+                  fontSize: 20, fontWeight: FontWeight.w700,
                   color: Colors.white.withValues(alpha: 0.9),
                   letterSpacing: -0.3,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'These ensure your alarms fire reliably.',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   color: Colors.white.withValues(alpha: 0.35),
                 ),
               ),
 
               // Progress indicator
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(4, (i) {
-                  final done = [_notif, _alarm, _overlay, _battery][i];
+                children: List.generate(5, (i) {
+                  final done = [_notif, _alarm, _fullScreen, _overlay, _battery][i];
                   return Container(
-                    width: 40, height: 3,
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: 32, height: 3,
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(2),
                       color: done
@@ -277,12 +304,13 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                 }),
               ),
 
-              const SizedBox(height: 36),
+              const SizedBox(height: 20),
 
-              // Permission cards
+              // Permission cards — scrollable
               Expanded(
                 child: ListView(
                   physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.zero,
                   children: [
                     _PermCard(
                       icon: Icons.notifications_outlined,
@@ -293,7 +321,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                       accent: accent,
                       onTap: () => _request(0),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     _PermCard(
                       icon: Icons.alarm_rounded,
                       title: 'Exact Alarms',
@@ -303,7 +331,17 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                       accent: accent,
                       onTap: () => _request(1),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
+                    _PermCard(
+                      icon: Icons.fullscreen_rounded,
+                      title: 'Full-Screen Alarm',
+                      desc: 'Show alarm over lock screen',
+                      granted: _fullScreen,
+                      required_: true,
+                      accent: accent,
+                      onTap: () => _request(2),
+                    ),
+                    const SizedBox(height: 8),
                     _PermCard(
                       icon: Icons.phone_android_rounded,
                       title: 'Display Over Apps',
@@ -311,9 +349,9 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                       granted: _overlay,
                       required_: false,
                       accent: accent,
-                      onTap: () => _request(2),
+                      onTap: () => _request(3),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     _PermCard(
                       icon: Icons.battery_saver_rounded,
                       title: 'Battery',
@@ -321,13 +359,13 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                       granted: _battery,
                       required_: false,
                       accent: accent,
-                      onTap: () => _request(3),
+                      onTap: () => _request(4),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
 
               // CTA
               GestureDetector(
@@ -335,7 +373,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(14),
                     gradient: !_busy
@@ -360,10 +398,10 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                           )
                         : Text(
                             allCritical
-                                ? 'CONTINUE  ($_granted/4 granted)'
+                                ? 'CONTINUE  ($_granted/5 granted)'
                                 : 'GRANT ALL PERMISSIONS',
                             style: TextStyle(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.4,
                               color: Colors.white.withValues(alpha: 0.9),
@@ -373,18 +411,18 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                 ),
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
 
               // Skip / Continue
               if (allCritical)
                 GestureDetector(
                   onTap: widget.onAllGranted,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
                       'Continue without optional permissions',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         color: Colors.white.withValues(alpha: 0.3),
                       ),
                     ),
@@ -394,18 +432,18 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                 GestureDetector(
                   onTap: widget.onSkipped,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
                       'Skip for now',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         color: Colors.white.withValues(alpha: 0.2),
                       ),
                     ),
                   ),
                 ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -440,7 +478,7 @@ class _PermCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
           color: granted
@@ -456,19 +494,19 @@ class _PermCard extends StatelessWidget {
           children: [
             // Icon
             Container(
-              width: 42, height: 42,
+              width: 36, height: 36,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: granted
                     ? Colors.green.withValues(alpha: 0.08)
                     : accent.withValues(alpha: 0.05),
               ),
-              child: Icon(icon, size: 20,
+              child: Icon(icon, size: 18,
                 color: granted
                     ? Colors.green.withValues(alpha: 0.7)
                     : Colors.white.withValues(alpha: 0.4)),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
 
             // Text
             Expanded(

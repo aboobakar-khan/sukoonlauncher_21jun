@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
+import '../models/productivity_models.dart';
 import '../services/native_app_blocker_service.dart';
 import '../utils/hive_box_manager.dart';
 
@@ -206,9 +207,12 @@ class ZenModeNotifier extends StateNotifier<ZenModeState> {
       await _blockerChannel.invokeMethod('setZenMode', {'active': false});
     } catch (_) {}
 
-    // 2. Clear the blocked packages list (zen blocked ALL apps).
-    //    If no other features need the service, it will auto-stop.
-    await NativeAppBlockerService.updateBlockedPackages([]);
+    // 2. Restore app-block rules instead of nuking to empty.
+    //    Zen Mode temporarily overwrote the blocked-packages list with ALL
+    //    apps. Now we must restore only the packages that are actively
+    //    blocked by AppBlockRuleNotifier rules — NOT an empty list, which
+    //    would silently wipe legitimate block rules.
+    await _restoreAppBlockRules();
 
     // 3. Disable DND
     try {
@@ -227,6 +231,46 @@ class ZenModeNotifier extends StateNotifier<ZenModeState> {
     // 6. Persist
     await _box?.put('isActive', false);
     await _box?.put('sessionsCompleted', newSessions);
+  }
+
+  /// Restore the native blocked-packages list from active AppBlockRules.
+  /// This prevents Zen Mode from wiping productivity-hub block rules on exit.
+  Future<void> _restoreAppBlockRules() async {
+    try {
+      final ruleBox = await HiveBoxManager.get<AppBlockRule>('app_block_rules');
+      final now = DateTime.now();
+      final activePackages = <String>{};
+
+      for (final rule in ruleBox.values) {
+        if (!rule.isEnabled) continue;
+
+        // Check expiry
+        if (rule.expiresAt != null && now.isAfter(rule.expiresAt!)) continue;
+
+        // Check time-based schedule
+        if (rule.isTimeBased) {
+          if (rule.startHour == null || rule.endHour == null) continue;
+          if (!rule.activeDays.contains(now.weekday)) continue;
+          final startMin = rule.startHour! * 60 + (rule.startMinute ?? 0);
+          final endMin = rule.endHour! * 60 + (rule.endMinute ?? 0);
+          final nowMin = now.hour * 60 + now.minute;
+          bool inWindow;
+          if (startMin <= endMin) {
+            inWindow = nowMin >= startMin && nowMin < endMin;
+          } else {
+            inWindow = nowMin >= startMin || nowMin < endMin;
+          }
+          if (!inWindow) continue;
+        }
+
+        activePackages.addAll(rule.blockedPackages);
+      }
+
+      await NativeAppBlockerService.updateBlockedPackages(activePackages.toList());
+    } catch (_) {
+      // Fallback: if Hive read fails, clear to empty (safe default)
+      await NativeAppBlockerService.updateBlockedPackages([]);
+    }
   }
 
   /// Set duration for next session

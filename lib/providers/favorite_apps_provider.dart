@@ -31,9 +31,9 @@ class FavoriteAppsNotifier extends StateNotifier<List<FavoriteApp>> {
       state = state.where((app) => app.packageName != packageName).toList();
       return true;
     } else {
-      // Check if already at maximum limit (7 apps)
-      if (state.length >= 7) {
-        return false; // Deny adding more than 7 favorites
+      // Check if already at maximum limit (10 apps)
+      if (state.length >= 10) {
+        return false; // Deny adding more than 10 favorites
       }
 
       // Add to favorites with app name stored permanently

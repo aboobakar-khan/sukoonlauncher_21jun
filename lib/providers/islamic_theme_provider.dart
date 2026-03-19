@@ -68,8 +68,8 @@ class IslamicThemeColors {
     textTertiary: Color(0xFF6B6055),
     border: Color(0xFF1A1A1A),
     accent: Color(0xFFC2A366),
-    green: Color(0xFF4CAF50),
-    greenLight: Color(0xFF66BB6A),
+    green: Color(0xFFC2A366),      // camel/gold — consistent with accent, replaces bright green
+    greenLight: Color(0xFFD4B87A), // lighter camel for hover/highlight states
     arabicText: Color(0xFFF0E8DC),
     statusBarBrightness: Brightness.light,
   );

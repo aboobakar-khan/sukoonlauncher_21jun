@@ -129,9 +129,12 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
 
       // Load saved reminder settings
       final savedSettings = _settingsBox!.get('settings');
-      final settings = savedSettings is PrayerReminderSettings
+      var settings = savedSettings is PrayerReminderSettings
           ? savedSettings
           : PrayerReminderSettings();
+
+      // ── Migrate old mode names to new ones ──
+      settings = _migrateOldModes(settings);
 
       // Load cached prayer times for today
       final today = todayDateKey();
@@ -225,6 +228,37 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
     } catch (_) {
       // Non-critical cleanup — ignore errors
     }
+  }
+
+  /// Migrate old alarm mode strings to new naming convention.
+  /// silent → off, notification → notify, athan → adhan.
+  PrayerReminderSettings _migrateOldModes(PrayerReminderSettings s) {
+    String migrate(String old) {
+      switch (old) {
+        case 'silent': return 'off';
+        case 'notification': return 'notify';
+        case 'athan': return 'adhan';
+        default: return old;
+      }
+    }
+    final migrated = s.copyWith(
+      fajrNotifType: migrate(s.fajrNotifType),
+      dhuhrNotifType: migrate(s.dhuhrNotifType),
+      asrNotifType: migrate(s.asrNotifType),
+      maghribNotifType: migrate(s.maghribNotifType),
+      ishaNotifType: migrate(s.ishaNotifType),
+      sunriseNotifType: migrate(s.sunriseNotifType),
+    );
+    // Persist the migrated settings
+    if (migrated.fajrNotifType != s.fajrNotifType ||
+        migrated.dhuhrNotifType != s.dhuhrNotifType ||
+        migrated.asrNotifType != s.asrNotifType ||
+        migrated.maghribNotifType != s.maghribNotifType ||
+        migrated.ishaNotifType != s.ishaNotifType ||
+        migrated.sunriseNotifType != s.sunriseNotifType) {
+      _settingsBox?.put('settings', migrated);
+    }
+    return migrated;
   }
 
   // ── API fetch ──────────────────────────────────────
@@ -409,13 +443,13 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
     return true;
   }
 
-  /// Set per-prayer notification type: 'silent', 'notification', 'athan'.
-  /// When set to 'silent', also disables that prayer's alarm.
-  /// When set to 'notification' or 'athan', also enables that prayer's alarm.
+  /// Set per-prayer alarm mode: 'off', 'notify', 'adhan', 'fullscreen'.
+  /// When set to 'off', also disables that prayer's alarm.
+  /// When set to anything else, also enables that prayer's alarm.
   /// Returns false if permissions are missing (when enabling).
   Future<bool> setPrayerNotifType(String prayer, String type) async {
-    // If switching away from silent, check permissions
-    if (type != 'silent') {
+    // If switching away from off, check permissions
+    if (type != 'off') {
       final hasPerms = await hasRequiredPermissions();
       if (!hasPerms) {
         return false;
@@ -426,7 +460,7 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
 
     // Also toggle enabled status based on type
     PrayerReminderSettings withEnabled;
-    final shouldEnable = type != 'silent';
+    final shouldEnable = type != 'off';
     switch (prayer) {
       case 'Fajr':
         withEnabled = updated.copyWith(fajrEnabled: shouldEnable);
@@ -451,6 +485,15 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
     state = state.copyWith(reminderSettings: withEnabled);
     await _scheduleAlarms();
     return true;
+  }
+
+  /// Cycle through alarm modes for a prayer (tap-to-cycle UI).
+  /// Returns false if permissions are missing.
+  Future<bool> cyclePrayerMode(String prayer) async {
+    final current = state.reminderSettings.notifTypeFor(prayer);
+    final isSunrise = prayer == 'Sunrise';
+    final next = PrayerReminderSettings.nextMode(current, isSunrise: isSunrise);
+    return setPrayerNotifType(prayer, next);
   }
 
   /// Set manual override time for a prayer. Pass empty string to clear.
@@ -481,28 +524,27 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
     await _scheduleAlarms();
   }
 
-  /// Set a per-prayer minute adjustment (−30 to +30). Replaces manual overrides.
+  /// Set a per-prayer minute adjustment. No limit — user has full freedom.
   Future<void> setPrayerAdjustment(String prayer, int minutes) async {
-    final clamped = minutes.clamp(-30, 30);
     PrayerReminderSettings updated;
     switch (prayer) {
       case 'Fajr':
-        updated = state.reminderSettings.copyWith(fajrAdjustment: clamped, fajrOverride: '');
+        updated = state.reminderSettings.copyWith(fajrAdjustment: minutes, fajrOverride: '');
         break;
       case 'Sunrise':
-        updated = state.reminderSettings.copyWith(sunriseAdjustment: clamped);
+        updated = state.reminderSettings.copyWith(sunriseAdjustment: minutes);
         break;
       case 'Dhuhr':
-        updated = state.reminderSettings.copyWith(dhuhrAdjustment: clamped, dhuhrOverride: '');
+        updated = state.reminderSettings.copyWith(dhuhrAdjustment: minutes, dhuhrOverride: '');
         break;
       case 'Asr':
-        updated = state.reminderSettings.copyWith(asrAdjustment: clamped, asrOverride: '');
+        updated = state.reminderSettings.copyWith(asrAdjustment: minutes, asrOverride: '');
         break;
       case 'Maghrib':
-        updated = state.reminderSettings.copyWith(maghribAdjustment: clamped, maghribOverride: '');
+        updated = state.reminderSettings.copyWith(maghribAdjustment: minutes, maghribOverride: '');
         break;
       case 'Isha':
-        updated = state.reminderSettings.copyWith(ishaAdjustment: clamped, ishaOverride: '');
+        updated = state.reminderSettings.copyWith(ishaAdjustment: minutes, ishaOverride: '');
         break;
       default:
         return;

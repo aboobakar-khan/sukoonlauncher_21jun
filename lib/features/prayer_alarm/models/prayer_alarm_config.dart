@@ -186,10 +186,12 @@ class PrayerReminderSettings extends HiveObject {
   @HiveField(14)
   String customSoundPath;
 
-  /// Per-prayer notification type: 'silent', 'notification', 'athan'
-  /// - silent: no alert (disabled)
-  /// - notification: banner notification with default sound
-  /// - athan: full athan audio + banner notification
+  /// Per-prayer alarm mode:
+  /// - 'off': no alert (disabled)
+  /// - 'notify': silent notification banner (no sound)
+  /// - 'adhan': notification + adhan audio
+  /// - 'fullscreen': full-page takeover + adhan audio
+  /// Sunrise only supports 'off' and 'notify'.
   @HiveField(15)
   String fajrNotifType;
 
@@ -208,7 +210,7 @@ class PrayerReminderSettings extends HiveObject {
   @HiveField(20)
   String sunriseNotifType;
 
-  /// Per-prayer time adjustment in minutes (-30 to +30).
+  /// Per-prayer time adjustment in minutes (-60 to +60).
   /// Positive = alarm fires later, Negative = alarm fires earlier.
   /// e.g. fajrAdjustment = -5 means alarm 5 minutes before Fajr time.
   @HiveField(21)
@@ -245,12 +247,12 @@ class PrayerReminderSettings extends HiveObject {
     this.vibrationEnabled = true,
     this.snoozeDurationMinutes = 10,
     this.customSoundPath = '',
-    this.fajrNotifType = 'notification',
-    this.dhuhrNotifType = 'notification',
-    this.asrNotifType = 'notification',
-    this.maghribNotifType = 'notification',
-    this.ishaNotifType = 'notification',
-    this.sunriseNotifType = 'notification',
+    this.fajrNotifType = 'off',
+    this.dhuhrNotifType = 'off',
+    this.asrNotifType = 'off',
+    this.maghribNotifType = 'off',
+    this.ishaNotifType = 'off',
+    this.sunriseNotifType = 'off',
     this.fajrAdjustment = 0,
     this.sunriseAdjustment = 0,
     this.dhuhrAdjustment = 0,
@@ -294,8 +296,8 @@ class PrayerReminderSettings extends HiveObject {
     }
   }
 
-  /// Returns the notification type for a specific prayer.
-  /// Values: 'silent', 'notification', 'athan'
+  /// Returns the alarm mode for a specific prayer.
+  /// Values: 'off', 'notify', 'adhan', 'fullscreen'
   String notifTypeFor(String prayer) {
     switch (prayer) {
       case 'Fajr':
@@ -311,7 +313,40 @@ class PrayerReminderSettings extends HiveObject {
       case 'Sunrise':
         return sunriseNotifType;
       default:
-        return 'notification';
+        return 'off';
+    }
+  }
+
+  /// Alarm mode cycle order for regular prayers.
+  static const modeOrder = ['off', 'notify', 'adhan', 'fullscreen'];
+
+  /// Alarm mode cycle order for Sunrise (no adhan/fullscreen).
+  static const sunriseModeOrder = ['off', 'notify'];
+
+  /// Returns the next alarm mode in the cycle.
+  static String nextMode(String current, {bool isSunrise = false}) {
+    final order = isSunrise ? sunriseModeOrder : modeOrder;
+    final idx = order.indexOf(current);
+    return order[(idx + 1) % order.length];
+  }
+
+  /// Returns a copy with the time adjustment for a specific prayer updated.
+  PrayerReminderSettings withAdjustment(String prayer, int minutes) {
+    switch (prayer) {
+      case 'Fajr':
+        return copyWith(fajrAdjustment: minutes, fajrOverride: '');
+      case 'Sunrise':
+        return copyWith(sunriseAdjustment: minutes);
+      case 'Dhuhr':
+        return copyWith(dhuhrAdjustment: minutes, dhuhrOverride: '');
+      case 'Asr':
+        return copyWith(asrAdjustment: minutes, asrOverride: '');
+      case 'Maghrib':
+        return copyWith(maghribAdjustment: minutes, maghribOverride: '');
+      case 'Isha':
+        return copyWith(ishaAdjustment: minutes, ishaOverride: '');
+      default:
+        return this;
     }
   }
 

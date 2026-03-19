@@ -517,21 +517,18 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
   Widget _buildFavoriteApps(AppThemeColor themeColor) {
     // Get favorites directly from provider - instant, no cache, no API calls
     final favorites = ref.watch(favoriteAppsProvider);
-    final apps = favorites.take(7).toList();
-    final displaySettings = ref.watch(displaySettingsProvider);
-    final prayerWidgetOn =
-        displaySettings.showPrayerWidget || displaySettings.showFastingWidget;
+    final apps = favorites.take(10).toList();
 
     if (apps.isEmpty) return const SizedBox.shrink();
 
-    // ── Prayer widget ON: first 5 on the left column, extras stack right ──
-    if (prayerWidgetOn && apps.length > 5) {
+    // ── More than 5 apps: two-column layout (always, prayer widget or not) ──
+    if (apps.length > 5) {
       final leftApps = apps.sublist(0, 5);
       final rightApps = apps.sublist(5);
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left: first 5 apps as a vertical list
+          // Left: first 5 apps
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,7 +539,7 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
             ),
           ),
           const SizedBox(width: 8),
-          // Right: remaining apps stacked
+          // Right: remaining apps (up to 5 more)
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -556,7 +553,7 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
       );
     }
 
-    // ── Default (no prayer widget, or ≤5 apps): single vertical column ──
+    // ── 1–5 apps: single column ──
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,

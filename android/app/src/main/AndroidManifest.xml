@@ -51,8 +51,7 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:enableOnBackInvokedCallback="false"
-        android:resizeableActivity="true">
+        android:enableOnBackInvokedCallback="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -65,7 +64,7 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
-            android:resizeableActivity="true">
+            android:resizeableActivity="false">
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
@@ -80,6 +79,27 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.HOME"/>
                 <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+
+            <!-- SHARE TARGET: Receive shared text (YouTube links) from other apps -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+
+            <!-- SHARE TARGET: Receive shared URLs via VIEW intent -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="youtube.com"/>
+                <data android:scheme="https" android:host="www.youtube.com"/>
+                <data android:scheme="https" android:host="m.youtube.com"/>
+                <data android:scheme="https" android:host="youtu.be"/>
+                <data android:scheme="http" android:host="youtube.com"/>
+                <data android:scheme="http" android:host="www.youtube.com"/>
+                <data android:scheme="http" android:host="youtu.be"/>
             </intent-filter>
         </activity>
         <meta-data
@@ -100,6 +120,7 @@
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:excludeFromRecents="true"
             android:launchMode="singleTop"
+            android:screenOrientation="portrait"
             android:taskAffinity="com.sukoon.launcher.blocker" />
         
         <!-- Restart blocker service after device reboot -->
@@ -109,6 +130,16 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Timer Alarm: exact alarm fires when app timer deadline is reached -->
+        <receiver
+            android:name=".TimerAlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.sukoon.launcher.TIMER_EXPIRED" />
             </intent-filter>
         </receiver>
 
@@ -138,6 +169,7 @@
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
             android:excludeFromRecents="true"
+            android:screenOrientation="portrait"
             android:taskAffinity="com.sukoon.launcher.alarm"
             android:launchMode="singleTop" />
 
@@ -150,6 +182,7 @@
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
             android:excludeFromRecents="true"
+            android:screenOrientation="portrait"
             android:taskAffinity="com.sukoon.launcher.zen"
             android:launchMode="singleTop" />
 
@@ -159,6 +192,7 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.sukoon.launcher.PRAYER_ALARM" />
+                <action android:name="com.sukoon.launcher.DISMISS_ADHAN" />
             </intent-filter>
         </receiver>
 

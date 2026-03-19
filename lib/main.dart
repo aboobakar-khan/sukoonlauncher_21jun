@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'models/note.dart';
 import 'models/favorite_app.dart';
@@ -10,6 +11,8 @@ import 'models/productivity_models.dart';
 import 'features/prayer_alarm/models/prayer_alarm_config.dart';
 import 'features/prayer_alarm/services/prayer_alarm_service.dart';
 import 'features/prayer_alarm/screens/prayer_alarm_screen.dart';
+import 'features/calm_watch/models/calm_watch_item.dart';
+import 'features/calm_watch/services/share_intent_service.dart';
 import 'screens/launcher_shell.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/notification_feed_screen.dart';
@@ -24,6 +27,9 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── Load environment variables ──
+  await dotenv.load(fileName: '.env');
 
   // ── Global error handler — catch framework errors ──
   FlutterError.onError = (details) {
@@ -52,6 +58,7 @@ void main() async {
   Hive.registerAdapter(ProductivityEventAdapter());
   Hive.registerAdapter(AppBlockRuleAdapter());
   Hive.registerAdapter(PomodoroSettingsAdapter());
+  Hive.registerAdapter(CalmWatchItemAdapter()); // Calm Watch
 
   // Set system UI overlay style for immersive experience
   SystemChrome.setSystemUIOverlayStyle(
@@ -68,6 +75,8 @@ void main() async {
     SystemUiMode.edgeToEdge,
     overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
   );
+  // Lock entire app to portrait; only CalmWatchPlayerScreen overrides this
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   // Pre-open ALL frequently used Hive boxes in parallel (avoids repeated I/O)
   // This eliminates ~40+ redundant Hive.openBox() calls during first render
   await Future.wait([
@@ -89,6 +98,7 @@ void main() async {
     HiveBoxManager.get('prayer_alarm_config'),
     HiveBoxManager.get<DailyPrayerTimes>('prayer_alarm_times'),
     HiveBoxManager.get('prayer_reminder_settings'),
+    HiveBoxManager.get<CalmWatchItem>('calm_watch_items'),
   ]);
 
   // Initialize prayer alarm service (exact alarms + notifications)
@@ -134,6 +144,9 @@ void main() async {
   // is not yet attached to the widget tree at this point. It runs instead in
   // _LauncherEntryPointState.initState() via addPostFrameCallback so the
   // navigator is guaranteed to be ready.
+
+  // ── Initialize Share Intent Service (YouTube share → Calm Watch) ──
+  ShareIntentService.instance.initialize();
 
   runApp(const ProviderScope(child: SukoonLauncherApp()));
 }

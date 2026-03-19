@@ -26,6 +26,24 @@ class BootReceiver : BroadcastReceiver() {
             if (wasEnabled && (blockedPackages.isNotEmpty() || hasTimedSession || wasZen)) {
                 Log.d("BootReceiver", "Restarting blocker service with ${blockedPackages.size} blocked apps")
                 AppBlockerService.start(context)
+                
+                // If a timed session was active, reschedule the exact alarm
+                // so the deadline is still enforced after reboot
+                if (hasTimedSession) {
+                    val session = AppBlockerService.getTimedSession(context)
+                    if (session != null) {
+                        val (_, endTime, _) = session
+                        val now = System.currentTimeMillis()
+                        if (endTime > now) {
+                            AppBlockerService.scheduleTimerAlarm(context, endTime)
+                            Log.d("BootReceiver", "Timer alarm rescheduled after reboot: ${(endTime - now) / 1000}s remaining")
+                        } else {
+                            // Timer already expired during reboot — schedule immediate check
+                            AppBlockerService.scheduleTimerAlarm(context, now + 1000)
+                            Log.d("BootReceiver", "Timer expired during reboot — scheduling immediate check")
+                        }
+                    }
+                }
             } else if (wasEnabled) {
                 // Was enabled but nothing to do — clear the enabled flag
                 Log.d("BootReceiver", "Service was enabled but idle — clearing flag to save battery")

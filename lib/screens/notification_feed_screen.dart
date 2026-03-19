@@ -877,13 +877,10 @@ class _NotifTile extends StatelessWidget {
           onTap: () async {
             HapticFeedback.selectionClick();
             // Fire the original notification deep-link / app launcher.
-            final opened = await NativeAppBlockerService.openNotificationIntent(notif.key);
-            // Only dismiss from the feed if the link actually opened.
-            // This prevents the notification from vanishing when the
-            // intent fails (expired PendingIntent, uninstalled app, etc.).
-            if (opened) {
-              onTapDismiss(notif.key);
-            }
+            // We intentionally do NOT remove the notification from the feed
+            // after opening — the user may want to re-read or re-open it.
+            // Notifications can only be dismissed via swipe or "Clear all".
+            await NativeAppBlockerService.openNotificationIntent(notif.key);
           },
           splashColor: Colors.white.withValues(alpha: 0.04),
           highlightColor: Colors.white.withValues(alpha: 0.03),

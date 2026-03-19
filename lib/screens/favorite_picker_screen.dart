@@ -69,9 +69,9 @@ class _FavoritePickerScreenState extends ConsumerState<FavoritePickerScreen> {
               ),
             ),
             Text(
-              '$favCount / 7 selected',
+              '$favCount / 10 selected',
               style: TextStyle(
-                color: favCount >= 7
+                color: favCount >= 10
                     ? _desertSunset.withValues(alpha: 0.8)
                     : _sandGold.withValues(alpha: 0.5),
                 fontSize: 12,
@@ -112,11 +112,11 @@ class _FavoritePickerScreenState extends ConsumerState<FavoritePickerScreen> {
             ),
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
-              widthFactor: (favCount / 7).clamp(0.0, 1.0),
+              widthFactor: (favCount / 10).clamp(0.0, 1.0),
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [_sandGold, favCount >= 7 ? _desertSunset : _warmBrown],
+                    colors: [_sandGold, favCount >= 10 ? _desertSunset : _warmBrown],
                   ),
                   borderRadius: BorderRadius.circular(2),
                 ),
@@ -166,14 +166,14 @@ class _FavoritePickerScreenState extends ConsumerState<FavoritePickerScreen> {
               itemBuilder: (context, index) {
                 final app = filteredApps[index];
                 final isFav = favPackages.contains(app.packageName);
-                final isMaxReached = favCount >= 7 && !isFav;
+                final isMaxReached = favCount >= 10 && !isFav;
 
                 return GestureDetector(
                   onTap: () async {
                     if (isMaxReached) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Max 7 favorites reached — remove one first'),
+                          content: Text('Max 10 apps reached — remove one first'),
                           backgroundColor: _desertSunset,
                           duration: Duration(seconds: 2),
                         ),

@@ -875,7 +875,7 @@ class AppBlockRuleNotifier extends StateNotifier<List<AppBlockRule>> {
     );
 
     if (hasExpirableRules && _expiryTimer == null) {
-      _expiryTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _expiryTimer = Timer.periodic(const Duration(seconds: 5), (_) {
         _checkAndExpireRules();
       });
     } else if (!hasExpirableRules && _expiryTimer != null) {
@@ -943,10 +943,12 @@ class AppBlockRuleNotifier extends StateNotifier<List<AppBlockRule>> {
       final nowMin = now.hour * 60 + now.minute;
 
       if (startMin <= endMin) {
-        return nowMin >= startMin && nowMin <= endMin;
+        // Same-day window: e.g. 09:00–17:00
+        // Use strict < for end so block lifts at exactly endHour:endMinute:00
+        return nowMin >= startMin && nowMin < endMin;
       } else {
         // Overnight (e.g. 22:00 → 06:00)
-        return nowMin >= startMin || nowMin <= endMin;
+        return nowMin >= startMin || nowMin < endMin;
       }
     } else {
       // Manual toggle — always active when enabled

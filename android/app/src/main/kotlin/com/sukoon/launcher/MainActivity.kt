@@ -14,9 +14,12 @@ import android.Manifest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.provider.Settings
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.annotation.NonNull
@@ -33,12 +36,43 @@ class MainActivity : FlutterActivity() {
     private val DND_CHANNEL = "com.sukoon.launcher/dnd"
     private val ALARM_ACTIVITY_CHANNEL = "com.sukoon.launcher/alarm_activity"
     private val NOTIFICATION_FILTER_CHANNEL = "com.sukoon.launcher/notification_filter"
+    private val NAVIGATION_CHANNEL = "com.sukoon.launcher/navigation"
+    private val SHARE_CHANNEL = "com.sukoon.launcher/share"
     private var flashlightOn = false
+
+    /** True while the Flutter PrayerAlarmScreen is visible. */
+    var isAlarmScreenShowing = false
 
     // ── Called when MainActivity is brought to front by AlarmActivity ─────
 
     private var pendingTimesUp: Intent? = null
     private var pendingNotificationFeed: Boolean = false
+    private var pendingShareUrl: String? = null
+
+    /**
+     * Intercept hardware volume key presses.
+     * When the prayer alarm screen is active, volume buttons immediately
+     * stop the adhan sound via MethodChannel (industry-standard alarm pattern).
+     * For all other states, delegate to super so normal volume control works.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isAlarmScreenShowing &&
+            (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+             event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) &&
+            event.action == KeyEvent.ACTION_DOWN) {
+            Log.d("MainActivity", "Volume key intercepted during alarm — stopping adhan")
+            try {
+                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                    MethodChannel(messenger, ALARM_ACTIVITY_CHANNEL)
+                        .invokeMethod("stopAlarmSound", null)
+                }
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Could not send stopAlarmSound: ${e.message}")
+            }
+            return true  // consume the event — don't change system volume
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Enable edge-to-edge: tell the framework NOT to fit system windows so
@@ -53,6 +87,7 @@ class MainActivity : FlutterActivity() {
         handleZenLockIntent(intent)
         handleTimesUpIntent(intent)
         handleNotificationFeedIntent(intent)
+        handleShareIntent(intent)
         super.onCreate(savedInstanceState)
     }
 
@@ -63,6 +98,140 @@ class MainActivity : FlutterActivity() {
         handleZenLockIntent(intent)
         handleTimesUpIntent(intent)
         handleNotificationFeedIntent(intent)
+        handleShareIntent(intent)
+        // When the user presses the home button while in an external app,
+        // Android re-delivers ACTION_MAIN + CATEGORY_HOME to the launcher.
+        // Forward this to Flutter so LauncherShell can snap back to the
+        // home page and pop any pushed sub-routes (Settings, Prayer, etc.).
+        handleGoHomeIntent(intent)
+    }
+
+    /** Tell Flutter to go to the home page when the home button is pressed. */
+    private fun handleGoHomeIntent(intent: Intent?) {
+        val isHomeIntent = intent?.action == Intent.ACTION_MAIN &&
+            intent.hasCategory(Intent.CATEGORY_HOME)
+        if (!isHomeIntent) return
+        try {
+            flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                MethodChannel(messenger, NAVIGATION_CHANNEL)
+                    .invokeMethod("goHome", null)
+                Log.d("MainActivity", "goHome sent to Flutter (home button press)")
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "goHome channel not ready: ${e.message}")
+        }
+    }
+
+    /**
+     * Handle YouTube share intent (ACTION_SEND text/plain or ACTION_VIEW).
+     *
+     * Extracts the shared URL and either:
+     *  - Sends it to Flutter immediately (if engine is ready)
+     *  - Stores it in [pendingShareUrl] for delivery in configureFlutterEngine
+     *
+     * Guards against re-processing the same intent on config change by tracking
+     * the last processed intent reference.
+     */
+    private var lastHandledIntent: Intent? = null
+
+    private fun handleShareIntent(intent: Intent?) {
+        if (intent == null) return
+        // Avoid processing the same intent twice (e.g. on orientation change)
+        if (intent === lastHandledIntent) return
+
+        var url: String? = null
+
+        when (intent.action) {
+            Intent.ACTION_SEND -> {
+                if (intent.type == "text/plain") {
+                    val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+                    url = extractYouTubeUrl(text)
+                }
+            }
+            Intent.ACTION_VIEW -> {
+                val data = intent.data?.toString() ?: return
+                if (isYouTubeUrl(data)) url = data
+            }
+        }
+
+        if (url == null || !isYouTubeUrl(url)) return
+
+        // Mark intent as handled so config-change re-deliveries are ignored
+        lastHandledIntent = intent
+
+        Log.d("MainActivity", "Share intent received: $url")
+
+        // Attempt immediate delivery to a running Flutter engine
+        val delivered = tryDeliverShareUrl(url)
+        if (!delivered) {
+            // Engine not ready (cold start) — store for later delivery
+            pendingShareUrl = url
+            Log.d("MainActivity", "Share URL queued for cold-start delivery: $url")
+        }
+    }
+
+    /**
+     * Try to send a share URL to Flutter via MethodChannel.
+     * Returns true if the message was dispatched (engine was available).
+     */
+    private fun tryDeliverShareUrl(url: String): Boolean {
+        return try {
+            val messenger = flutterEngine?.dartExecutor?.binaryMessenger ?: return false
+            MethodChannel(messenger, SHARE_CHANNEL).invokeMethod("sharedUrl", url)
+            Log.d("MainActivity", "Share URL sent to Flutter: $url")
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Extract the first YouTube URL from a string.
+     * YouTube's share sheet sends text like:
+     *   "Surah Al-Fatiha https://youtu.be/XXXXX"
+     * We match the broadest possible YouTube URL pattern.
+     */
+    private fun extractYouTubeUrl(text: String): String? {
+        // Match any http/https URL containing a YouTube domain
+        val regex = Regex("""https?://(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\S*""")
+        val match = regex.find(text)
+        if (match != null) return match.value.trimEnd('.')
+
+        // Fallback: if the whole trimmed string looks like a URL, use it
+        val trimmed = text.trim()
+        return if (trimmed.startsWith("http") && isYouTubeUrl(trimmed)) trimmed else null
+    }
+
+    private fun isYouTubeUrl(url: String): Boolean {
+        return url.contains("youtube.com") || url.contains("youtu.be")
+    }
+
+    /**
+     * Deliver any share URL that arrived before the Flutter engine was ready.
+     * Called from configureFlutterEngine with a short post-frame delay so that
+     * the Dart MethodCallHandler (ShareIntentService.initialize()) is registered.
+     */
+    private fun deliverPendingShare(flutterEngine: FlutterEngine) {
+        val url = pendingShareUrl ?: return
+        // Retry up to 5 times with 300ms intervals to wait for Dart side to register
+        var attempts = 0
+        fun attempt() {
+            if (pendingShareUrl == null) return // already cleared by getInitialSharedUrl
+            attempts++
+            try {
+                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL)
+                    .invokeMethod("sharedUrl", url)
+                pendingShareUrl = null
+                Log.d("MainActivity", "Pending share URL delivered on attempt $attempts: $url")
+            } catch (e: Exception) {
+                if (attempts < 5) {
+                    window.decorView.postDelayed({ attempt() }, 300)
+                } else {
+                    Log.w("MainActivity", "Failed to deliver pending share URL after $attempts attempts")
+                }
+            }
+        }
+        window.decorView.postDelayed({ attempt() }, 300)
     }
 
     /** Handle notification hint tap — open notification feed */
@@ -120,32 +289,103 @@ class MainActivity : FlutterActivity() {
     private fun handleAlarmIntent(intent: Intent?) {
         val prayerName = intent?.getStringExtra(AlarmActivity.EXTRA_PRAYER_NAME)
         if (prayerName != null) {
-            Log.d("MainActivity", "Alarm intent received for: $prayerName")
+            Log.d("MainActivity", "Alarm intent received for: $prayerName — waking screen")
             // Apply wake / lock-screen flags on this window
             applyAlarmWakeFlags()
             // Persist so Flutter can read it on any startup timing
             prefs().edit().putString(AlarmActivity.PREFS_KEY_PRAYER, prayerName).apply()
+
+            // ALSO push directly to Flutter via MethodChannel.
+            // This handles the case where the app is already running (warm resume)
+            // and the lifecycle state change doesn't trigger checkNativeAlarmPending.
+            pushAlarmToFlutter(prayerName)
         }
     }
 
+    /**
+     * Push the alarm prayer name directly to Flutter via MethodChannel.
+     * Tries multiple times with increasing delays to handle cold-start
+     * scenarios where the Flutter engine isn't ready yet.
+     */
+    private fun pushAlarmToFlutter(prayerName: String) {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val maxAttempts = 5
+        var attempt = 0
+
+        fun tryPush() {
+            attempt++
+            try {
+                val engine = flutterEngine
+                if (engine != null) {
+                    val messenger = engine.dartExecutor.binaryMessenger
+                    MethodChannel(messenger, ALARM_ACTIVITY_CHANNEL)
+                        .invokeMethod("showAlarmScreen", prayerName)
+                    Log.d("MainActivity", "Pushed alarm to Flutter (attempt $attempt): $prayerName")
+                } else if (attempt < maxAttempts) {
+                    // Flutter engine not ready yet — retry after delay
+                    Log.d("MainActivity", "Flutter engine not ready, retrying in ${attempt}s (attempt $attempt)")
+                    handler.postDelayed({ tryPush() }, attempt * 1000L)
+                } else {
+                    Log.w("MainActivity", "Flutter engine never became ready after $maxAttempts attempts")
+                }
+            } catch (e: Exception) {
+                if (attempt < maxAttempts) {
+                    handler.postDelayed({ tryPush() }, attempt * 1000L)
+                }
+                Log.w("MainActivity", "Push to Flutter failed (attempt $attempt): ${e.message}")
+            }
+        }
+
+        // First attempt after a brief delay to let the engine initialize
+        handler.postDelayed({ tryPush() }, 500)
+    }
+
+    private var alarmWakeLock: android.os.PowerManager.WakeLock? = null
+
     private fun applyAlarmWakeFlags() {
+        // Acquire FULL_WAKE_LOCK to physically turn screen ON
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            @Suppress("DEPRECATION")
+            alarmWakeLock = pm.newWakeLock(
+                android.os.PowerManager.FULL_WAKE_LOCK or
+                android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                android.os.PowerManager.ON_AFTER_RELEASE,
+                "sukoon:main_alarm_wake"
+            )
+            alarmWakeLock?.acquire(15_000L) // 15 seconds
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to acquire alarm wake lock: ${e.message}")
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
-            // Do NOT call requestDismissKeyguard — alarm UI should appear
-            // directly on top of the lock screen like a native phone alarm.
+            // Dismiss non-secure keyguard (swipe lock) for instant alarm display
+            val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            if (!km.isDeviceSecure) {
+                km.requestDismissKeyguard(this, null)
+            }
         } else {
             @Suppress("DEPRECATION")
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-                // No FLAG_DISMISS_KEYGUARD — show over lock screen
             )
         }
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
+        )
     }
 
     private fun clearAlarmWakeFlags() {
+        // Release wake lock if held
+        try {
+            if (alarmWakeLock?.isHeld == true) alarmWakeLock?.release()
+        } catch (_: Exception) {}
+        alarmWakeLock = null
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(false)
             setTurnScreenOn(false)
@@ -157,7 +397,10 @@ class MainActivity : FlutterActivity() {
                 WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
             )
         }
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.clearFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
+        )
     }
 
     private fun prefs(): SharedPreferences =
@@ -167,6 +410,22 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ── Deliver any pending share URL that arrived during cold start ──
+        // deliverPendingShare handles its own retry delay internally.
+        deliverPendingShare(flutterEngine)
+
+        // ── Share channel: Flutter can also query for initial share URL ──
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInitialSharedUrl" -> {
+                    val url = pendingShareUrl
+                    pendingShareUrl = null
+                    result.success(url)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // ── Timezone channel (replaces flutter_timezone plugin) ──
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sukoon/timezone").setMethodCallHandler { call, result ->
@@ -548,33 +807,44 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "getUsageStats" -> {
-                    try {
-                        val startTime = call.argument<Long>("startTime") ?: 0L
-                        val endTime = call.argument<Long>("endTime") ?: System.currentTimeMillis()
-                        
-                        if (!hasUsageStatsPermission()) {
-                            result.error("PERMISSION_DENIED", "Usage stats permission not granted", null)
-                            return@setMethodCallHandler
-                        }
-                        
-                        val usageStats = getUsageStats(startTime, endTime)
-                        result.success(usageStats)
-                    } catch (e: Exception) {
-                        result.error("ERROR", "Failed to get usage stats: ${e.message}", null)
+                    // Run on a background thread to avoid blocking the
+                    // platform (UI) thread.  queryEvents iterates every
+                    // UsageEvent in the window — can take 50-200 ms for a
+                    // 7-day range, which is enough to drop 3-12 animation
+                    // frames if run synchronously on the main thread.
+                    val startTime = call.argument<Long>("startTime") ?: 0L
+                    val endTime = call.argument<Long>("endTime") ?: System.currentTimeMillis()
+                    if (!hasUsageStatsPermission()) {
+                        result.error("PERMISSION_DENIED", "Usage stats permission not granted", null)
+                        return@setMethodCallHandler
                     }
+                    Thread {
+                        try {
+                            val usageStats = getUsageStats(startTime, endTime)
+                            Handler(Looper.getMainLooper()).post { result.success(usageStats) }
+                        } catch (e: Exception) {
+                            Handler(Looper.getMainLooper()).post {
+                                result.error("ERROR", "Failed to get usage stats: ${e.message}", null)
+                            }
+                        }
+                    }.start()
                 }
                 "getDailyUsageStats" -> {
-                    try {
-                        val days = call.argument<Int>("days") ?: 7
-                        if (!hasUsageStatsPermission()) {
-                            result.error("PERMISSION_DENIED", "Usage stats permission not granted", null)
-                            return@setMethodCallHandler
-                        }
-                        val dailyStats = getDailyUsageStats(days)
-                        result.success(dailyStats)
-                    } catch (e: Exception) {
-                        result.error("ERROR", "Failed to get daily usage stats: ${e.message}", null)
+                    val days = call.argument<Int>("days") ?: 7
+                    if (!hasUsageStatsPermission()) {
+                        result.error("PERMISSION_DENIED", "Usage stats permission not granted", null)
+                        return@setMethodCallHandler
                     }
+                    Thread {
+                        try {
+                            val dailyStats = getDailyUsageStats(days)
+                            Handler(Looper.getMainLooper()).post { result.success(dailyStats) }
+                        } catch (e: Exception) {
+                            Handler(Looper.getMainLooper()).post {
+                                result.error("ERROR", "Failed to get daily usage stats: ${e.message}", null)
+                            }
+                        }
+                    }.start()
                 }
                 else -> {
                     result.notImplemented()
@@ -694,6 +964,101 @@ class MainActivity : FlutterActivity() {
                         result.error("UNAVAILABLE", "Could not open clock: ${e.message}", null)
                     }
                 }
+                // ── Deep-link directly to specific Android permission settings ──
+                "openPermissionSettings" -> {
+                    try {
+                        val permType = call.argument<String>("type") ?: "app"
+                        val pkg = packageName
+                        val intent: Intent = when (permType) {
+                            // Location → App location permission page
+                            "location" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$pkg")
+                            }
+                            // Notifications → App notification settings (Android 8+)
+                            "notification" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
+                                }
+                            } else {
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:$pkg")
+                                }
+                            }
+                            // Exact alarms → Alarms & Reminders page (Android 12+)
+                            "exact_alarm" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                    data = Uri.parse("package:$pkg")
+                                }
+                            } else {
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:$pkg")
+                                }
+                            }
+                            // Draw over other apps → Display over other apps page
+                            "overlay" -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                                data = Uri.parse("package:$pkg")
+                            }
+                            // Usage access → Usage data access page
+                            "usage_access" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                            // Do Not Disturb access → DND policy access page
+                            "dnd" -> Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                            // Battery optimisation → Battery optimisation page for this app
+                            "battery_optimization" -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:$pkg")
+                            }
+                            // Audio / Storage → App permission page
+                            "audio", "storage" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$pkg")
+                            }
+                            // Fallback: general app details page
+                            else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$pkg")
+                            }
+                        }
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        // Fall back to generic app settings if deep-link fails
+                        try {
+                            val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$packageName")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            startActivity(fallback)
+                            result.success(true)
+                        } catch (e2: Exception) {
+                            result.error("UNAVAILABLE", "Could not open settings: ${e2.message}", null)
+                        }
+                    }
+                }
+                // ── Check status of special permissions that permission_handler can't read ──
+                "checkSpecialPermission" -> {
+                    val permType = call.argument<String>("type") ?: ""
+                    val granted: Boolean = when (permType) {
+                        "overlay" -> Settings.canDrawOverlays(this)
+                        "usage_access" -> {
+                            val appOps = getSystemService(APP_OPS_SERVICE) as android.app.AppOpsManager
+                            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                appOps.unsafeCheckOpNoThrow(
+                                    android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                                    android.os.Process.myUid(),
+                                    packageName
+                                )
+                            } else {
+                                @Suppress("DEPRECATION")
+                                appOps.checkOpNoThrow(
+                                    android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                                    android.os.Process.myUid(),
+                                    packageName
+                                )
+                            }
+                            mode == android.app.AppOpsManager.MODE_ALLOWED
+                        }
+                        else -> false
+                    }
+                    result.success(granted)
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -777,8 +1142,9 @@ class MainActivity : FlutterActivity() {
                 "scheduleNativeAlarm" -> {
                     val prayerName      = call.argument<String>("prayerName") ?: "Prayer"
                     val triggerAtMillis = call.argument<Long>("triggerAtMillis") ?: 0L
+                    val notifType       = call.argument<String>("notifType") ?: "fullscreen"
                     try {
-                        AlarmBroadcastReceiver.scheduleAlarm(this, prayerName, triggerAtMillis)
+                        AlarmBroadcastReceiver.scheduleAlarm(this, prayerName, triggerAtMillis, notifType)
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("SCHEDULE_ERROR", "Could not schedule native alarm: ${e.message}", null)
@@ -805,6 +1171,14 @@ class MainActivity : FlutterActivity() {
                 "clearPendingPrayer" -> {
                     prefs().edit().remove(AlarmActivity.PREFS_KEY_PRAYER).apply()
                     clearAlarmWakeFlags()
+                    result.success(true)
+                }
+
+                // Flutter alarm screen opening/closing — gates volume key interception
+                "setAlarmScreenActive" -> {
+                    val active = call.arguments as? Boolean ?: false
+                    isAlarmScreenShowing = active
+                    Log.d("MainActivity", "Alarm screen active: $active")
                     result.success(true)
                 }
 
@@ -838,6 +1212,43 @@ class MainActivity : FlutterActivity() {
                         } catch (e2: Exception) {
                             result.error("SETTINGS_ERROR", "Could not open battery settings: ${e2.message}", null)
                         }
+                    }
+                }
+
+                // Check if full-screen intent permission is granted (Android 14+)
+                "canUseFullScreenIntent" -> {
+                    if (Build.VERSION.SDK_INT >= 34) { // Android 14 = API 34
+                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        result.success(nm.canUseFullScreenIntent())
+                    } else {
+                        result.success(true) // Always granted on older versions
+                    }
+                }
+
+                // Open system settings to grant full-screen intent permission
+                "openFullScreenIntentSettings" -> {
+                    if (Build.VERSION.SDK_INT >= 34) {
+                        try {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                android.net.Uri.parse("package:$packageName")
+                            )
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            // Fallback: open app notification settings
+                            try {
+                                val fallback = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                                }
+                                startActivity(fallback)
+                                result.success(true)
+                            } catch (e2: Exception) {
+                                result.error("SETTINGS_ERROR", "Could not open settings: ${e2.message}", null)
+                            }
+                        }
+                    } else {
+                        result.success(true) // Not needed on older versions
                     }
                 }
 
