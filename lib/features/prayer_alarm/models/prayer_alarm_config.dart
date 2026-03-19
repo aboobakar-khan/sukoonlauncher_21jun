@@ -190,7 +190,6 @@ class PrayerReminderSettings extends HiveObject {
   /// - 'off': no alert (disabled)
   /// - 'notify': silent notification banner (no sound)
   /// - 'adhan': notification + adhan audio
-  /// - 'fullscreen': full-page takeover + adhan audio
   /// Sunrise only supports 'off' and 'notify'.
   @HiveField(15)
   String fajrNotifType;
@@ -297,7 +296,7 @@ class PrayerReminderSettings extends HiveObject {
   }
 
   /// Returns the alarm mode for a specific prayer.
-  /// Values: 'off', 'notify', 'adhan', 'fullscreen'
+  /// Values: 'off', 'notify', 'adhan'
   String notifTypeFor(String prayer) {
     switch (prayer) {
       case 'Fajr':
@@ -318,9 +317,9 @@ class PrayerReminderSettings extends HiveObject {
   }
 
   /// Alarm mode cycle order for regular prayers.
-  static const modeOrder = ['off', 'notify', 'adhan', 'fullscreen'];
+  static const modeOrder = ['off', 'notify', 'adhan'];
 
-  /// Alarm mode cycle order for Sunrise (no adhan/fullscreen).
+  /// Alarm mode cycle order for Sunrise (no adhan).
   static const sunriseModeOrder = ['off', 'notify'];
 
   /// Returns the next alarm mode in the cycle.

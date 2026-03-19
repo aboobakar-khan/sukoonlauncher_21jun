@@ -18,7 +18,7 @@ import 'permission_setup_screen.dart';
 // ═══════════════════════════════════════════════════════════════════
 //  Salah Wake — Unified single-page redesign
 //  No tabs, no bottom activate button, everything on one screen.
-//  Alarm modes: off / notify / adhan / fullscreen
+//  Alarm modes: off / notify / adhan
 //  Saves instantly on interaction.
 // ═══════════════════════════════════════════════════════════════════
 
@@ -43,7 +43,6 @@ class _PrayerAlarmSettingsScreenState
   String? _autoDetectedCity;
   bool? _hasNotifPermission;
   bool? _hasExactAlarmPermission;
-  bool? _hasFullScreenPermission;
 
   // Date navigation
   DateTime _viewDate = DateTime.now();
@@ -72,12 +71,10 @@ class _PrayerAlarmSettingsScreenState
   Future<void> _checkPermissions() async {
     final notif = await Permission.notification.isGranted;
     final exact = await PrayerAlarmService.canScheduleExactAlarms();
-    final fullScreen = await PrayerAlarmService.canUseFullScreenIntent();
     if (mounted) {
       setState(() {
         _hasNotifPermission = notif;
         _hasExactAlarmPermission = exact;
-        _hasFullScreenPermission = fullScreen;
       });
     }
   }
@@ -489,27 +486,22 @@ class _PrayerAlarmSettingsScreenState
     // Required permissions per mode:
     //  notify     → Notifications
     //  adhan      → Notifications + Exact Alarms
-    //  fullscreen → Notifications + Exact Alarms + Full-Screen Intent
-    final needNotif      = mode == 'notify' || mode == 'adhan' || mode == 'fullscreen';
-    final needExact      = mode == 'adhan'  || mode == 'fullscreen';
-    final needFullScreen = mode == 'fullscreen';
+    final needNotif      = mode == 'notify' || mode == 'adhan';
+    final needExact      = mode == 'adhan';
 
     final notifOk      = needNotif      ? await Permission.notification.isGranted : true;
     final exactOk      = needExact      ? await PrayerAlarmService.canScheduleExactAlarms() : true;
-    final fullScreenOk = needFullScreen ? await PrayerAlarmService.canUseFullScreenIntent() : true;
 
-    if (notifOk && exactOk && fullScreenOk) return true;
+    if (notifOk && exactOk) return true;
 
     // Build missing list
     final missing = <String>[];
     if (!notifOk)      missing.add('Notifications');
     if (!exactOk)      missing.add('Exact Alarms');
-    if (!fullScreenOk) missing.add('Full-Screen Intent (Android 14+)');
 
     final modeLabel = {
       'notify'    : 'Notify',
       'adhan'     : 'Adhan',
-      'fullscreen': 'Full Alarm',
     }[mode] ?? mode;
 
     if (!mounted) return false;
@@ -569,13 +561,11 @@ class _PrayerAlarmSettingsScreenState
   Widget _buildPermissionBanner() {
     final notifOk = _hasNotifPermission ?? true;
     final exactOk = _hasExactAlarmPermission ?? true;
-    final fullScreenOk = _hasFullScreenPermission ?? true;
-    if (notifOk && exactOk && fullScreenOk) return const SizedBox.shrink();
+    if (notifOk && exactOk) return const SizedBox.shrink();
 
     final missing = <String>[];
     if (!notifOk) missing.add('Notifications');
     if (!exactOk) missing.add('Exact Alarms');
-    if (!fullScreenOk) missing.add('Full-Screen');
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),

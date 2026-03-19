@@ -27,7 +27,6 @@ class PermissionSetupScreen extends ConsumerStatefulWidget {
 class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   bool _notif = false;
   bool _alarm = false;
-  bool _fullScreen = false;
   bool _overlay = false;
   bool _battery = false;
   bool _busy = false;
@@ -41,19 +40,18 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   Future<void> _checkAll() async {
     final n = await Permission.notification.isGranted;
     final a = await PrayerAlarmService.canScheduleExactAlarms();
-    final f = await PrayerAlarmService.canUseFullScreenIntent();
     final o = await Permission.systemAlertWindow.isGranted;
     final b = await Permission.ignoreBatteryOptimizations.isGranted;
     if (!mounted) return;
-    setState(() { _notif = n; _alarm = a; _fullScreen = f; _overlay = o; _battery = b; });
-    if (n && a && f && o && b) {
+    setState(() { _notif = n; _alarm = a; _overlay = o; _battery = b; });
+    if (n && a && o && b) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) widget.onAllGranted();
       });
     }
   }
 
-  int get _granted => [_notif, _alarm, _fullScreen, _overlay, _battery].where((v) => v).length;
+  int get _granted => [_notif, _alarm, _overlay, _battery].where((v) => v).length;
 
   Future<void> _request(int step) async {
     if (_busy) return;
@@ -78,22 +76,10 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
         }
         break;
       case 2:
-        // Full-Screen Intent (Android 14+)
-        final ok = await PrayerAlarmService.canUseFullScreenIntent();
-        if (!ok) {
-          await PrayerAlarmService.openFullScreenIntentSettings();
-          await Future.delayed(const Duration(milliseconds: 800));
-          final re = await PrayerAlarmService.canUseFullScreenIntent();
-          if (mounted) setState(() => _fullScreen = re);
-        } else {
-          if (mounted) setState(() => _fullScreen = ok);
-        }
-        break;
-      case 3:
         final s = await Permission.systemAlertWindow.request();
         if (mounted) setState(() => _overlay = s.isGranted);
         break;
-      case 4:
+      case 3:
         await PrayerAlarmService.openBatterySettings();
         await Future.delayed(const Duration(milliseconds: 800));
         final re = await Permission.ignoreBatteryOptimizations.isGranted;
@@ -104,7 +90,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
     if (mounted) setState(() => _busy = false);
 
     // Auto-complete if all granted
-    if (_notif && _alarm && _fullScreen && _overlay && _battery) {
+    if (_notif && _alarm && _overlay && _battery) {
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) widget.onAllGranted();
     }
@@ -142,19 +128,6 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
       }
     }
 
-    // Full-Screen Intent (Android 14+)
-    if (!_fullScreen) {
-      final ok = await PrayerAlarmService.canUseFullScreenIntent();
-      if (!ok) {
-        await PrayerAlarmService.openFullScreenIntentSettings();
-        await Future.delayed(const Duration(milliseconds: 800));
-        final re = await PrayerAlarmService.canUseFullScreenIntent();
-        if (mounted) setState(() => _fullScreen = re);
-      } else {
-        if (mounted) setState(() => _fullScreen = ok);
-      }
-    }
-
     // Overlay
     if (!_overlay) {
       final s = await Permission.systemAlertWindow.request();
@@ -171,7 +144,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
 
     if (mounted) setState(() => _busy = false);
 
-    if (_notif && _alarm && _fullScreen) {
+    if (_notif && _alarm) {
       await Future.delayed(const Duration(milliseconds: 400));
       if (mounted) widget.onAllGranted();
     }
@@ -256,7 +229,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final accent = ref.watch(themeColorProvider).color;
-    final allCritical = _notif && _alarm && _fullScreen;
+    final allCritical = _notif && _alarm;
 
     return Scaffold(
       backgroundColor: const Color(0xFF050507),
@@ -289,8 +262,8 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (i) {
-                  final done = [_notif, _alarm, _fullScreen, _overlay, _battery][i];
+                children: List.generate(4, (i) {
+                  final done = [_notif, _alarm, _overlay, _battery][i];
                   return Container(
                     width: 32, height: 3,
                     margin: const EdgeInsets.symmetric(horizontal: 2),
@@ -333,23 +306,13 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                     ),
                     const SizedBox(height: 8),
                     _PermCard(
-                      icon: Icons.fullscreen_rounded,
-                      title: 'Full-Screen Alarm',
-                      desc: 'Show alarm over lock screen',
-                      granted: _fullScreen,
-                      required_: true,
-                      accent: accent,
-                      onTap: () => _request(2),
-                    ),
-                    const SizedBox(height: 8),
-                    _PermCard(
                       icon: Icons.phone_android_rounded,
                       title: 'Display Over Apps',
                       desc: 'Show over lock screen',
                       granted: _overlay,
                       required_: false,
                       accent: accent,
-                      onTap: () => _request(3),
+                      onTap: () => _request(2),
                     ),
                     const SizedBox(height: 8),
                     _PermCard(
@@ -359,7 +322,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                       granted: _battery,
                       required_: false,
                       accent: accent,
-                      onTap: () => _request(4),
+                      onTap: () => _request(3),
                     ),
                   ],
                 ),

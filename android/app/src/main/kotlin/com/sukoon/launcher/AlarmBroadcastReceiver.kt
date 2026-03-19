@@ -16,7 +16,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -24,26 +23,19 @@ import androidx.core.app.NotificationCompat
 /**
  * AlarmBroadcastReceiver — entry-point for ALL native prayer alarms.
  *
- * Two modes, selected at scheduling time via EXTRA_NOTIF_TYPE:
- *
- *  "adhan"      → Shows a heads-up notification with a Dismiss action.
- *                 Plays adhan_madinah.mp3 via MediaPlayer at ALARM stream volume.
- *                 Does NOT wake screen / show fullscreen activity.
- *                 User stops sound by: pressing volume key, tapping Dismiss, or
- *                 after 228 seconds (3m48s = full adhan length).
- *
- *  "fullscreen" → Acquires FULL_WAKE_LOCK, shows fullScreenIntent notification,
- *                 starts MainActivity with alarm extras.
- *                 Flutter PrayerAlarmScreen handles audio via AudioPlayer.
+ * Mode: "adhan" (only mode now)
+ *   Shows a heads-up notification with a Dismiss action.
+ *   Plays adhan_madinah.mp3 via MediaPlayer at ALARM stream volume.
+ *   User stops sound by: pressing volume key, tapping Dismiss, or
+ *   after 228 seconds (3m48s = full adhan length).
  */
 class AlarmBroadcastReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "AlarmBroadcastReceiver"
 
-        // Notification channels
-        private const val CHANNEL_FULLSCREEN  = "prayer_alarm_wake_v2"   // v2 = no vibration
-        const val CHANNEL_ADHAN       = "prayer_adhan_native_v2" // v2 = no vibration
+        // Notification channel
+        const val CHANNEL_ADHAN = "prayer_adhan_native_v2" // v2 = no vibration
 
         // Intent extras
         const val EXTRA_PRAYER_NAME = "prayer_name"
@@ -84,7 +76,7 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
             context: Context,
             prayerName: String,
             triggerAtMillis: Long,
-            notifType: String = "fullscreen",
+            notifType: String = "adhan",
         ) {
             val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val pi = buildPendingIntent(context, prayerName, notifType)
@@ -109,7 +101,6 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
             val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             // Cancel both modes (we don't know which was scheduled)
             am.cancel(buildPendingIntent(context, prayerName, "adhan"))
-            am.cancel(buildPendingIntent(context, prayerName, "fullscreen"))
             Log.d(TAG, "Native alarm cancelled for $prayerName")
         }
 
@@ -148,7 +139,7 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
         }
 
         private fun prefs(context: Context): SharedPreferences =
-            context.getSharedPreferences(AlarmActivity.PREFS_NAME, Context.MODE_PRIVATE)
+            context.getSharedPreferences("prayer_alarm_prefs", Context.MODE_PRIVATE)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -163,22 +154,15 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
         }
 
         val prayerName = intent.getStringExtra(EXTRA_PRAYER_NAME) ?: "Prayer"
-        val notifType  = intent.getStringExtra(EXTRA_NOTIF_TYPE)  ?: "fullscreen"
+        val notifType  = intent.getStringExtra(EXTRA_NOTIF_TYPE)  ?: "adhan"
         Log.d(TAG, "🕌 Native alarm fired: $prayerName [$notifType]")
 
         ensureChannels(context)
 
-        if (notifType == "adhan") {
-            // ── ADHAN MODE ──────────────────────────────────────────────────────
-            // Show a heads-up notification + play adhan at ALARM stream volume.
-            // No screen wake. No activity launch.
-            showAdhanNotification(context, prayerName)
-            playAdhanSound(context, prayerName)
-        } else {
-            // ── FULLSCREEN MODE ─────────────────────────────────────────────────
-            // Acquire wake lock, show fullScreenIntent notification, start MainActivity.
-            handleFullscreenAlarm(context, prayerName)
-        }
+        // ── ADHAN MODE ──────────────────────────────────────────────────────
+        // Show a heads-up notification + play adhan at ALARM stream volume.
+        showAdhanNotification(context, prayerName)
+        playAdhanSound(context, prayerName)
     }
 
     // ── ADHAN MODE helpers ────────────────────────────────────────────────────
@@ -313,95 +297,6 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
         }
     }
 
-    // ── FULLSCREEN MODE helpers ───────────────────────────────────────────────
-
-    private fun handleFullscreenAlarm(context: Context, prayerName: String) {
-        // ① Acquire wake lock to force screen ON
-        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        @Suppress("DEPRECATION")
-        val wakeLock = pm.newWakeLock(
-            PowerManager.FULL_WAKE_LOCK or
-            PowerManager.ACQUIRE_CAUSES_WAKEUP or
-            PowerManager.ON_AFTER_RELEASE,
-            "sukoon:prayer_alarm_wake"
-        )
-        wakeLock.acquire(60_000L)
-
-        // ② Persist prayer name so Flutter reads it on resume
-        prefs(context).edit()
-            .putString(AlarmActivity.PREFS_KEY_PRAYER, prayerName)
-            .apply()
-
-        // ③ Show fullScreenIntent notification (PRIMARY for locked screen)
-        showFullscreenNotification(context, prayerName)
-
-        // ④ Start MainActivity directly (fastest path when phone is unlocked)
-        try {
-            val mainIntent = Intent(context, MainActivity::class.java).apply {
-                putExtra(AlarmActivity.EXTRA_PRAYER_NAME, prayerName)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            context.startActivity(mainIntent)
-        } catch (e: Exception) {
-            Log.w(TAG, "Direct startActivity blocked (fullScreenIntent will handle): ${e.message}")
-            try {
-                val activityIntent = AlarmActivity.createIntent(context, prayerName)
-                activityIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(activityIntent)
-            } catch (e2: Exception) {
-                Log.w(TAG, "AlarmActivity also blocked: ${e2.message}")
-            }
-        }
-
-        // ⑤ Release wake lock after 10 s
-        try {
-            Handler(Looper.getMainLooper()).postDelayed({
-                if (wakeLock.isHeld) wakeLock.release()
-            }, 10_000)
-        } catch (_: Exception) {
-            if (wakeLock.isHeld) wakeLock.release()
-        }
-    }
-
-    private fun showFullscreenNotification(context: Context, prayerName: String) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        val mainIntent = Intent(context, MainActivity::class.java).apply {
-            putExtra(AlarmActivity.EXTRA_PRAYER_NAME, prayerName)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        else PendingIntent.FLAG_UPDATE_CURRENT
-
-        val contentPi    = PendingIntent.getActivity(context, prayerNotificationIds[prayerName] ?: 3000, mainIntent, piFlags)
-        val fullScreenPi = PendingIntent.getActivity(context, (prayerNotificationIds[prayerName] ?: 3000) + 100, mainIntent, piFlags)
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_FULLSCREEN)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("🕌 TIME FOR ${prayerName.uppercase()}")
-            .setContentText(getPrayerMessage(prayerName))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(getPrayerMessage(prayerName)))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setShowWhen(false)
-            .setAutoCancel(false)
-            .setOngoing(true)
-            .setTimeoutAfter(240_000L)
-            .setContentIntent(contentPi)
-            .setFullScreenIntent(fullScreenPi, true)
-            // NO .setSound() — Flutter PrayerAlarmScreen plays adhan via AudioPlayer.
-            .setVibrate(null)    // NO vibration
-            .build()
-
-        notification.flags = notification.flags and android.app.Notification.FLAG_INSISTENT.inv() // no repeating
-        nm.notify(prayerNotificationIds[prayerName] ?: 3000, notification)
-    }
 
     // ── Channel + message helpers ─────────────────────────────────────────────
 
@@ -409,22 +304,10 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // Delete old vibrating channels from previous installs
+        // Delete old channels from previous installs
         try { nm.deleteNotificationChannel("prayer_alarm_wake") } catch (_: Exception) {}
         try { nm.deleteNotificationChannel("prayer_adhan_native") } catch (_: Exception) {}
-
-        // Fullscreen alarm channel v2 (NO vibration — Flutter AudioPlayer handles audio)
-        if (nm.getNotificationChannel(CHANNEL_FULLSCREEN) == null) {
-            val ch = NotificationChannel(CHANNEL_FULLSCREEN, "Prayer Full Alarm", NotificationManager.IMPORTANCE_MAX).apply {
-                description = "Full-screen alarm for Salah — wakes screen"
-                enableVibration(false)          // ← NO vibration
-                setBypassDnd(true)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
-                setSound(null, null)            // Flutter AudioPlayer handles sound
-                setShowBadge(false)
-            }
-            nm.createNotificationChannel(ch)
-        }
+        try { nm.deleteNotificationChannel("prayer_alarm_wake_v2") } catch (_: Exception) {}  // old fullscreen channel
 
         // Adhan notification channel v2 (NO vibration — MediaPlayer handles audio)
         if (nm.getNotificationChannel(CHANNEL_ADHAN) == null) {

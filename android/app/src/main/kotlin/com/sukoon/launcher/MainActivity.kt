@@ -40,39 +40,9 @@ class MainActivity : FlutterActivity() {
     private val SHARE_CHANNEL = "com.sukoon.launcher/share"
     private var flashlightOn = false
 
-    /** True while the Flutter PrayerAlarmScreen is visible. */
-    var isAlarmScreenShowing = false
-
-    // ── Called when MainActivity is brought to front by AlarmActivity ─────
-
     private var pendingTimesUp: Intent? = null
     private var pendingNotificationFeed: Boolean = false
     private var pendingShareUrl: String? = null
-
-    /**
-     * Intercept hardware volume key presses.
-     * When the prayer alarm screen is active, volume buttons immediately
-     * stop the adhan sound via MethodChannel (industry-standard alarm pattern).
-     * For all other states, delegate to super so normal volume control works.
-     */
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (isAlarmScreenShowing &&
-            (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
-             event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) &&
-            event.action == KeyEvent.ACTION_DOWN) {
-            Log.d("MainActivity", "Volume key intercepted during alarm — stopping adhan")
-            try {
-                flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
-                    MethodChannel(messenger, ALARM_ACTIVITY_CHANNEL)
-                        .invokeMethod("stopAlarmSound", null)
-                }
-            } catch (e: Exception) {
-                Log.w("MainActivity", "Could not send stopAlarmSound: ${e.message}")
-            }
-            return true  // consume the event — don't change system volume
-        }
-        return super.dispatchKeyEvent(event)
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Enable edge-to-edge: tell the framework NOT to fit system windows so
@@ -81,9 +51,6 @@ class MainActivity : FlutterActivity() {
         // way to achieve this on all API levels (no window.statusBarColor needed).
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // If launched by AlarmActivity, apply wake flags so this window also
-        // appears over the lock screen.
-        handleAlarmIntent(intent)
         handleZenLockIntent(intent)
         handleTimesUpIntent(intent)
         handleNotificationFeedIntent(intent)
@@ -94,7 +61,6 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleAlarmIntent(intent)
         handleZenLockIntent(intent)
         handleTimesUpIntent(intent)
         handleNotificationFeedIntent(intent)
@@ -286,125 +252,9 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun handleAlarmIntent(intent: Intent?) {
-        val prayerName = intent?.getStringExtra(AlarmActivity.EXTRA_PRAYER_NAME)
-        if (prayerName != null) {
-            Log.d("MainActivity", "Alarm intent received for: $prayerName — waking screen")
-            // Apply wake / lock-screen flags on this window
-            applyAlarmWakeFlags()
-            // Persist so Flutter can read it on any startup timing
-            prefs().edit().putString(AlarmActivity.PREFS_KEY_PRAYER, prayerName).apply()
-
-            // ALSO push directly to Flutter via MethodChannel.
-            // This handles the case where the app is already running (warm resume)
-            // and the lifecycle state change doesn't trigger checkNativeAlarmPending.
-            pushAlarmToFlutter(prayerName)
-        }
-    }
-
-    /**
-     * Push the alarm prayer name directly to Flutter via MethodChannel.
-     * Tries multiple times with increasing delays to handle cold-start
-     * scenarios where the Flutter engine isn't ready yet.
-     */
-    private fun pushAlarmToFlutter(prayerName: String) {
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        val maxAttempts = 5
-        var attempt = 0
-
-        fun tryPush() {
-            attempt++
-            try {
-                val engine = flutterEngine
-                if (engine != null) {
-                    val messenger = engine.dartExecutor.binaryMessenger
-                    MethodChannel(messenger, ALARM_ACTIVITY_CHANNEL)
-                        .invokeMethod("showAlarmScreen", prayerName)
-                    Log.d("MainActivity", "Pushed alarm to Flutter (attempt $attempt): $prayerName")
-                } else if (attempt < maxAttempts) {
-                    // Flutter engine not ready yet — retry after delay
-                    Log.d("MainActivity", "Flutter engine not ready, retrying in ${attempt}s (attempt $attempt)")
-                    handler.postDelayed({ tryPush() }, attempt * 1000L)
-                } else {
-                    Log.w("MainActivity", "Flutter engine never became ready after $maxAttempts attempts")
-                }
-            } catch (e: Exception) {
-                if (attempt < maxAttempts) {
-                    handler.postDelayed({ tryPush() }, attempt * 1000L)
-                }
-                Log.w("MainActivity", "Push to Flutter failed (attempt $attempt): ${e.message}")
-            }
-        }
-
-        // First attempt after a brief delay to let the engine initialize
-        handler.postDelayed({ tryPush() }, 500)
-    }
-
-    private var alarmWakeLock: android.os.PowerManager.WakeLock? = null
-
-    private fun applyAlarmWakeFlags() {
-        // Acquire FULL_WAKE_LOCK to physically turn screen ON
-        try {
-            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            @Suppress("DEPRECATION")
-            alarmWakeLock = pm.newWakeLock(
-                android.os.PowerManager.FULL_WAKE_LOCK or
-                android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                android.os.PowerManager.ON_AFTER_RELEASE,
-                "sukoon:main_alarm_wake"
-            )
-            alarmWakeLock?.acquire(15_000L) // 15 seconds
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to acquire alarm wake lock: ${e.message}")
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-            // Dismiss non-secure keyguard (swipe lock) for instant alarm display
-            val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-            if (!km.isDeviceSecure) {
-                km.requestDismissKeyguard(this, null)
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
-        }
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
-        )
-    }
-
-    private fun clearAlarmWakeFlags() {
-        // Release wake lock if held
-        try {
-            if (alarmWakeLock?.isHeld == true) alarmWakeLock?.release()
-        } catch (_: Exception) {}
-        alarmWakeLock = null
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(false)
-            setTurnScreenOn(false)
-        } else {
-            @Suppress("DEPRECATION")
-            window.clearFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-            )
-        }
-        window.clearFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
-        )
-    }
 
     private fun prefs(): SharedPreferences =
-        getSharedPreferences(AlarmActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        getSharedPreferences("prayer_alarm_prefs", Context.MODE_PRIVATE)
 
     // ─────────────────────────────────────────────────────────────────────
 
@@ -1125,24 +975,12 @@ class MainActivity : FlutterActivity() {
         // Lets Flutter trigger the native wake-screen alarm flow.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_ACTIVITY_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                // Flutter asks: launch AlarmActivity for a specific prayer (main isolate only)
-                "launchAlarmActivity" -> {
-                    val prayerName = call.argument<String>("prayerName") ?: "Prayer"
-                    try {
-                        val intent = AlarmActivity.createIntent(this, prayerName)
-                        startActivity(intent)
-                        result.success(true)
-                    } catch (e: Exception) {
-                        result.error("LAUNCH_ERROR", "Could not launch AlarmActivity: ${e.message}", null)
-                    }
-                }
-
                 // Flutter schedules a NATIVE alarm via AlarmManager → AlarmBroadcastReceiver
-                // This works even when app is killed — native code handles the wake + screen.
+                // This works even when app is killed — native code handles the notification + adhan.
                 "scheduleNativeAlarm" -> {
                     val prayerName      = call.argument<String>("prayerName") ?: "Prayer"
                     val triggerAtMillis = call.argument<Long>("triggerAtMillis") ?: 0L
-                    val notifType       = call.argument<String>("notifType") ?: "fullscreen"
+                    val notifType       = call.argument<String>("notifType") ?: "adhan"
                     try {
                         AlarmBroadcastReceiver.scheduleAlarm(this, prayerName, triggerAtMillis, notifType)
                         result.success(true)
@@ -1162,28 +1000,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                // Flutter reads the pending prayer name on startup
-                "pendingPrayerName" -> {
-                    val name = prefs().getString(AlarmActivity.PREFS_KEY_PRAYER, null)
-                    result.success(name)
-                }
-                // Flutter clears the pending prayer after showing alarm screen
-                "clearPendingPrayer" -> {
-                    prefs().edit().remove(AlarmActivity.PREFS_KEY_PRAYER).apply()
-                    clearAlarmWakeFlags()
-                    result.success(true)
-                }
-
-                // Flutter alarm screen opening/closing — gates volume key interception
-                "setAlarmScreenActive" -> {
-                    val active = call.arguments as? Boolean ?: false
-                    isAlarmScreenShowing = active
-                    Log.d("MainActivity", "Alarm screen active: $active")
-                    result.success(true)
-                }
-
                 // Cancel a notification by ID using native NotificationManager
-                // (bypasses flutter_local_notifications v18 "Missing type parameter" bug)
                 "cancelNotificationById" -> {
                     val notificationId = call.argument<Int>("notificationId") ?: 0
                     try {
@@ -1212,43 +1029,6 @@ class MainActivity : FlutterActivity() {
                         } catch (e2: Exception) {
                             result.error("SETTINGS_ERROR", "Could not open battery settings: ${e2.message}", null)
                         }
-                    }
-                }
-
-                // Check if full-screen intent permission is granted (Android 14+)
-                "canUseFullScreenIntent" -> {
-                    if (Build.VERSION.SDK_INT >= 34) { // Android 14 = API 34
-                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                        result.success(nm.canUseFullScreenIntent())
-                    } else {
-                        result.success(true) // Always granted on older versions
-                    }
-                }
-
-                // Open system settings to grant full-screen intent permission
-                "openFullScreenIntentSettings" -> {
-                    if (Build.VERSION.SDK_INT >= 34) {
-                        try {
-                            val intent = Intent(
-                                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                                android.net.Uri.parse("package:$packageName")
-                            )
-                            startActivity(intent)
-                            result.success(true)
-                        } catch (e: Exception) {
-                            // Fallback: open app notification settings
-                            try {
-                                val fallback = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                                }
-                                startActivity(fallback)
-                                result.success(true)
-                            } catch (e2: Exception) {
-                                result.error("SETTINGS_ERROR", "Could not open settings: ${e2.message}", null)
-                            }
-                        }
-                    } else {
-                        result.success(true) // Not needed on older versions
                     }
                 }
 

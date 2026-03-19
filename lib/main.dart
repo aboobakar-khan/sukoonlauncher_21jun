@@ -10,7 +10,6 @@ import 'models/prayer_record.dart';
 import 'models/productivity_models.dart';
 import 'features/prayer_alarm/models/prayer_alarm_config.dart';
 import 'features/prayer_alarm/services/prayer_alarm_service.dart';
-import 'features/prayer_alarm/screens/prayer_alarm_screen.dart';
 import 'features/calm_watch/models/calm_watch_item.dart';
 import 'features/calm_watch/services/share_intent_service.dart';
 import 'screens/launcher_shell.dart';
@@ -104,29 +103,6 @@ void main() async {
   // Initialize prayer alarm service (exact alarms + notifications)
   await PrayerAlarmService.initialize();
 
-  // Wire notification tap → open prayer alarm screen
-  PrayerAlarmService.onAlarmScreenRequested = (prayerName) {
-    // Guard: if an alarm screen is already showing, don't push another
-    if (PrayerAlarmService.isAlarmScreenShowing) return;
-
-    // Lock: mark alarm screen as showing BEFORE the push
-    PrayerAlarmService.markAlarmScreenShowing(prayerName);
-
-    navigatorKey.currentState?.push(
-      MaterialPageRoute(
-        builder: (_) => PrayerAlarmScreen(prayerName: prayerName),
-      ),
-    ).then((_) {
-      // Safety-net: ensure the guard is cleared even if the screen was
-      // dismissed by an unusual path (e.g. navigatorKey.pop from outside).
-      // The alarm screen itself calls markAlarmScreenClosed() before popping
-      // in all normal paths, so this is only a fallback.
-      PrayerAlarmService.markAlarmScreenClosed();
-    });
-  };
-
-  // Check if app was launched by tapping a prayer notification (cold-start)
-  await PrayerAlarmService.checkPendingNotificationLaunch();
 
   // Listen for native "open notification feed" intent (from hint notification tap)
   const notifChannel = MethodChannel('com.sukoon.launcher/notification_filter');
@@ -280,15 +256,6 @@ class _LauncherEntryPointState extends State<_LauncherEntryPoint>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Check SharedPrefs for a pending prayer alarm written by AlarmActivity.
-    // We use addPostFrameCallback so navigatorKey is attached to the widget
-    // tree and ready to push the PrayerAlarmScreen.
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Extra delay for Samsung cold-boot: give the FlutterEngine time to
-      // fully set up its platform channels and route table.
-      await Future.delayed(const Duration(milliseconds: 800));
-      PrayerAlarmService.checkNativeAlarmPending();
-    });
   }
 
   @override
@@ -313,14 +280,7 @@ class _LauncherEntryPointState extends State<_LauncherEntryPoint>
         }
         break;
       case AppLifecycleState.resumed:
-        // Only check for a pending native alarm if no alarm screen is
-        // currently showing. If one is already visible (e.g. user pressed
-        // power button and came back), we must NOT re-push — that would
-        // create a duplicate and the subsequent popUntil in LauncherShell
-        // would kill the visible alarm screen.
-        if (!PrayerAlarmService.isAlarmScreenShowing) {
-          PrayerAlarmService.checkNativeAlarmPending();
-        }
+        // No special handling needed — alarm is handled natively.
         break;
       default:
         break;

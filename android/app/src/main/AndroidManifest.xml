@@ -34,9 +34,7 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- Prayer Alarm: vibrate for notification -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Prayer Alarm: show full-screen notification over lock screen (Android 10+) -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <!-- Prayer Alarm: allow activity launch from background (needed for AlarmActivity) -->
+    <!-- Prayer Alarm: wake device for alarm sound -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Prayer Alarm: request battery optimization exemption (Samsung/Xiaomi/etc.) -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -160,18 +158,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- Prayer Alarm: native wake-screen trampoline Activity -->
-        <!-- Shows OVER the lock screen (no keyguard dismiss) — exactly like stock alarm -->
-        <activity
-            android:name=".AlarmActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
-            android:showOnLockScreen="true"
-            android:turnScreenOn="true"
-            android:excludeFromRecents="true"
-            android:screenOrientation="portrait"
-            android:taskAffinity="com.sukoon.launcher.alarm"
-            android:launchMode="singleTop" />
 
         <!-- Zen Mode: lock-screen overlay Activity shown over keyguard during Zen session -->
         <!-- Uses FLAG_SHOW_WHEN_LOCKED so the Zen screen appears without unlocking -->
@@ -186,7 +172,7 @@
             android:taskAffinity="com.sukoon.launcher.zen"
             android:launchMode="singleTop" />
 
-        <!-- Prayer Alarm: BroadcastReceiver that wakes screen and launches AlarmActivity -->
+        <!-- Prayer Alarm: BroadcastReceiver that shows notification + plays adhan -->
         <receiver
             android:name=".AlarmBroadcastReceiver"
             android:exported="false">

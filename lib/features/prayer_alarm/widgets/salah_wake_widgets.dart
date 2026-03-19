@@ -20,7 +20,6 @@ const kModeColors = <String, Color>{
   'off': Color(0xFF555555),
   'notify': Color(0xFF5C9CE6),   // calm blue
   'adhan': Color(0xFF4CAF50),    // green
-  'fullscreen': Color(0xFFE6A23C), // amber
 };
 
 const kPrayerIcons = <String, IconData>{
@@ -62,8 +61,6 @@ const kAlarmModes = [
     Icons.notifications_rounded, Color(0xFF5C9CE6)),
   AlarmModeInfo('adhan', 'Adhan', 'Notification with Adhan audio',
     Icons.mosque_rounded, Color(0xFF4CAF50)),
-  AlarmModeInfo('fullscreen', 'Full Alarm', 'Wake screen with Adhan',
-    Icons.phone_android_rounded, Color(0xFFE6A23C)),
 ];
 
 const kSunriseModes = [

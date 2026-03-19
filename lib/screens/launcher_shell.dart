@@ -28,7 +28,6 @@ import '../features/hadith_dua/screens/minimalist_dua_screen.dart';
 import '../features/hadith_dua/providers/hadith_dua_provider.dart';
 import '../providers/zen_mode_provider.dart';
 import '../providers/launcher_page_provider.dart';
-import '../features/prayer_alarm/services/prayer_alarm_service.dart';
 import 'zen_mode_active_screen.dart';
 import '../services/app_update_service.dart';
 import '../features/calm_watch/screens/calm_watch_screen.dart';
@@ -380,19 +379,17 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
         // no home-jump, no visual disruption to the user.
         _restoreLastPage();
       } else if (isGenuineReturn) {
-        final alarmShowing = PrayerAlarmService.isAlarmScreenShowing;
         final hasModalRoute = Navigator.of(context).canPop();
 
-        if (!alarmShowing) {
-          // ALWAYS jump to home on genuine app-switch returns (> 3s).
-          // The user expects to land on the home page after using any
-          // external app — matching Samsung One UI / stock launcher behaviour.
-          // Screen-off cycles are already excluded above via isScreenOffCycle.
-          if (hasModalRoute) {
-            Navigator.of(context).popUntil((route) => route.isFirst);
-          }
+        // ALWAYS jump to home on genuine app-switch returns (> 3s).
+        // The user expects to land on the home page after using any
+        // external app — matching Samsung One UI / stock launcher behaviour.
+        // Screen-off cycles are already excluded above via isScreenOffCycle.
+        if (hasModalRoute) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
 
-          if (_pageController.hasClients) {
+        if (_pageController.hasClients) {
             final currentPage = _pageController.page?.round() ?? _homeIndex;
             if (currentPage != _homeIndex) {
               _pageController.jumpToPage(_homeIndex);
@@ -400,9 +397,6 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             }
           }
         }
-        // If alarmShowing == true: do absolutely nothing — the alarm screen
-        // manages its own lifecycle and must not be disturbed on resume.
-      }
 
       // Schedule non-critical visual updates for AFTER the first frame.
       // These don't affect interactivity, so they can wait.

@@ -443,7 +443,7 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
     return true;
   }
 
-  /// Set per-prayer alarm mode: 'off', 'notify', 'adhan', 'fullscreen'.
+  /// Set per-prayer alarm mode: 'off', 'notify', 'adhan'.
   /// When set to 'off', also disables that prayer's alarm.
   /// When set to anything else, also enables that prayer's alarm.
   /// Returns false if permissions are missing (when enabling).
