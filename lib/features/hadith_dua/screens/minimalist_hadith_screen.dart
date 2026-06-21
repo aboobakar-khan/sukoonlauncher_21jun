@@ -214,16 +214,12 @@ class _BookLibrary extends ConsumerWidget {
   final IslamicThemeColors tc;
   const _BookLibrary({required this.tc});
 
-  static const _bookEmojis = {
-    'bukhari': '📕', 'muslim': '📗', 'abudawud': '📘',
-    'tirmidhi': '📙', 'nasai': '📓', 'ibnmajah': '📔',
-  };
   static const _bookDescs = {
-    'bukhari': 'Most authentic collection of Hadith',
+    'bukhari': 'The most authentic collection',
     'muslim': 'Second most authentic collection',
-    'abudawud': 'Focused on Islamic jurisprudence',
-    'tirmidhi': 'Includes jurisprudence & commentary',
-    'nasai': 'Strict criteria for authentication',
+    'abudawud': 'Focused on jurisprudence',
+    'tirmidhi': 'Jurisprudence & commentary',
+    'nasai': 'Strict authentication criteria',
     'ibnmajah': 'Comprehensive legal traditions',
   };
 
@@ -231,86 +227,44 @@ class _BookLibrary extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final readCount = ref.watch(readHadithsProvider).length;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 40),
       children: [
-        // ── Header ──
+        // ── Daily Hadith (hero) ──
+        _DailyHadithCard(tc: tc),
+
+        const SizedBox(height: 22),
+
+        // ── Section header ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+          padding: const EdgeInsets.fromLTRB(2, 0, 2, 10),
           child: Row(children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: tc.green.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(Icons.auto_stories_rounded, color: tc.green.withValues(alpha: 0.6), size: 20),
-            ),
-            const SizedBox(width: 14),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Hadith Library',
-                  style: TextStyle(color: tc.text.withValues(alpha: 0.85), fontSize: 20,
-                      fontWeight: FontWeight.w600, letterSpacing: -0.3)),
-              Text('Six Authentic Collections',
-                  style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.4), fontSize: 11,
-                      fontWeight: FontWeight.w400, letterSpacing: 0.3)),
-            ]),
+            Text('Collections',
+                style: TextStyle(color: tc.text, fontSize: 15, fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2)),
             const Spacer(),
             if (readCount > 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                    color: tc.green.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(20)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.check_circle_outline_rounded, color: tc.green.withValues(alpha: 0.5), size: 13),
-                  const SizedBox(width: 4),
-                  Text('$readCount',
-                      style: TextStyle(color: tc.green.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w600)),
-                ]),
-              ),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.check_circle_rounded, color: tc.green.withValues(alpha: 0.7), size: 13),
+                const SizedBox(width: 5),
+                Text('$readCount read',
+                    style: TextStyle(color: tc.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+              ]),
           ]),
         ),
 
-        const SizedBox(height: 8),
-
-        // ── Daily Hadith ──
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _DailyHadithCard(tc: tc),
-        ),
-
-        const SizedBox(height: 14),
-
-        // ── Section label ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
-          child: Text('COLLECTIONS',
-              style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 10,
-                  fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-        ),
-
         // ── Book list ──
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-            itemCount: HadithCollection.collections.length,
-            itemBuilder: (context, i) {
-              final c = HadithCollection.collections[i];
-              return _BookCard(
-                collection: c,
-                emoji: _bookEmojis[c.id] ?? '📖',
-                description: _bookDescs[c.id] ?? '',
-                tc: tc,
-                onTap: () {
-                  ref.read(selectedCollectionProvider.notifier).state = c.id;
-                  ref.read(selectedChapterProvider.notifier).state = null;
-                  ref.read(hadithPageProvider.notifier).state = 1;
-                  ref.read(hadithNavDepthProvider.notifier).state = 1;
-                },
-              );
-            },
-          ),
-        ),
+        ...HadithCollection.collections.map((c) => _BookCard(
+              collection: c,
+              description: _bookDescs[c.id] ?? '',
+              tc: tc,
+              onTap: () {
+                ref.read(selectedCollectionProvider.notifier).state = c.id;
+                ref.read(selectedChapterProvider.notifier).state = null;
+                ref.read(hadithPageProvider.notifier).state = 1;
+                ref.read(hadithNavDepthProvider.notifier).state = 1;
+              },
+            )),
       ],
     );
   }
@@ -344,36 +298,38 @@ class _DailyHadithCard extends ConsumerWidget {
             );
           },
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-                colors: [tc.green.withValues(alpha: 0.06), tc.accent.withValues(alpha: 0.04)],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: tc.green.withValues(alpha: 0.10)),
+              color: tc.surface.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: tc.border.withValues(alpha: 0.6)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Icon(Icons.wb_sunny_rounded, color: tc.accent.withValues(alpha: 0.5), size: 14),
-                const SizedBox(width: 6),
-                Text("Today's Hadith",
-                    style: TextStyle(color: tc.accent.withValues(alpha: 0.7), fontSize: 11,
-                        fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: tc.accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Text('TODAY',
+                      style: TextStyle(color: tc.accent, fontSize: 10,
+                          fontWeight: FontWeight.w700, letterSpacing: 1)),
+                ),
                 const Spacer(),
                 Text(hadith.collection,
-                    style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 10)),
+                    style: TextStyle(color: tc.textTertiary, fontSize: 11, fontWeight: FontWeight.w500)),
               ]),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Text(
-                hadith.text.length > 160 ? '${hadith.text.substring(0, 160)}…' : hadith.text,
-                style: TextStyle(color: tc.text.withValues(alpha: 0.7), fontSize: 13.5, height: 1.55),
-                maxLines: 3, overflow: TextOverflow.ellipsis,
+                hadith.text.length > 180 ? '${hadith.text.substring(0, 180)}…' : hadith.text,
+                style: TextStyle(color: tc.text, fontSize: 14.5, height: 1.6, fontWeight: FontWeight.w400),
+                maxLines: 4, overflow: TextOverflow.ellipsis,
               ),
               if (hadith.extractedNarrator != null) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: 10),
                 Text('— ${hadith.extractedNarrator}',
-                    style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 11,
+                    style: TextStyle(color: tc.textSecondary, fontSize: 12,
                         fontStyle: FontStyle.italic)),
               ],
             ]),
@@ -381,10 +337,10 @@ class _DailyHadithCard extends ConsumerWidget {
         );
       },
       loading: () => Container(
-        height: 76,
-        decoration: BoxDecoration(color: tc.surface.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(16)),
-        child: Center(child: SizedBox(width: 16, height: 16,
-            child: CircularProgressIndicator(strokeWidth: 1.5, color: tc.green.withValues(alpha: 0.3)))),
+        height: 120,
+        decoration: BoxDecoration(color: tc.surface.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(18)),
+        child: Center(child: SizedBox(width: 18, height: 18,
+            child: CircularProgressIndicator(strokeWidth: 1.5, color: tc.accent.withValues(alpha: 0.5)))),
       ),
       error: (_, __) => const SizedBox.shrink(),
     );
@@ -395,66 +351,75 @@ class _DailyHadithCard extends ConsumerWidget {
 
 class _BookCard extends ConsumerWidget {
   final HadithCollection collection;
-  final String emoji;
   final String description;
   final IslamicThemeColors tc;
   final VoidCallback onTap;
 
-  const _BookCard({required this.collection, required this.emoji,
+  const _BookCard({required this.collection,
     required this.description, required this.tc, required this.onTap});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDownloaded = ref.watch(offlineContentProvider).downloadedCollections[collection.id] ?? false;
     return _Pressable(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: tc.surface.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: tc.surface.withValues(alpha: 0.5)),
+          color: tc.surface.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: tc.border.withValues(alpha: 0.5)),
         ),
         child: Row(children: [
-          Text(emoji, style: const TextStyle(fontSize: 28)),
+          // Monogram tile
+          Container(
+            width: 46, height: 46,
+            decoration: BoxDecoration(
+              color: tc.accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              collection.name.isNotEmpty ? collection.name.substring(0, 1).toUpperCase() : '?',
+              style: TextStyle(color: tc.accent, fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(collection.name,
-                  style: TextStyle(color: tc.text.withValues(alpha: 0.8), fontSize: 14,
-                      fontWeight: FontWeight.w600, letterSpacing: -0.2)),
-              const SizedBox(height: 2),
-              Text(collection.arabicName,
-                  style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.4), fontSize: 12, fontFamily: 'Amiri')),
-              const SizedBox(height: 4),
+              Row(children: [
+                Flexible(
+                  child: Text(collection.name,
+                      style: TextStyle(color: tc.text, fontSize: 15,
+                          fontWeight: FontWeight.w600, letterSpacing: -0.2),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+                if (isDownloaded) ...[
+                  const SizedBox(width: 6),
+                  Icon(Icons.offline_pin_rounded, color: tc.green.withValues(alpha: 0.8), size: 14),
+                ],
+              ]),
+              const SizedBox(height: 3),
               Text(description,
-                  style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 11)),
+                  style: TextStyle(color: tc.textSecondary, fontSize: 12, height: 1.3),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 6),
+              Row(children: [
+                if (collection.defaultGrade == HadithGrade.sahih) ...[
+                  Text('Sahih',
+                      style: TextStyle(color: tc.green.withValues(alpha: 0.85), fontSize: 11,
+                          fontWeight: FontWeight.w600)),
+                  Text('  ·  ',
+                      style: TextStyle(color: tc.textTertiary, fontSize: 11)),
+                ],
+                Text('${(collection.totalHadiths / 1000).toStringAsFixed(1)}k hadiths',
+                    style: TextStyle(color: tc.textTertiary, fontSize: 11)),
+              ]),
             ]),
           ),
-          const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (ref.watch(offlineContentProvider).downloadedCollections[collection.id] ?? false)
-                  Icon(Icons.offline_pin_rounded, color: tc.green.withValues(alpha: 0.5), size: 12),
-                if (ref.watch(offlineContentProvider).downloadedCollections[collection.id] ?? false)
-                  const SizedBox(width: 4),
-                if (collection.defaultGrade == HadithGrade.sahih)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                        color: tc.green.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(4)),
-                    child: Text('Sahih', style: TextStyle(color: tc.green.withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w600)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text('${(collection.totalHadiths / 1000).toStringAsFixed(1)}k',
-                style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.25), fontSize: 11)),
-            const SizedBox(height: 4),
-            Icon(Icons.chevron_right_rounded, color: tc.textSecondary.withValues(alpha: 0.2), size: 20),
-          ]),
+          const SizedBox(width: 6),
+          Icon(Icons.chevron_right_rounded, color: tc.textTertiary, size: 20),
         ]),
       ),
     );
@@ -480,23 +445,25 @@ class _ChapterList extends ConsumerWidget {
       children: [
         // ── Back header ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+          padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
           child: Row(children: [
-            IconButton(
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                ref.read(hadithNavDepthProvider.notifier).state = 0;
-              },
-              icon: Icon(Icons.arrow_back_rounded, color: tc.text.withValues(alpha: 0.6), size: 22),
-              splashRadius: 20,
+            _BackButton(
+              tc: tc,
+              onTap: () => ref.read(hadithNavDepthProvider.notifier).state = 0,
             ),
             const SizedBox(width: 4),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(collection.name,
-                  style: TextStyle(color: tc.text.withValues(alpha: 0.85), fontSize: 18,
+                  style: TextStyle(color: tc.text, fontSize: 18,
                       fontWeight: FontWeight.w600, letterSpacing: -0.3)),
-              Text(collection.arabicName,
-                  style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.35), fontSize: 12, fontFamily: 'Amiri')),
+              chaptersAsync.when(
+                data: (ch) => Text('${ch.length} chapters',
+                    style: TextStyle(color: tc.textSecondary, fontSize: 12)),
+                loading: () => Text('Loading…',
+                    style: TextStyle(color: tc.textTertiary, fontSize: 12)),
+                error: (_, __) => Text(collection.arabicName,
+                    style: TextStyle(color: tc.textSecondary, fontSize: 12, fontFamily: 'Amiri')),
+              ),
             ])),
             // "All Hadiths" shortcut
             _Pressable(
@@ -506,46 +473,20 @@ class _ChapterList extends ConsumerWidget {
                 ref.read(hadithNavDepthProvider.notifier).state = 2;
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
-                    color: tc.green.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(20)),
+                    color: tc.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.list_rounded, color: tc.green.withValues(alpha: 0.5), size: 14),
-                  const SizedBox(width: 4),
-                  Text('All', style: TextStyle(color: tc.green.withValues(alpha: 0.6), fontSize: 11, fontWeight: FontWeight.w600)),
+                  Icon(Icons.list_rounded, color: tc.accent, size: 15),
+                  const SizedBox(width: 5),
+                  Text('All', style: TextStyle(color: tc.accent, fontSize: 12, fontWeight: FontWeight.w600)),
                 ]),
               ),
             ),
           ]),
         ),
 
-        const SizedBox(height: 6),
-
-        // ── Info bar ──
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: tc.surface.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(12)),
-            child: Row(children: [
-              Icon(Icons.menu_book_rounded, color: tc.accent.withValues(alpha: 0.4), size: 15),
-              const SizedBox(width: 8),
-              Text('Chapters / Kitabs',
-                  style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.45), fontSize: 12, fontWeight: FontWeight.w500)),
-              const Spacer(),
-              chaptersAsync.when(
-                data: (ch) => Text('${ch.length} chapters',
-                    style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 11)),
-                loading: () => SizedBox(width: 12, height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 1, color: tc.green.withValues(alpha: 0.3))),
-                error: (_, __) => const SizedBox.shrink(),
-              ),
-            ]),
-          ),
-        ),
-
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
 
         // ── Chapter list ──
         Expanded(
@@ -580,7 +521,7 @@ class _ChapterList extends ConsumerWidget {
               SizedBox(width: 20, height: 20,
                   child: CircularProgressIndicator(strokeWidth: 1.5, color: tc.green.withValues(alpha: 0.4))),
               const SizedBox(height: 12),
-              Text('Loading chapters…', style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 12)),
+              Text('Loading chapters…', style: TextStyle(color: tc.textSecondary, fontSize: 12)),
             ])),
             error: (_, __) => _CenteredMessage(
               icon: Icons.error_outline, message: 'Failed to load chapters',
@@ -607,37 +548,37 @@ class _ChapterCard extends StatelessWidget {
     return _Pressable(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
-          color: tc.surface.withValues(alpha: 0.25),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: tc.surface.withValues(alpha: 0.35)),
+          color: tc.surface.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: tc.border.withValues(alpha: 0.5)),
         ),
         child: Row(children: [
           // Number badge
           Container(
-            width: 34, height: 34,
+            width: 36, height: 36,
             decoration: BoxDecoration(
-              color: tc.accent.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8)),
+              color: tc.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(9)),
             child: Center(child: Text('${chapter.chapterNumber}',
-                style: TextStyle(color: tc.accent.withValues(alpha: 0.55), fontSize: 12, fontWeight: FontWeight.w700))),
+                style: TextStyle(color: tc.accent, fontSize: 13, fontWeight: FontWeight.w700))),
           ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(chapter.chapterEnglish,
-                style: TextStyle(color: tc.text.withValues(alpha: 0.75), fontSize: 13,
+                style: TextStyle(color: tc.text, fontSize: 13.5,
                     fontWeight: FontWeight.w500, height: 1.3),
                 maxLines: 2, overflow: TextOverflow.ellipsis),
             if (chapter.chapterArabic.isNotEmpty) ...[
               const SizedBox(height: 3),
               Text(chapter.chapterArabic,
-                  style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 12, fontFamily: 'Amiri'),
+                  style: TextStyle(color: tc.textSecondary, fontSize: 12, fontFamily: 'Amiri'),
                   maxLines: 1, overflow: TextOverflow.ellipsis, textDirection: TextDirection.rtl),
             ],
           ])),
           const SizedBox(width: 6),
-          Icon(Icons.chevron_right_rounded, color: tc.textSecondary.withValues(alpha: 0.18), size: 20),
+          Icon(Icons.chevron_right_rounded, color: tc.textTertiary, size: 20),
         ]),
       ),
     );
@@ -666,21 +607,17 @@ class _HadithListView extends ConsumerWidget {
       children: [
         // ── Header ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+          padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
           child: Row(children: [
-            IconButton(
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                ref.read(hadithNavDepthProvider.notifier).state = 1;
-              },
-              icon: Icon(Icons.arrow_back_rounded, color: tc.text.withValues(alpha: 0.6), size: 22),
-              splashRadius: 20,
+            _BackButton(
+              tc: tc,
+              onTap: () => ref.read(hadithNavDepthProvider.notifier).state = 1,
             ),
             const SizedBox(width: 4),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                 chapter != null ? chapter.chapterEnglish : collection.shortName,
-                style: TextStyle(color: tc.text.withValues(alpha: 0.85), fontSize: 16,
+                style: TextStyle(color: tc.text, fontSize: 16,
                     fontWeight: FontWeight.w600, letterSpacing: -0.2),
                 maxLines: 1, overflow: TextOverflow.ellipsis,
               ),
@@ -697,7 +634,7 @@ class _HadithListView extends ConsumerWidget {
                       : '$count ${gradeFilter.displayName}';
                   return '$base · $suffix';
                 }(),
-                style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.4), fontSize: 11),
+                style: TextStyle(color: tc.textSecondary, fontSize: 11.5),
                 maxLines: 1, overflow: TextOverflow.ellipsis,
               ),
             ])),
@@ -706,7 +643,7 @@ class _HadithListView extends ConsumerWidget {
 
         // ── Grade filter pills ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
           child: SizedBox(
             height: 32,
             child: ListView(
@@ -761,7 +698,7 @@ class _HadithListView extends ConsumerWidget {
               SizedBox(width: 20, height: 20,
                   child: CircularProgressIndicator(strokeWidth: 1.5, color: tc.green.withValues(alpha: 0.4))),
               const SizedBox(height: 12),
-              Text('Loading hadiths…', style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 12)),
+              Text('Loading hadiths…', style: TextStyle(color: tc.textSecondary, fontSize: 12)),
             ])),
             error: (_, __) => _CenteredMessage(icon: Icons.error_outline,
                 message: 'Failed to load hadiths', actionLabel: 'Try Again',
@@ -812,6 +749,25 @@ class _PressableState extends State<_Pressable> {
   }
 }
 
+/// Consistent back affordance used across navigation depths.
+class _BackButton extends StatelessWidget {
+  final IslamicThemeColors tc;
+  final VoidCallback onTap;
+  const _BackButton({required this.tc, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Pressable(
+      onTap: onTap,
+      pressedScale: 0.9,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(Icons.arrow_back_rounded, color: tc.text.withValues(alpha: 0.8), size: 22),
+      ),
+    );
+  }
+}
+
 class _Pill extends StatelessWidget {
   final String label; final bool isSelected; final IslamicThemeColors tc;
   final Color? color; final VoidCallback onTap;
@@ -824,19 +780,19 @@ class _Pill extends StatelessWidget {
       onTap: onTap,
       pressedScale: 0.94,
       child: Container(
-        margin: const EdgeInsets.only(right: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? c.withValues(alpha: 0.10) : tc.surface.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(16),
+          color: isSelected ? c.withValues(alpha: 0.16) : tc.surface.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-              color: isSelected ? c.withValues(alpha: 0.25) : tc.surface.withValues(alpha: 0.5),
-              width: isSelected ? 1.0 : 0.6),
+              color: isSelected ? c.withValues(alpha: 0.4) : tc.border.withValues(alpha: 0.5),
+              width: 1),
         ),
         child: Text(label,
             style: TextStyle(
-                color: isSelected ? c.withValues(alpha: 0.8) : tc.textSecondary.withValues(alpha: 0.4),
-                fontSize: 11, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400)),
+                color: isSelected ? c : tc.textSecondary,
+                fontSize: 12, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500)),
       ),
     );
   }
@@ -853,15 +809,15 @@ class _LoadMoreButton extends StatelessWidget {
       child: _Pressable(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 13),
           decoration: BoxDecoration(
-              color: tc.green.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: tc.green.withValues(alpha: 0.10))),
+              color: tc.accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: tc.accent.withValues(alpha: 0.22))),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.expand_more_rounded, color: tc.green.withValues(alpha: 0.4), size: 18),
-            const SizedBox(width: 6),
-            Text('Load More ($remaining remaining)',
-                style: TextStyle(color: tc.green.withValues(alpha: 0.5), fontSize: 12, fontWeight: FontWeight.w500)),
+            Icon(Icons.expand_more_rounded, color: tc.accent, size: 18),
+            const SizedBox(width: 7),
+            Text('Load more  ·  $remaining remaining',
+                style: TextStyle(color: tc.accent, fontSize: 12.5, fontWeight: FontWeight.w600)),
           ]),
         ),
       ),
@@ -878,22 +834,24 @@ class _CenteredMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Icon(icon, color: tc.textSecondary.withValues(alpha: 0.12), size: 48),
-      const SizedBox(height: 12),
-      Text(message, style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.4), fontSize: 13)),
+      Icon(icon, color: tc.textTertiary.withValues(alpha: 0.5), size: 46),
+      const SizedBox(height: 14),
+      Text(message, style: TextStyle(color: tc.text, fontSize: 14, fontWeight: FontWeight.w500)),
       if (sub != null) ...[
-        const SizedBox(height: 4),
-        Text(sub!, style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.22), fontSize: 11)),
+        const SizedBox(height: 5),
+        Text(sub!, textAlign: TextAlign.center,
+            style: TextStyle(color: tc.textSecondary, fontSize: 12)),
       ],
       if (actionLabel != null && onAction != null) ...[
-        const SizedBox(height: 14),
-        GestureDetector(
-          onTap: onAction,
+        const SizedBox(height: 16),
+        _Pressable(
+          onTap: onAction!,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
             decoration: BoxDecoration(
-                color: tc.green.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(8)),
-            child: Text(actionLabel!, style: TextStyle(color: tc.green.withValues(alpha: 0.6), fontSize: 12)),
+                color: tc.accent.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10)),
+            child: Text(actionLabel!,
+                style: TextStyle(color: tc.accent, fontSize: 13, fontWeight: FontWeight.w600)),
           ),
         ),
       ],
@@ -919,45 +877,47 @@ class _HadithCard extends ConsumerWidget {
       onTap: () => _openReader(context, ref),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: isRead ? tc.surface.withValues(alpha: 0.45) : tc.surface.withValues(alpha: 0.28),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isRead ? tc.green.withValues(alpha: 0.10) : tc.surface.withValues(alpha: 0.4)),
+          color: tc.surface.withValues(alpha: isRead ? 0.28 : 0.45),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: tc.border.withValues(alpha: 0.5)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // Top row: number + grade + read
           Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                  color: tc.accent.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(5)),
-              child: Text('#${hadith.hadithNumber}',
-                  style: TextStyle(color: tc.accent.withValues(alpha: 0.55), fontSize: 11, fontWeight: FontWeight.w600)),
-            ),
+            Text('#${hadith.hadithNumber}',
+                style: TextStyle(color: tc.accent, fontSize: 12, fontWeight: FontWeight.w700)),
             if (hadith.grade != HadithGrade.unknown) ...[
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               _GradeBadge(grade: hadith.grade, tc: tc),
             ],
             const Spacer(),
-            if (isRead) Icon(Icons.check_circle_rounded, color: tc.green.withValues(alpha: 0.3), size: 14),
+            if (isRead)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.check_circle_rounded, color: tc.green.withValues(alpha: 0.7), size: 13),
+                const SizedBox(width: 4),
+                Text('Read', style: TextStyle(color: tc.textTertiary, fontSize: 11)),
+              ]),
           ]),
           if (hadith.chapterName != null && hadith.chapterName!.isNotEmpty) ...[
-            const SizedBox(height: 5),
+            const SizedBox(height: 6),
             Text(hadith.chapterName!,
-                style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.28), fontSize: 10.5),
+                style: TextStyle(color: tc.textTertiary, fontSize: 11),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 9),
           Text(
-            hadith.text.length > 150 ? '${hadith.text.substring(0, 150)}…' : hadith.text,
-            style: TextStyle(color: tc.text.withValues(alpha: 0.65), fontSize: 13.5, height: 1.55),
+            hadith.text.length > 160 ? '${hadith.text.substring(0, 160)}…' : hadith.text,
+            style: TextStyle(
+                color: isRead ? tc.textSecondary : tc.text,
+                fontSize: 14, height: 1.6),
             maxLines: 3, overflow: TextOverflow.ellipsis,
           ),
           if (hadith.narrator != null || hadith.extractedNarrator != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text('— ${hadith.narrator ?? hadith.extractedNarrator ?? ''}',
-                style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.28), fontSize: 10.5,
+                style: TextStyle(color: tc.textSecondary, fontSize: 11.5,
                     fontStyle: FontStyle.italic),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
@@ -997,10 +957,10 @@ class _GradeBadge extends StatelessWidget {
       _ => tc.textSecondary,
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(5)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(6)),
       child: Text(grade.displayName,
-          style: TextStyle(color: color.withValues(alpha: 0.65), fontSize: 10, fontWeight: FontWeight.w500)),
+          style: TextStyle(color: color.withValues(alpha: 0.95), fontSize: 10.5, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -1165,20 +1125,17 @@ class _ReaderTopBar extends ConsumerWidget {
       ),
       child: Row(children: [
         // Back
-        IconButton(
-          onPressed: onClose,
-          icon: Icon(Icons.arrow_back_rounded, color: tc.text.withValues(alpha: 0.65), size: 22),
-          splashRadius: 20,
-        ),
+        _BackButton(tc: tc, onTap: onClose),
+        const SizedBox(width: 4),
         // Title
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(hadith.collection.toUpperCase(),
-              style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.4), fontSize: 9,
-                  fontWeight: FontWeight.w700, letterSpacing: 1.4)),
-          const SizedBox(height: 1),
+              style: TextStyle(color: tc.textSecondary, fontSize: 10,
+                  fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+          const SizedBox(height: 2),
           Row(children: [
             Text('Hadith ${hadith.hadithNumber}',
-                style: TextStyle(color: tc.text.withValues(alpha: 0.82), fontSize: 14,
+                style: TextStyle(color: tc.text, fontSize: 15,
                     fontWeight: FontWeight.w600)),
             if (hadith.grade != HadithGrade.unknown) ...[
               const SizedBox(width: 8),
@@ -1187,26 +1144,25 @@ class _ReaderTopBar extends ConsumerWidget {
           ]),
         ])),
         // Bookmark
-        GestureDetector(
-          onTap: () {
-            ref.read(readHadithsProvider.notifier).toggleRead(hadith);
-          },
+        _Pressable(
+          onTap: () => ref.read(readHadithsProvider.notifier).toggleRead(hadith),
+          pressedScale: 0.85,
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Icon(
               isRead ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
-              color: isRead ? tc.accent : tc.textSecondary.withValues(alpha: 0.3),
-              size: 21,
+              color: isRead ? tc.accent : tc.textSecondary,
+              size: 22,
             ),
           ),
         ),
         // Settings
-        GestureDetector(
+        _Pressable(
           onTap: onSettings,
+          pressedScale: 0.85,
           child: Padding(
             padding: const EdgeInsets.all(8),
-            child: Icon(Icons.tune_rounded,
-                color: tc.textSecondary.withValues(alpha: 0.4), size: 21),
+            child: Icon(Icons.tune_rounded, color: tc.textSecondary, size: 21),
           ),
         ),
       ]),
@@ -1259,13 +1215,13 @@ class _ReaderGradeBadge extends ConsumerWidget {
       _                  => tc.textSecondary,
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
       decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.09),
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: color.withValues(alpha: 0.18))),
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withValues(alpha: 0.3))),
       child: Text(grade.displayName,
-          style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 10,
+          style: TextStyle(color: color.withValues(alpha: 0.95), fontSize: 10,
               fontWeight: FontWeight.w600)),
     );
   }
@@ -1295,9 +1251,9 @@ class _HadithPage extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
             decoration: BoxDecoration(
-              color: tc.surface.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: tc.accent.withValues(alpha: 0.07)),
+              color: tc.surface.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: tc.border.withValues(alpha: 0.6)),
             ),
             child: Text(
               hadith.arabicText!,
@@ -1311,45 +1267,36 @@ class _HadithPage extends ConsumerWidget {
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 20),
-          // divider ornament
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(width: 28, height: 0.5, color: tc.accent.withValues(alpha: 0.18)),
-            const SizedBox(width: 10),
-            Text('✦', style: TextStyle(fontSize: 8, color: tc.accent.withValues(alpha: 0.28))),
-            const SizedBox(width: 10),
-            Container(width: 28, height: 0.5, color: tc.accent.withValues(alpha: 0.18)),
-          ]),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
         ],
 
         // ══ Narrator ══
         if (hadith.narrator != null || hadith.extractedNarrator != null) ...[
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: BoxDecoration(
-              color: tc.green.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(8),
-              border: Border(left: BorderSide(color: tc.green.withValues(alpha: 0.25), width: 2.5)),
+              color: tc.accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border(left: BorderSide(color: tc.accent.withValues(alpha: 0.5), width: 3)),
             ),
             child: Text(
               hadith.narrator ?? hadith.extractedNarrator ?? '',
               style: TextStyle(
-                color: tc.textSecondary.withValues(alpha: 0.55),
-                fontSize: 12.5,
+                color: tc.textSecondary,
+                fontSize: 13,
                 fontStyle: FontStyle.italic,
                 height: 1.5,
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
         ],
 
         // ══ Translation text ══
         SelectableText(
           hadith.text,
           style: TextStyle(
-            color: tc.text.withValues(alpha: 0.88),
+            color: tc.text,
             fontSize: prefs.fontSize,
             height: 1.9,
             letterSpacing: 0.05,
@@ -1361,11 +1308,11 @@ class _HadithPage extends ConsumerWidget {
         // ══ Metadata card ══
         if (prefs.showMetadata) ...[
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: tc.surface.withValues(alpha: 0.28),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: tc.surface.withValues(alpha: 0.45)),
+              color: tc.surface.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: tc.border.withValues(alpha: 0.5)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _MetaRow(label: 'Reference',
@@ -1378,10 +1325,10 @@ class _HadithPage extends ConsumerWidget {
                 _MetaDivider(tc: tc),
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Chapter',
-                      style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.38), fontSize: 11)),
+                      style: TextStyle(color: tc.textSecondary, fontSize: 11.5)),
                   const SizedBox(width: 12),
                   Expanded(child: Text(hadith.chapterName!,
-                      style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.58), fontSize: 11.5),
+                      style: TextStyle(color: tc.text, fontSize: 11.5, fontWeight: FontWeight.w500),
                       textAlign: TextAlign.end, maxLines: 2, overflow: TextOverflow.ellipsis)),
                 ]),
               ],
@@ -1389,7 +1336,7 @@ class _HadithPage extends ConsumerWidget {
                 _MetaDivider(tc: tc),
                 Row(children: [
                   Text('Authenticity',
-                      style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.38), fontSize: 11)),
+                      style: TextStyle(color: tc.textSecondary, fontSize: 11.5)),
                   const Spacer(),
                   _ReaderGradeBadge(grade: hadith.grade),
                 ]),
@@ -1397,27 +1344,26 @@ class _HadithPage extends ConsumerWidget {
               if (hadith.scholarGrades.isNotEmpty) ...[
                 _MetaDivider(tc: tc),
                 ...hadith.scholarGrades.map((sg) => Padding(
-                  padding: const EdgeInsets.only(top: 3),
+                  padding: const EdgeInsets.only(top: 4),
                   child: Text(sg.displayText,
-                      style: TextStyle(
-                          color: tc.textSecondary.withValues(alpha: 0.38), fontSize: 10.5)),
+                      style: TextStyle(color: tc.textSecondary, fontSize: 11)),
                 )),
               ],
             ]),
           ),
         ],
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         // Swipe hint
         if (totalInChapter > 1)
           Center(child: Row(mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(Icons.swipe_rounded,
-                color: tc.textSecondary.withValues(alpha: 0.22), size: 13),
-            const SizedBox(width: 6),
-            Text('swipe to navigate',
-                style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.24),
-                    fontSize: 10.5, letterSpacing: 0.8)),
+                color: tc.textTertiary, size: 14),
+            const SizedBox(width: 7),
+            Text('Swipe for next hadith',
+                style: TextStyle(color: tc.textTertiary,
+                    fontSize: 11.5, letterSpacing: 0.3)),
           ])),
         const SizedBox(height: 32),
       ]),
@@ -1430,7 +1376,7 @@ class _MetaDivider extends StatelessWidget {
   const _MetaDivider({required this.tc});
   @override
   Widget build(BuildContext context) => Divider(
-      color: tc.textSecondary.withValues(alpha: 0.06), height: 18);
+      color: tc.border.withValues(alpha: 0.5), height: 20);
 }
 
 class _MetaRow extends StatelessWidget {
@@ -1439,11 +1385,11 @@ class _MetaRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(children: [
     Text(label,
-        style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.38), fontSize: 11)),
+        style: TextStyle(color: tc.textSecondary, fontSize: 11.5)),
     const Spacer(),
     Text(value,
-        style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.62), fontSize: 11.5,
-            fontWeight: FontWeight.w500)),
+        style: TextStyle(color: tc.text, fontSize: 11.5,
+            fontWeight: FontWeight.w600)),
   ]);
 }
 
@@ -1489,14 +1435,14 @@ class _ReaderActionBar extends ConsumerWidget {
         const SizedBox(width: 6),
         // Counter pill
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
           decoration: BoxDecoration(
-            color: tc.surface.withValues(alpha: 0.4),
+            color: tc.surface.withValues(alpha: 0.55),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text('${currentIndex + 1} / $total',
-              style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.5),
-                  fontSize: 12, fontWeight: FontWeight.w500)),
+              style: TextStyle(color: tc.textSecondary,
+                  fontSize: 12, fontWeight: FontWeight.w600)),
         ),
         const SizedBox(width: 6),
         // Share
@@ -1531,8 +1477,8 @@ class _NavBtn extends StatelessWidget {
       ),
       child: Icon(icon,
           color: enabled
-              ? tc.textSecondary.withValues(alpha: 0.65)
-              : tc.textSecondary.withValues(alpha: 0.18),
+              ? tc.text.withValues(alpha: 0.8)
+              : tc.textTertiary.withValues(alpha: 0.4),
           size: 20),
     ),
   );
@@ -1551,7 +1497,7 @@ class _ActBtn extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Icon(icon, color: tc.textSecondary.withValues(alpha: 0.45), size: 21),
+        child: Icon(icon, color: tc.textSecondary, size: 21),
       ),
     ),
   );
@@ -1585,7 +1531,7 @@ class _ReaderSettingsSheet extends ConsumerWidget {
 
         // Title
         Text('Reading Settings',
-            style: TextStyle(color: tc.text.withValues(alpha: 0.85), fontSize: 16,
+            style: TextStyle(color: tc.text, fontSize: 17,
                 fontWeight: FontWeight.w600)),
         const SizedBox(height: 18),
 
@@ -1659,8 +1605,8 @@ class _ReaderSettingsSheet extends ConsumerWidget {
             ),
             child: Text('Reset to Defaults',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.5),
-                    fontSize: 13, fontWeight: FontWeight.w500)),
+                style: TextStyle(color: tc.textSecondary,
+                    fontSize: 13, fontWeight: FontWeight.w600)),
           ),
         ),
       ]),
@@ -1673,8 +1619,8 @@ class _SheetSection extends StatelessWidget {
   const _SheetSection({required this.label, required this.tc});
   @override
   Widget build(BuildContext context) => Text(label,
-      style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.3), fontSize: 10,
-          fontWeight: FontWeight.w700, letterSpacing: 1.4));
+      style: TextStyle(color: tc.textSecondary, fontSize: 11,
+          fontWeight: FontWeight.w700, letterSpacing: 1.2));
 }
 
 class _ToggleRow extends StatelessWidget {
@@ -1696,9 +1642,9 @@ class _ToggleRow extends StatelessWidget {
       ),
       const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(color: tc.text.withValues(alpha: 0.78),
-            fontSize: 13.5, fontWeight: FontWeight.w500)),
-        Text(sub, style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.32), fontSize: 11)),
+        Text(label, style: TextStyle(color: tc.text,
+            fontSize: 14, fontWeight: FontWeight.w500)),
+        Text(sub, style: TextStyle(color: tc.textSecondary, fontSize: 11.5)),
       ])),
       Switch(
         value: value,
@@ -1724,7 +1670,7 @@ class _SliderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(children: [
     SizedBox(width: 80,
-        child: Text(label, style: TextStyle(color: tc.text.withValues(alpha: 0.65),
+        child: Text(label, style: TextStyle(color: tc.text,
             fontSize: 13, fontWeight: FontWeight.w500))),
     Expanded(child: SliderTheme(
       data: SliderThemeData(
