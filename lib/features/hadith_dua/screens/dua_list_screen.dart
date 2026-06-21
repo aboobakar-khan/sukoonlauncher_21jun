@@ -88,7 +88,6 @@ class DuaListScreen extends ConsumerWidget {
         children: [
           IconButton(
             onPressed: () {
-              HapticFeedback.lightImpact();
               Navigator.pop(context);
             },
             icon: Icon(
@@ -151,7 +150,6 @@ class DuaListScreen extends ConsumerWidget {
           index: index,
           tc: tc,
           onTap: () {
-            HapticFeedback.lightImpact();
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => DuaReadingScreen(

@@ -97,7 +97,6 @@ class NotificationDhikrService {
     await _updateNotification();
 
     // Haptic feedback (if app is in foreground)
-    HapticFeedback.lightImpact();
   }
 
   /// Handle reset action

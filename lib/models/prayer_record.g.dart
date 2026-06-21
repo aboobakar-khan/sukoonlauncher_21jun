@@ -25,13 +25,17 @@ class PrayerRecordAdapter extends TypeAdapter<PrayerRecord> {
       maghrib: fields[5] as bool,
       isha: fields[6] as bool,
       createdAt: fields[7] as DateTime,
+      tahajjud: fields[8] as bool? ?? false,
+      ishraq: fields[9] as bool? ?? false,
+      chasht: fields[10] as bool? ?? false,
+      awwabin: fields[11] as bool? ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, PrayerRecord obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +51,15 @@ class PrayerRecordAdapter extends TypeAdapter<PrayerRecord> {
       ..writeByte(6)
       ..write(obj.isha)
       ..writeByte(7)
-      ..write(obj.createdAt);
+      ..write(obj.createdAt)
+      ..writeByte(8)
+      ..write(obj.tahajjud)
+      ..writeByte(9)
+      ..write(obj.ishraq)
+      ..writeByte(10)
+      ..write(obj.chasht)
+      ..writeByte(11)
+      ..write(obj.awwabin);
   }
 
   @override

@@ -79,7 +79,6 @@ class _ClockStylePickerScreenState
                       isLight: isLight,
                       primaryText: primaryText,
                       onTap: () {
-                        HapticFeedback.lightImpact();
                         if (isLocked) {
                           showPremiumPaywall(context,
                               triggerFeature: 'Clock: ${style.name}');

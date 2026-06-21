@@ -11,6 +11,10 @@ class DisplaySettings {
   final int ramadanDayOffset;
   /// Time format: true = 24-hour, false = 12-hour (AM/PM)
   final bool use24HourFormat;
+  /// Status Bar visibility: true = shown, false = hidden (default)
+  final bool showStatusBar;
+  /// Type of widget to show: 'prayer_time' (default) or 'salah_wake'
+  final String homePrayerWidgetType;
 
   const DisplaySettings({
     this.showPrayerWidget = false,  // Disabled by default - opt-in
@@ -19,6 +23,8 @@ class DisplaySettings {
     this.showDuaWidget = false,     // Disabled by default - opt-in
     this.ramadanDayOffset = 0,
     this.use24HourFormat = false,
+    this.showStatusBar = false,
+    this.homePrayerWidgetType = 'prayer_time',
   });
 
   DisplaySettings copyWith({
@@ -28,6 +34,8 @@ class DisplaySettings {
     bool? showDuaWidget,
     int? ramadanDayOffset,
     bool? use24HourFormat,
+    bool? showStatusBar,
+    String? homePrayerWidgetType,
   }) {
     return DisplaySettings(
       showPrayerWidget: showPrayerWidget ?? this.showPrayerWidget,
@@ -36,6 +44,8 @@ class DisplaySettings {
       showDuaWidget: showDuaWidget ?? this.showDuaWidget,
       ramadanDayOffset: ramadanDayOffset ?? this.ramadanDayOffset,
       use24HourFormat: use24HourFormat ?? this.use24HourFormat,
+      showStatusBar: showStatusBar ?? this.showStatusBar,
+      homePrayerWidgetType: homePrayerWidgetType ?? this.homePrayerWidgetType,
     );
   }
 }
@@ -47,6 +57,8 @@ class DisplaySettingsNotifier extends StateNotifier<DisplaySettings> {
   static const _keyDua      = 'display_dua_widget';
   static const _keyRamadanOffset = 'display_ramadan_day_offset';
   static const _key24Hour   = 'display_use_24hour_format';
+  static const _keyStatusBar = 'display_show_status_bar';
+  static const _keyHomeWidgetType = 'display_home_prayer_widget_type';
 
   DisplaySettingsNotifier() : super(const DisplaySettings()) {
     _load();
@@ -61,6 +73,8 @@ class DisplaySettingsNotifier extends StateNotifier<DisplaySettings> {
       showDuaWidget:     prefs.getBool(_keyDua)     ?? false,  // Opt-in default
       ramadanDayOffset:  prefs.getInt(_keyRamadanOffset) ?? 0,
       use24HourFormat:   prefs.getBool(_key24Hour) ?? false,
+      showStatusBar:     prefs.getBool(_keyStatusBar) ?? false,
+      homePrayerWidgetType: prefs.getString(_keyHomeWidgetType) ?? 'prayer_time',
     );
   }
 
@@ -99,6 +113,18 @@ class DisplaySettingsNotifier extends StateNotifier<DisplaySettings> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_key24Hour, value);
     state = state.copyWith(use24HourFormat: value);
+  }
+
+  Future<void> setShowStatusBar(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyStatusBar, value);
+    state = state.copyWith(showStatusBar: value);
+  }
+
+  Future<void> setHomePrayerWidgetType(String type) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyHomeWidgetType, type);
+    state = state.copyWith(homePrayerWidgetType: type);
   }
 }
 

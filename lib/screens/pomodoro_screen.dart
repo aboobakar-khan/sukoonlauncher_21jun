@@ -283,7 +283,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                     final isSelected = chosen == tag;
                     return GestureDetector(
                       onTap: () {
-                        HapticFeedback.selectionClick();
                         setLocal(() => chosen = isSelected ? null : tag);
                       },
                       child: AnimatedContainer(
@@ -357,7 +356,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () {
-                        HapticFeedback.selectionClick();
                         setLocal(() => chosen = customCtrl.text.trim());
                       },
                       child: Container(
@@ -382,7 +380,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                   width: double.infinity,
                   child: GestureDetector(
                     onTap: () {
-                      HapticFeedback.mediumImpact();
                       // Use custom text if typed but not yet "used"
                       final finalTag = chosen ??
                           (customCtrl.text.trim().isNotEmpty
@@ -432,7 +429,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref.read(focusStreakProvider.notifier).recordSession();
         _pulseCtrl.forward(from: 0);
-        HapticFeedback.heavyImpact();
         _showTransition(_TransitionInfo(
           isFocusDone: true,
           minutes: pomo.settings.focusMinutes,
@@ -513,7 +509,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                     if (!isActive) ...[
                       GestureDetector(
                         onTap: () {
-                          HapticFeedback.lightImpact();
                           Navigator.push(context,
                               _slideRoute(_StatsPage(light: _light)));
                         },
@@ -526,7 +521,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                       ),
                       GestureDetector(
                         onTap: () {
-                          HapticFeedback.lightImpact();
                           Navigator.push(context,
                               _slideRoute(const _SettingsPage()));
                         },
@@ -537,7 +531,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                     ] else ...[
                       GestureDetector(
                         onTap: () {
-                          HapticFeedback.lightImpact();
                           if (sound.isPlaying) {
                             ref.read(ambientSoundProvider.notifier).stop();
                           } else {
@@ -626,18 +619,24 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                           mainAxisSize: MainAxisSize.min,
                           children: List.generate(
                               pomo.settings.sessionsBeforeLongBreak, (i) {
-                            final done = i < pomo.completedSessions %
+                            final cyclePos = pomo.completedSessions %
                                 pomo.settings.sessionsBeforeLongBreak;
-                            final cur  = i == pomo.completedSessions %
-                                pomo.settings.sessionsBeforeLongBreak;
+                            // During break/paused-from-break, the focus dot
+                            // is done — reflect that visually.
+                            final effectiveDone = (isShort || (isPaused && pomo.previousState == PomodoroState.shortBreak))
+                                ? cyclePos  // break means last focus is done
+                                : cyclePos;
+                            final done = i < effectiveDone;
+                            final cur  = i == effectiveDone && (isFocusing || (isPaused && pomo.previousState == PomodoroState.focusing));
+                            final isBreakDot = i == cyclePos && isShort;
                             return AnimatedContainer(
                               duration: const Duration(milliseconds: 300),
                               margin: const EdgeInsets.symmetric(horizontal: 4),
-                              width: cur ? 22 : 8,
+                              width: (cur || isBreakDot) ? 22 : 8,
                               height: 8,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(4),
-                                color: done
+                                color: done || isBreakDot
                                     ? accent
                                     : cur
                                         ? accent.withValues(alpha: 0.45)
@@ -653,7 +652,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                         // ── Focus tag display / picker trigger ──
                         GestureDetector(
                           onTap: () {
-                            HapticFeedback.lightImpact();
                             _showTagPicker();
                           },
                           behavior: HitTestBehavior.opaque,
@@ -704,7 +702,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                         const SizedBox(height: 28),
                         GestureDetector(
                           onTap: () {
-                            HapticFeedback.mediumImpact();
                             _showTagPicker();
                           },
                           child: Container(
@@ -744,7 +741,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                             icon: Icons.skip_previous_rounded,
                             color: sub, size: 50,
                             onTap: () {
-                              HapticFeedback.mediumImpact();
                               ref.read(pomodoroProvider.notifier).skipBackward();
                             },
                           ),
@@ -753,7 +749,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                             icon: Icons.stop_rounded,
                             color: sub, size: 50,
                             onTap: () {
-                              HapticFeedback.mediumImpact();
                               ref.read(pomodoroProvider.notifier).reset();
                               setState(() => _focusTag = null);
                             },
@@ -765,7 +760,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                                 : Icons.pause_rounded,
                             color: accent, size: 64, filled: true,
                             onTap: () {
-                              HapticFeedback.mediumImpact();
                               if (isPaused) {
                                 ref.read(pomodoroProvider.notifier).resume();
                               } else {
@@ -780,7 +774,6 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                             icon: Icons.skip_next_rounded,
                             color: sub, size: 50,
                             onTap: () {
-                              HapticFeedback.mediumImpact();
                               final wasBreak =
                                   pomo.state == PomodoroState.shortBreak;
                               final totalMins = wasBreak
@@ -979,7 +972,6 @@ class _SettingsPage extends ConsumerWidget {
                 value: value.toDouble(),
                 min: min, max: max, divisions: divisions,
                 onChanged: (v) {
-                  HapticFeedback.selectionClick();
                   onChanged(v);
                 },
               ),
@@ -1020,7 +1012,6 @@ class _SettingsPage extends ConsumerWidget {
             Switch.adaptive(
               value: value,
               onChanged: (v) {
-                HapticFeedback.selectionClick();
                 onChanged(v);
               },
               activeThumbColor: Colors.white,
@@ -1053,7 +1044,6 @@ class _SettingsPage extends ConsumerWidget {
               const Spacer(),
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   ref.read(hubThemeLightModeProvider.notifier).toggle();
                 },
                 behavior: HitTestBehavior.opaque,
@@ -1145,7 +1135,6 @@ class _SettingsPage extends ConsumerWidget {
                       label: 'Dark Mode', hint: '',
                       value: !light,
                       onChanged: (_) {
-                        HapticFeedback.selectionClick();
                         ref.read(hubThemeLightModeProvider.notifier).toggle();
                       },
                     ),
@@ -1371,7 +1360,6 @@ class _StatsPageState extends ConsumerState<_StatsPage> {
                             onTap: isFuture
                                 ? null
                                 : () {
-                                    HapticFeedback.selectionClick();
                                     setState(() => _selectedDate = date);
                                     _loadDayLogs(date);
                                   },
@@ -1622,7 +1610,6 @@ class _AmbientCard extends ConsumerWidget {
               icon: Icons.volume_off_rounded, label: 'Off',
               selected: !sound.isPlaying, accent: slider, sub: sub,
               onTap: () {
-                HapticFeedback.selectionClick();
                 ref.read(ambientSoundProvider.notifier).stop();
               },
             ),
@@ -1632,7 +1619,6 @@ class _AmbientCard extends ConsumerWidget {
                 icon: icons[i], label: labels[i],
                 selected: sel, accent: slider, sub: sub,
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   ref.read(ambientSoundProvider.notifier).selectAndPlay(ids[i]);
                 },
               );

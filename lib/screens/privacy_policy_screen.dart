@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/swipe_back_wrapper.dart';
 
-/// Privacy Policy Screen - Full privacy policy for Play Store compliance
+/// Privacy Policy Screen - Full privacy policy for Play Store & Razorpay compliance
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
 
@@ -58,7 +58,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSection(
-          title: 'Last updated: 17 March 2026',
+          title: 'Last updated: 2 April 2026',
           content:
               'Sukoon Launcher ("we", "our", or "the app") is a peaceful Islamic launcher application designed for a focused, mindful digital life. Your privacy is very important to us. This Privacy Policy explains how we handle information when you use our application.\n\nBy using this app, you agree to the practices described in this policy.',
         ),
@@ -83,7 +83,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
         _buildSection(
           title: '3. App Usage Access Permission',
           content:
-              '• If you enable the Screen Time Tracker or App Blocker features, the app may request Usage Access permission.\n\n'
+              '• If you enable the App Timer or App Blocker features, the app may request Usage Access permission.\n\n'
               '• Usage data is processed only on your device to show you how long you spend in each app and to enforce time limits you set.\n\n'
               '• We do not collect, store, or transmit app usage information to any server.\n\n'
               '• Granting this permission is entirely optional.',
@@ -101,8 +101,8 @@ class PrivacyPolicyScreen extends StatelessWidget {
         _buildSection(
           title: '5. Installed Apps Information',
           content:
-              '• The app accesses the list of installed applications on your device (QUERY_ALL_PACKAGES) in order to display, search, and launch apps as part of the launcher functionality.\n\n'
-              '• This information remains on your device and is not transmitted or shared.',
+              '• As a launcher application, Sukoon reads the list of installed applications that have a launcher activity, in order to display, search, and launch apps on your home screen and app drawer.\n\n'
+              '• This information is processed entirely on your device and is never transmitted, uploaded, or shared with any server or third party.',
         ),
         const SizedBox(height: 24),
         _buildSection(
@@ -119,9 +119,9 @@ class PrivacyPolicyScreen extends StatelessWidget {
         _buildSection(
           title: '7. Overlay & Do Not Disturb',
           content:
-              '• The app uses System Alert Window (overlay) permission for the Muraqaba feature, which displays a full-screen focus overlay and blocks notification bar pull-down during focus sessions.\n\n'
-              '• Do Not Disturb (DND) access is requested to silence notifications during Muraqaba sessions.\n\n'
-              '• These permissions are only used when you actively start a Muraqaba session.\n\n'
+              '• The app uses System Alert Window (overlay) permission for the Kahf Mode feature, which displays a full-screen focus overlay and blocks notification bar pull-down during focus sessions.\n\n'
+              '• Do Not Disturb (DND) access is requested to silence notifications during Kahf Mode sessions.\n\n'
+              '• These permissions are only used when you actively start a Kahf Mode session.\n\n'
               '• Granting these permissions is entirely optional.',
         ),
         const SizedBox(height: 24),
@@ -143,66 +143,113 @@ class PrivacyPolicyScreen extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         _buildSection(
-          title: '10. Voluntary Donations',
+          title: '10. Voluntary Donations & Payment Processing',
           content:
-              '• The app offers optional voluntary donations to support development.\n\n'
-              '• Donations are processed securely by Razorpay, a trusted payment gateway.\n\n'
-              '• We do not store, access, or process any payment card or billing information — all transactions are handled entirely by Razorpay.\n\n'
-              '• Donating is completely optional and does not unlock or restrict any features — the entire app is free.',
+              '• The app offers optional voluntary donations to support development. Donating is completely optional and does not unlock or restrict any features — the entire app is free.\n\n'
+              '• Donations may be processed through the following trusted third-party payment processors:\n\n'
+              '  – Razorpay (razorpay.com) — a PCI-DSS compliant payment gateway regulated by the Reserve Bank of India (RBI).\n'
+              '  – PayPal (paypal.com) — a globally trusted payment platform.\n'
+              '  – Ko-fi (ko-fi.com) — a voluntary support platform.\n\n'
+              '• We do not store, access, or process any payment card details, bank account information, UPI IDs, or billing information. All payment data is handled entirely by the respective payment processor.\n\n'
+              '• Razorpay may collect certain information (name, email, phone number, payment instrument details) as required to process transactions. This data is governed by Razorpay\'s own Privacy Policy (https://razorpay.com/privacy/).\n\n'
+              '• We only receive transaction confirmation (success/failure status and transaction ID) — no sensitive financial data is shared with us.\n\n'
+              '• All donations are voluntary, and by proceeding with payment, you agree to the terms of the respective payment processor.',
         ),
         const SizedBox(height: 24),
         _buildSection(
-          title: '11. Internet Access',
+          title: '11. Refund & Cancellation Policy',
+          content:
+              '• All donations made through the app are voluntary contributions (sadaqah) to support the development and maintenance of Sukoon Launcher.\n\n'
+              '• Since donations are not payments for goods or services, they are generally non-refundable.\n\n'
+              '• However, if a transaction was made in error (e.g., duplicate payment, unauthorized transaction, or technical glitch), you may request a refund by contacting us within 7 days of the transaction.\n\n'
+              '• To request a refund, please email us at mewatxpro2@gmail.com with your transaction ID, payment method, date of transaction, and reason for the refund request.\n\n'
+              '• Refund requests will be reviewed within 5–7 business days. If approved, the refund will be processed to the original payment method within 7–10 business days.\n\n'
+              '• Cancellation: Since donations are one-time voluntary payments (not subscriptions), there is no recurring billing to cancel. Each donation is a single, standalone transaction.',
+        ),
+        const SizedBox(height: 24),
+        _buildSection(
+          title: '12. Terms of Service',
+          content:
+              '• By using Sukoon Launcher, you agree to the following terms:\n\n'
+              '• License: You are granted a non-exclusive, non-transferable license to use the app on your personal Android device.\n\n'
+              '• Free to Use: All features of the app are provided free of charge. No purchases are required to access any functionality.\n\n'
+              '• Voluntary Donations: Any donations you make are entirely voluntary and are used to support development, server infrastructure, and community growth. Donations do not constitute a purchase and do not entitle you to any additional features or services beyond what is already freely available.\n\n'
+              '• Content Accuracy: While we strive to provide accurate Islamic content (prayer times, Qur\'an text, Hadith, Duas), we do not guarantee absolute accuracy. Users should verify with qualified scholars for religious rulings.\n\n'
+              '• No Warranty: The app is provided "as is" without warranties of any kind, express or implied.\n\n'
+              '• Limitation of Liability: We shall not be liable for any direct, indirect, incidental, or consequential damages arising from the use of this app.\n\n'
+              '• Modifications: We reserve the right to modify, update, or discontinue any feature of the app at any time.\n\n'
+              '• Governing Law: These terms shall be governed by and construed in accordance with the laws of India.',
+        ),
+        const SizedBox(height: 24),
+        _buildSection(
+          title: '13. Internet Access',
           content:
               '• Internet permission is used for:\n\n'
               '  – Fetching prayer times from the Aladhan API.\n\n'
-              '  – Processing voluntary donations via Razorpay.\n\n'
+              '  – Processing voluntary donations via Razorpay, PayPal, or Ko-fi.\n\n'
+              '  – Downloading Hadith content for offline access from hadithapi.com.\n\n'
               '  – Fetching video titles from YouTube\'s public oEmbed API when you save a link to Calm Watch.\n\n'
               '• Calm Watch uses the YouTube IFrame Player API (YouTube\'s official embedding method) to play videos inside the app. No personal data is sent to YouTube.\n\n'
               '• No other personal data is ever transmitted over the network.',
         ),
         const SizedBox(height: 24),
         _buildSection(
-          title: '12. Storage & Media Access',
+          title: '14. Storage & Media Access',
           content:
               '• The app may request storage/media access to let you select custom alarm sounds from your device.\n\n'
               '• Files are read locally and never uploaded or transmitted.',
         ),
         const SizedBox(height: 24),
         _buildSection(
-          title: '13. Third-Party Services',
+          title: '15. Third-Party Services',
           content:
               'The app uses trusted third-party services including:\n\n'
               '• Aladhan API (for prayer time calculation)\n\n'
-              '• Razorpay (for voluntary donation processing)\n\n'
+              '• Razorpay (for voluntary donation processing — razorpay.com/privacy)\n\n'
+              '• PayPal (for voluntary donation processing — paypal.com/privacy)\n\n'
+              '• Ko-fi (for voluntary support — ko-fi.com/privacy)\n\n'
+              '• hadithapi.com (for Hadith content)\n\n'
               '• YouTube IFrame Player API (for Calm Watch in-app video playback)\n\n'
               '• YouTube oEmbed API (for fetching video titles in Calm Watch)\n\n'
-              'These services operate under their own privacy policies. No personal data is shared with any third-party service.',
+              'These services operate under their own privacy policies. No personal data is shared with any third-party service except as required for payment processing.',
         ),
         const SizedBox(height: 24),
         _buildSection(
-          title: '14. Children\'s Privacy',
+          title: '16. Children\'s Privacy',
           content:
               'This app does not knowingly collect any personal information from children under the age of 13.',
         ),
         const SizedBox(height: 24),
         _buildSection(
-          title: '15. Data Security',
+          title: '17. Data Security',
           content:
               'All user data and settings are stored locally on the device using encrypted local storage. No data is transmitted to external servers. We take reasonable steps to protect the app from unauthorized access.',
         ),
         const SizedBox(height: 24),
         _buildSection(
-          title: '16. Changes to This Policy',
+          title: '18. Changes to This Policy',
           content:
               'We may update this Privacy Policy from time to time. Any changes will be reflected on this page with an updated date.',
         ),
         const SizedBox(height: 24),
         _buildSection(
-          title: '17. Contact Us',
+          title: '19. Merchant / Developer Information',
           content:
-              'If you have any questions about this Privacy Policy, you may contact us at:\n\n'
-              '📧 mewatxpro2@gmail.com',
+              'App Name: Sukoon Launcher\n\n'
+              'Developer: Abu Bakar (Sukoon Foundation)\n\n'
+              'Registered Address: India\n\n'
+              'Email: mewatxpro2@gmail.com\n\n'
+              'Website: https://sukoon-launcher.web.app (if applicable)\n\n'
+              'This information is provided as required by payment processors (Razorpay, PayPal) for merchant verification.',
+        ),
+        const SizedBox(height: 24),
+        _buildSection(
+          title: '20. Contact Us',
+          content:
+              'If you have any questions, concerns, or refund requests regarding this Privacy Policy, you may contact us at:\n\n'
+              '📧 mewatxpro2@gmail.com\n\n'
+              '💬 WhatsApp: +91 81711 14186\n\n'
+              'We aim to respond to all inquiries within 48 hours.',
         ),
         const SizedBox(height: 40),
       ],

@@ -180,7 +180,6 @@ class _FavoritePickerScreenState extends ConsumerState<FavoritePickerScreen> {
                       );
                       return;
                     }
-                    HapticFeedback.selectionClick();
                     await ref
                         .read(favoriteAppsProvider.notifier)
                         .toggleFavorite(app.packageName, app.appName);

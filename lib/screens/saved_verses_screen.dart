@@ -133,7 +133,6 @@ class SavedVersesScreen extends ConsumerWidget {
       key: ValueKey(verse.key),
       direction: DismissDirection.endToStart,
       onDismissed: (_) {
-        HapticFeedback.mediumImpact();
         ref.read(savedVersesProvider.notifier).removeVerse(verse.key);
       },
       background: Container(

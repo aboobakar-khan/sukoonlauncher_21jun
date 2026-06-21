@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 // ─── Year Dots Analytics Grid ─────────────────────────────────────────────────
 // Hero 365-dot grid — designed to fill ~80% of the screen on first view.
@@ -353,7 +352,6 @@ class DotsColorPicker extends StatelessWidget {
           final isSel = theme == selected;
           return GestureDetector(
             onTap: () {
-              HapticFeedback.selectionClick();
               onChanged(theme);
             },
             child: AnimatedContainer(

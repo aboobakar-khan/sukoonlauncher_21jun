@@ -99,7 +99,8 @@ _PeriodTheme _themeForPeriod(_DayPeriod period, Color accentColor) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class PrayerTimeWidget extends ConsumerStatefulWidget {
-  const PrayerTimeWidget({super.key});
+  final bool forceHidePrayer;
+  const PrayerTimeWidget({super.key, this.forceHidePrayer = false});
 
   @override
   ConsumerState<PrayerTimeWidget> createState() => _PrayerTimeWidgetState();
@@ -188,7 +189,7 @@ class _PrayerTimeWidgetState extends ConsumerState<PrayerTimeWidget> {
     //
     // The _minuteKey forces Flutter to treat this as a new widget each minute,
     // guaranteeing the ConsumerWidget's build() re-runs with fresh time data.
-    return _PrayerTimeWidgetContent(key: ValueKey(_lastMinute));
+    return _PrayerTimeWidgetContent(key: ValueKey(_lastMinute), forceHidePrayer: widget.forceHidePrayer);
   }
 }
 
@@ -198,12 +199,13 @@ class _PrayerTimeWidgetState extends ConsumerState<PrayerTimeWidget> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PrayerTimeWidgetContent extends ConsumerWidget {
-  const _PrayerTimeWidgetContent({super.key});
+  final bool forceHidePrayer;
+  const _PrayerTimeWidgetContent({super.key, this.forceHidePrayer = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final display = ref.watch(displaySettingsProvider);
-    if (!display.showPrayerWidget && !display.showFastingWidget) {
+    if ((!display.showPrayerWidget || forceHidePrayer) && !display.showFastingWidget) {
       return const SizedBox.shrink();
     }
 
@@ -211,7 +213,7 @@ class _PrayerTimeWidgetContent extends ConsumerWidget {
     final alarmState = ref.watch(prayerAlarmProvider);
     final fastingState = ref.watch(fastingProvider);
 
-    final nextPrayer = display.showPrayerWidget ? _getNextPrayer(alarmState, display.use24HourFormat) : null;
+    final nextPrayer = (display.showPrayerWidget && !forceHidePrayer) ? _getNextPrayer(alarmState, display.use24HourFormat) : null;
     final fastingRow = display.showFastingWidget ? _getFastingRow(fastingState, display.use24HourFormat) : null;
 
     // Ramadan day: Hijri month 9 = Ramadan
@@ -394,14 +396,14 @@ class _PrayerTimeWidgetContent extends ConsumerWidget {
     }
 
     // ── Step 2: all prayers passed today → show Fajr tomorrow ──
-    // Use today's Fajr time but push it to tomorrow's date.
-    final fajrStr = alarmState.effectiveTimesMap['Fajr'];
+    // Get tomorrow's specific Fajr time (tomorrow's base API time + offset).
+    final tomorrow = now.add(const Duration(days: 1));
+    final fajrStr = alarmState.effectiveTimeFor('Fajr', tomorrow);
     if (fajrStr != null) {
       final parts = fajrStr.split(':');
       if (parts.length == 2) {
         final h = int.tryParse(parts[0]) ?? 0;
         final m = int.tryParse(parts[1]) ?? 0;
-        final tomorrow = now.add(const Duration(days: 1));
         final target = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, h, m);
         final diff = target.difference(now);
         return _PrayerData(

@@ -116,7 +116,6 @@ class _DhikrHistoryProDashboardState extends ConsumerState<DhikrHistoryProDashbo
                       const SizedBox(height: 32),
                       GestureDetector(
                         onTap: () {
-                          HapticFeedback.mediumImpact();
                           Navigator.push(context, MaterialPageRoute(builder: (_) => const PremiumPaywallScreen()));
                         },
                         child: Container(
@@ -146,7 +145,6 @@ class _DhikrHistoryProDashboardState extends ConsumerState<DhikrHistoryProDashbo
         children: [
           GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               Navigator.pop(context);
             },
             child: Container(
@@ -730,104 +728,109 @@ class _OverviewTab extends StatelessWidget {
     );
     final progress = prev < next ? (state.totalAllTime - prev) / (next - prev) : 0.0;
     final remaining = next - state.totalAllTime;
+    final isComplete = state.totalAllTime >= 1000000;
 
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: _cardBg,
+        color: isComplete ? _gold.withValues(alpha: 0.04) : _cardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _gold.withValues(alpha: 0.1)),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            _cardBg,
-            _gold.withValues(alpha: 0.02),
-          ],
+        border: Border.all(
+          color: isComplete 
+              ? _gold.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.05),
         ),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: _gold.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _gold.withValues(alpha: 0.2)),
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.flag_rounded,
-                    color: _gold,
-                    size: 28,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isComplete ? 'ALL MILESTONES COMPLETED' : 'NEXT MILESTONE',
+                  style: TextStyle(
+                    color: isComplete 
+                        ? _gold 
+                        : Colors.white.withValues(alpha: 0.4),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
                   ),
                 ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      _formatNumber(next),
-                      style: const TextStyle(
-                        color: Colors.white,
+                      _formatNumber(state.totalAllTime),
+                      style: TextStyle(
+                        color: isComplete ? _gold : Colors.white,
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      'DHIKR MILESTONE',
+                      ' / ${_formatNumber(next)}',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.4),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              backgroundColor: Colors.white.withValues(alpha: 0.05),
-              valueColor: const AlwaysStoppedAnimation(_gold),
-              minHeight: 8,
+                if (!isComplete && remaining > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '${_formatNumber(remaining)} remaining',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${(progress * 100).toInt()}% COMPLETED',
-                style: TextStyle(
-                  color: _gold.withValues(alpha: 0.9),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
+          SizedBox(
+            width: 64,
+            height: 64,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: 1.0,
+                  strokeWidth: 4,
+                  valueColor: AlwaysStoppedAnimation(
+                    Colors.white.withValues(alpha: 0.05),
+                  ),
                 ),
-              ),
-              Text(
-                '${_formatNumber(remaining)} REMAINING',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.4),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                CircularProgressIndicator(
+                  value: progress.clamp(0.0, 1.0),
+                  strokeWidth: 4,
+                  strokeCap: StrokeCap.round,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation(
+                    isComplete ? _gold : _gold.withValues(alpha: 0.8),
+                  ),
                 ),
-              ),
-            ],
+                if (isComplete)
+                  const Icon(Icons.check_rounded, color: _gold, size: 24)
+                else
+                  Text(
+                    '${(progress * 100).toInt()}%',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -934,18 +937,38 @@ class _DhikrCalendarTabState extends State<_DhikrCalendarTab> {
 
     return Container(
       color: Colors.black, // High contrast pure black background
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
-        physics: const ClampingScrollPhysics(),
-        children: [
-          // ══ HERO: Year 365 dots — ~80% of first screen ══
-          YearDotsAnalyticsGrid(
-            year: year,
-            colorTheme: _colorTheme,
-            dataForDay: _dhikrDataForDay,
-            subtitle: 'Dhikr • $year',
-            legendLabels: const ['0', '1-33', '34-99', '100+'],
-          ),
+      child: CustomPaint(
+        painter: _PremiumGridPainter(
+          color: Colors.white.withValues(alpha: 0.03),
+          spacing: 24,
+        ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+          physics: const ClampingScrollPhysics(),
+          children: [
+            // ══ HERO: Year 365 dots — wrapped in glassmorphic card ══
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: _cardBg.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 30,
+                    offset: const Offset(0, 15),
+                  ),
+                ],
+              ),
+              child: YearDotsAnalyticsGrid(
+                year: year,
+                colorTheme: _colorTheme,
+                dataForDay: _dhikrDataForDay,
+                subtitle: 'Dhikr • $year',
+                legendLabels: const ['0', '1-33', '34-99', '100+'],
+              ),
+            ),
           const SizedBox(height: 14),
           // Color picker — inline, minimal
           DotsColorPicker(
@@ -1025,6 +1048,7 @@ class _DhikrCalendarTabState extends State<_DhikrCalendarTab> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1143,7 +1167,6 @@ class _AdhkarTabState extends State<_AdhkarTab> {
           return Expanded(
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.lightImpact();
                 setState(() => _selectedSection = i);
               },
               child: AnimatedContainer(
@@ -1258,14 +1281,21 @@ class _AdhkarTabState extends State<_AdhkarTab> {
           final isDone = current >= target;
 
           return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: isDone ? _gold.withValues(alpha: 0.06) : _cardBg,
-              borderRadius: BorderRadius.circular(12),
+              color: isDone ? _gold.withValues(alpha: 0.04) : _cardBg.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isDone ? _gold.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.04),
+                color: isDone ? _gold.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.06),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1294,7 +1324,6 @@ class _AdhkarTabState extends State<_AdhkarTab> {
                     if (!isDone)
                       GestureDetector(
                         onTap: () {
-                          HapticFeedback.lightImpact();
                           setState(() => _adhkarProgress[key] = (current + 1).clamp(0, target));
                           _saveProgress();
                         },
@@ -1310,9 +1339,9 @@ class _AdhkarTabState extends State<_AdhkarTab> {
                       )
                     else
                       Container(
-                        padding: const EdgeInsets.all(4),
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: _gold.withValues(alpha: 0.12),
+                          color: _gold.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(Icons.check_rounded, color: _gold, size: 16),
@@ -1378,20 +1407,26 @@ class _AdhkarTabState extends State<_AdhkarTab> {
             return GestureDetector(
               onTap: () {
                 if (!learned && e.key <= _namesLearned) {
-                  HapticFeedback.lightImpact();
                   setState(() => _namesLearned = e.key + 1);
                   _saveProgress();
                 }
               },
               child: Container(
                 width: (MediaQuery.of(context).size.width - 56) / 3,
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: learned ? _gold.withValues(alpha: 0.08) : _cardBg,
-                  borderRadius: BorderRadius.circular(10),
+                  color: learned ? _gold.withValues(alpha: 0.08) : _cardBg.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: learned ? _gold.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.04),
+                    color: learned ? _gold.withValues(alpha: 0.25) : Colors.white.withValues(alpha: 0.06),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
                 ),
                 child: Column(
                   children: [
@@ -1662,154 +1697,145 @@ class _AchievementsTab extends StatelessWidget {
             ),
           ),
         ),
-        ...achievements.map((a) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _buildAchievementCard(a),
-        )),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: achievements.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 0.85,
+          ),
+          itemBuilder: (ctx, i) => _buildAchievementCard(achievements[i]),
+        ),
       ],
     );
   }
 
   Widget _buildAchievementCard(Map<String, dynamic> achievement) {
     final unlocked = achievement['unlocked'] as bool;
-    final progress = achievement['progress'] as double;
     final tier = achievement['tier'] as String;
+    final progress = achievement['progress'] as double;
     final tierColor = _getTierColor(tier);
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: unlocked 
-            ? tierColor.withValues(alpha: 0.04)
-            : _cardBg,
-        borderRadius: BorderRadius.circular(16),
+        color: unlocked ? tierColor.withValues(alpha: 0.05) : _cardBg,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: unlocked 
-              ? tierColor.withValues(alpha: 0.2)
-              : Colors.white.withValues(alpha: 0.05),
+          color: unlocked
+              ? tierColor.withValues(alpha: 0.25)
+              : Colors.white.withValues(alpha: 0.04),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: unlocked 
-                  ? tierColor.withValues(alpha: 0.1)
-                  : Colors.white.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: unlocked 
-                    ? tierColor.withValues(alpha: 0.2)
-                    : Colors.white.withValues(alpha: 0.05),
-              ),
-            ),
-            child: Center(
-              child: Icon(
-                achievement['icon'] as IconData,
-                color: unlocked ? tierColor : Colors.white.withValues(alpha: 0.2),
-                size: 24,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      achievement['title'] as String,
-                      style: TextStyle(
-                        color: unlocked 
-                            ? Colors.white 
-                            : Colors.white.withValues(alpha: 0.5),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: tierColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        tier.toUpperCase(),
-                        style: TextStyle(
-                          color: tierColor,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: unlocked
+                      ? tierColor.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.03),
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  achievement['description'] as String,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.4),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: Icon(
+                  achievement['icon'] as IconData,
+                  color: unlocked
+                      ? tierColor
+                      : Colors.white.withValues(alpha: 0.15),
+                  size: 20,
                 ),
-                if (!unlocked && progress > 0) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: progress,
-                            backgroundColor: Colors.white.withValues(alpha: 0.05),
-                            valueColor: AlwaysStoppedAnimation(
-                              tierColor.withValues(alpha: 0.6),
-                            ),
-                            minHeight: 6,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        '${(progress * 100).toInt()}%',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          unlocked
-              ? Container(
-                  padding: const EdgeInsets.all(8),
+              ),
+              if (unlocked)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: tierColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
+                    color: tierColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Icon(
+                  child: Text(
+                    tier.toUpperCase(),
+                    style: TextStyle(
+                      color: tierColor,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            achievement['title'] as String,
+            style: TextStyle(
+              color: unlocked
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.4),
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'MILESTONE',
+            style: TextStyle(
+              color: unlocked
+                  ? tierColor.withValues(alpha: 0.8)
+                  : Colors.white.withValues(alpha: 0.2),
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            achievement['description'] as String,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.3),
+              fontSize: 10,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+          if (!unlocked && progress > 0)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: progress,
+                backgroundColor: Colors.white.withValues(alpha: 0.05),
+                valueColor: AlwaysStoppedAnimation(tierColor.withValues(alpha: 0.4)),
+                minHeight: 3,
+              ),
+            )
+          else
+            Row(
+              children: [
+                if (unlocked)
+                  Icon(
                     Icons.check_rounded,
                     color: tierColor,
-                    size: 18,
+                    size: 14,
                   ),
-                )
-              : Icon(
-                  Icons.lock_outline_rounded,
-                  color: Colors.white.withValues(alpha: 0.1),
-                  size: 22,
+                if (unlocked) const SizedBox(width: 4),
+                Text(
+                  unlocked ? 'Unlocked' : 'Locked',
+                  style: TextStyle(
+                    color: unlocked ? tierColor : Colors.white.withValues(alpha: 0.2),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+              ],
+            ),
         ],
       ),
     );
@@ -1901,5 +1927,31 @@ class _AchievementsTab extends StatelessWidget {
         'progress': (total / 100000).clamp(0.0, 1.0),
       },
     ];
+  }
+}
+
+class _PremiumGridPainter extends CustomPainter {
+  final Color color;
+  final double spacing;
+
+  _PremiumGridPainter({required this.color, required this.spacing});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.0;
+
+    for (double i = 0; i <= size.width; i += spacing) {
+      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
+    }
+    for (double i = 0; i <= size.height; i += spacing) {
+      canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PremiumGridPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.spacing != spacing;
   }
 }

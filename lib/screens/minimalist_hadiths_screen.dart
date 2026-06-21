@@ -202,7 +202,6 @@ class _MinimalistHadithsScreenState extends State<MinimalistHadithsScreen> {
           
           return GestureDetector(
             onTap: () {
-              HapticFeedback.selectionClick();
               setState(() {
                 _selectedCategory = category;
                 _expandedIndex = null;
@@ -245,7 +244,6 @@ class _MinimalistHadithsScreenState extends State<MinimalistHadithsScreen> {
     
     return GestureDetector(
       onTap: () {
-        HapticFeedback.selectionClick();
         setState(() {
           _expandedIndex = isExpanded ? null : index;
         });
@@ -366,7 +364,6 @@ class _MinimalistHadithsScreenState extends State<MinimalistHadithsScreen> {
                     Clipboard.setData(ClipboardData(
                       text: '${hadith['arabic']}\n\n"${hadith['translation']}"\n\n— ${hadith['narrator']} (${hadith['source']})',
                     ));
-                    HapticFeedback.lightImpact();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: const Text('Hadith copied'),
@@ -377,7 +374,6 @@ class _MinimalistHadithsScreenState extends State<MinimalistHadithsScreen> {
                   }),
                   const SizedBox(width: 12),
                   _buildActionButton(Icons.share, 'Share', () {
-                    HapticFeedback.selectionClick();
                     // Share functionality
                   }),
                 ],

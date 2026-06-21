@@ -320,7 +320,6 @@ class _LanguageSelectorTile extends ConsumerWidget {
                                 settings.translationLang == lang.code;
                             return GestureDetector(
                               onTap: () {
-                                HapticFeedback.selectionClick();
                                 innerRef
                                     .read(quranSettingsProvider.notifier)
                                     .setTranslationLanguage(
@@ -540,7 +539,6 @@ class _ReciterSelectorTile extends ConsumerWidget {
                             settings.selectedReciterKey == reciter.key;
                         return GestureDetector(
                           onTap: () {
-                            HapticFeedback.selectionClick();
                             innerRef
                                 .read(quranSettingsProvider.notifier)
                                 .setReciter(reciter.key, reciter.name);
@@ -740,7 +738,6 @@ class _ArabicFontSelectorTile extends ConsumerWidget {
                         final isSelected = arabicFont.name == font.name;
                         return GestureDetector(
                           onTap: () {
-                            HapticFeedback.selectionClick();
                             innerRef.read(arabicFontProvider.notifier).setFont(font);
                             Navigator.pop(ctx);
                           },
@@ -954,7 +951,6 @@ class _TafseerEditionSelectorTile extends ConsumerWidget {
                               edition: edition,
                               isSelected: isSelected,
                               onSelect: () {
-                                HapticFeedback.selectionClick();
                                 innerRef
                                     .read(selectedTafseerEditionProvider
                                         .notifier)
@@ -1400,7 +1396,6 @@ class _DownloadLanguageTile extends ConsumerWidget {
               onTap: isDownloading
                   ? null
                   : () {
-                      HapticFeedback.mediumImpact();
                       ref
                           .read(translationDownloadProvider.notifier)
                           .downloadTranslation(language.code);

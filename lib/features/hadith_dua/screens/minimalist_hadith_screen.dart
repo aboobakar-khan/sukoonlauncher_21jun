@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import '../providers/hadith_dua_provider.dart';
 import '../models/hadith_dua_models.dart';
 import '../../../providers/islamic_theme_provider.dart';
 import '../../../utils/hive_box_manager.dart';
+import '../../../services/offline_content_manager.dart';
 
 // ═══════════════════════════════════════════════════════════════════════
 //  READ TRACKING
@@ -78,28 +78,62 @@ final bookChaptersProvider = FutureProvider<List<HadithChapter>>((ref) async {
   final service = ref.read(hadithDuaServiceProvider);
   final collectionId = ref.watch(selectedCollectionProvider);
   final collection = HadithCollection.fromId(collectionId);
-  return service.getChapters(collection);
+  final offlineManager = ref.read(offlineContentProvider.notifier);
+  
+  try {
+    final chapters = await service.getChapters(collection);
+    if (chapters.isNotEmpty) {
+      offlineManager.saveChapters(collection.bookSlug, chapters);
+      return chapters;
+    }
+  } catch (_) {}
+
+  // Fallback to offline
+  return offlineManager.getCachedChapters(collection.bookSlug);
 });
 
 /// Hadiths for the selected chapter (or all if null)
 final chapterHadithsProvider = FutureProvider<List<Hadith>>((ref) async {
   final service = ref.read(hadithDuaServiceProvider);
+  final offlineManager = ref.read(offlineContentProvider.notifier);
   final collectionId = ref.watch(selectedCollectionProvider);
   final chapter = ref.watch(selectedChapterProvider);
   final collection = HadithCollection.fromId(collectionId);
   final gradeFilter = ref.watch(selectedGradeFilterProvider);
-  // Watch language so that changing it invalidates this provider and re-fetches
   final lang = ref.watch(hadithLanguageProvider);
 
-  var hadiths = await service.fetchHadiths(
-    collection,
-    chapterId: chapter?.chapterNumber,
-    maxPages: 10,
-    language: lang.code,
-  );
+  List<Hadith> hadiths = [];
 
-  if (hadiths.isEmpty) {
-    hadiths = await _offlineHadiths(collectionId);
+  // 1. Check if the collection is fully downloaded for offline
+  if (offlineManager.isCollectionDownloaded(collectionId)) {
+    if (chapter != null) {
+      hadiths = await offlineManager.getCachedHadithsByChapter(
+        collectionId: collectionId,
+        chapterNumber: chapter.chapterNumber,
+      );
+    } else {
+      hadiths = await offlineManager.getCachedHadiths(collectionId: collectionId);
+    }
+    
+    if (hadiths.isNotEmpty) {
+      if (gradeFilter != null) {
+        hadiths = hadiths.where((h) => h.grade == gradeFilter).toList();
+      }
+      return hadiths;
+    }
+  }
+
+  // 2. Otherwise, fetch from API (with 1st page of 50 for speed)
+  try {
+    hadiths = await service.fetchHadiths(
+      collection,
+      chapterId: chapter?.chapterNumber,
+      maxPages: 1, 
+      language: lang.code,
+    );
+  } catch (_) {
+    // API failed, try general cache fallback
+    hadiths = await _offlineHadiths(ref, collectionId);
     if (chapter != null) {
       hadiths = hadiths.where((h) => h.book == chapter.chapterNumber).toList();
     }
@@ -111,38 +145,8 @@ final chapterHadithsProvider = FutureProvider<List<Hadith>>((ref) async {
   return hadiths;
 });
 
-Future<List<Hadith>> _offlineHadiths(String? collectionId) async {
-  try {
-    final box = await HiveBoxManager.get<String>('offline_content_v2');
-    final cached = box.get('hadith_cache');
-    if (cached == null) return [];
-    final list = jsonDecode(cached) as List<dynamic>;
-    var hadiths = list.map((json) {
-      final map = json as Map<String, dynamic>;
-      return Hadith(
-        hadithNumber: map['hadithNumber'] as int? ?? 0,
-        arabicNumber: map['arabicNumber'] as int? ?? 0,
-        text: map['text'] as String? ?? '',
-        arabicText: map['arabicText'] as String?,
-        narrator: map['narrator'] as String?,
-        collection: map['collection'] as String? ?? 'Unknown',
-        book: map['book'] as int? ?? 0,
-        hadithInBook: map['hadithInBook'] as int? ?? 0,
-        section: map['section'] as String?,
-        chapterName: map['chapterName'] as String?,
-        grade: map['grade'] != null
-            ? HadithGrade.values.firstWhere((g) => g.name == map['grade'], orElse: () => HadithGrade.unknown)
-            : HadithGrade.unknown,
-      );
-    }).toList();
-    if (collectionId != null) {
-      final cl = collectionId.toLowerCase();
-      hadiths = hadiths.where((h) =>
-          h.collection.toLowerCase().contains(cl) || cl.contains(h.collection.toLowerCase())).toList();
-    }
-    return hadiths;
-  } catch (_) {}
-  return [];
+Future<List<Hadith>> _offlineHadiths(Ref ref, String? collectionId) async {
+  return ref.read(offlineContentProvider.notifier).getCachedHadiths(collectionId: collectionId);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -298,7 +302,6 @@ class _BookLibrary extends ConsumerWidget {
                 description: _bookDescs[c.id] ?? '',
                 tc: tc,
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   ref.read(selectedCollectionProvider.notifier).state = c.id;
                   ref.read(selectedChapterProvider.notifier).state = null;
                   ref.read(hadithPageProvider.notifier).state = 1;
@@ -326,7 +329,7 @@ class _DailyHadithCard extends ConsumerWidget {
     return dailyAsync.when(
       data: (hadith) {
         if (hadith == null) return const SizedBox.shrink();
-        return GestureDetector(
+        return _Pressable(
           onTap: () {
             ref.read(readHadithsProvider.notifier).markAsRead(hadith);
             Navigator.of(context, rootNavigator: true).push(
@@ -390,7 +393,7 @@ class _DailyHadithCard extends ConsumerWidget {
 
 // ── Book Card ──
 
-class _BookCard extends StatelessWidget {
+class _BookCard extends ConsumerWidget {
   final HadithCollection collection;
   final String emoji;
   final String description;
@@ -401,8 +404,8 @@ class _BookCard extends StatelessWidget {
     required this.description, required this.tc, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _Pressable(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -430,13 +433,22 @@ class _BookCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            if (collection.defaultGrade == HadithGrade.sahih)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                    color: tc.green.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(4)),
-                child: Text('Sahih', style: TextStyle(color: tc.green.withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w600)),
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (ref.watch(offlineContentProvider).downloadedCollections[collection.id] ?? false)
+                  Icon(Icons.offline_pin_rounded, color: tc.green.withValues(alpha: 0.5), size: 12),
+                if (ref.watch(offlineContentProvider).downloadedCollections[collection.id] ?? false)
+                  const SizedBox(width: 4),
+                if (collection.defaultGrade == HadithGrade.sahih)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                        color: tc.green.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(4)),
+                    child: Text('Sahih', style: TextStyle(color: tc.green.withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w600)),
+                  ),
+              ],
+            ),
             const SizedBox(height: 6),
             Text('${(collection.totalHadiths / 1000).toStringAsFixed(1)}k',
                 style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.25), fontSize: 11)),
@@ -487,9 +499,8 @@ class _ChapterList extends ConsumerWidget {
                   style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.35), fontSize: 12, fontFamily: 'Amiri')),
             ])),
             // "All Hadiths" shortcut
-            GestureDetector(
+            _Pressable(
               onTap: () {
-                HapticFeedback.selectionClick();
                 ref.read(selectedChapterProvider.notifier).state = null;
                 ref.read(hadithPageProvider.notifier).state = 1;
                 ref.read(hadithNavDepthProvider.notifier).state = 2;
@@ -557,7 +568,6 @@ class _ChapterList extends ConsumerWidget {
                   return _ChapterCard(
                     chapter: ch, index: i, tc: tc,
                     onTap: () {
-                      HapticFeedback.selectionClick();
                       ref.read(selectedChapterProvider.notifier).state = ch;
                       ref.read(hadithPageProvider.notifier).state = 1;
                       ref.read(hadithNavDepthProvider.notifier).state = 2;
@@ -594,7 +604,7 @@ class _ChapterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return _Pressable(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 5),
@@ -675,10 +685,20 @@ class _HadithListView extends ConsumerWidget {
                 maxLines: 1, overflow: TextOverflow.ellipsis,
               ),
               Text(
-                chapter != null
-                    ? '${collection.shortName} · Chapter ${chapter.chapterNumber}'
-                    : 'All Hadiths',
+                () {
+                  final base = chapter != null
+                      ? '${collection.shortName} · Chapter ${chapter.chapterNumber}'
+                      : 'All Hadiths';
+                  final count = hadithsAsync.maybeWhen(
+                      data: (h) => h.length, orElse: () => null);
+                  if (count == null) return base;
+                  final suffix = gradeFilter == null
+                      ? '$count hadith${count == 1 ? '' : 's'}'
+                      : '$count ${gradeFilter.displayName}';
+                  return '$base · $suffix';
+                }(),
                 style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.4), fontSize: 11),
+                maxLines: 1, overflow: TextOverflow.ellipsis,
               ),
             ])),
           ]),
@@ -693,12 +713,15 @@ class _HadithListView extends ConsumerWidget {
               scrollDirection: Axis.horizontal,
               children: [
                 _Pill(label: 'All Grades', isSelected: gradeFilter == null, tc: tc,
-                    onTap: () { HapticFeedback.selectionClick(); ref.read(selectedGradeFilterProvider.notifier).state = null; }),
+                    onTap: () {
+                      ref.read(selectedGradeFilterProvider.notifier).state = null;
+                    }),
                 ...HadithGrade.values.where((g) => g != HadithGrade.unknown).map((g) => _Pill(
                   label: g.displayName, isSelected: gradeFilter == g,
                   tc: tc, color: Color(g.colorValue),
-                  onTap: () { HapticFeedback.selectionClick();
-                    ref.read(selectedGradeFilterProvider.notifier).state = gradeFilter == g ? null : g; },
+                  onTap: () {
+                    ref.read(selectedGradeFilterProvider.notifier).state = gradeFilter == g ? null : g;
+                  },
                 )),
               ],
             ),
@@ -725,8 +748,10 @@ class _HadithListView extends ConsumerWidget {
                 itemCount: displayed.length + (hasMore ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (index == displayed.length) {
-                    return _LoadMoreButton(remaining: remaining, tc: tc,
-                        onTap: () { HapticFeedback.lightImpact(); ref.read(hadithPageProvider.notifier).state++; });
+                    return _LoadMoreButton(
+                      remaining: remaining, tc: tc,
+                      onTap: () => ref.read(hadithPageProvider.notifier).state = currentPage + 1,
+                    );
                   }
                   return _HadithCard(hadith: displayed[index], allHadiths: hadiths, tc: tc);
                 },
@@ -752,6 +777,41 @@ class _HadithListView extends ConsumerWidget {
 //  SHARED UI ATOMS
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Tap target with a subtle scale-down press animation + haptic feedback.
+/// Replaces bare GestureDetectors so taps feel responsive and tactile.
+class _Pressable extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  final double pressedScale;
+  const _Pressable({required this.child, required this.onTap, this.pressedScale = 0.97});
+
+  @override
+  State<_Pressable> createState() => _PressableState();
+}
+
+class _PressableState extends State<_Pressable> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _pressed ? widget.pressedScale : 1.0,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 class _Pill extends StatelessWidget {
   final String label; final bool isSelected; final IslamicThemeColors tc;
   final Color? color; final VoidCallback onTap;
@@ -760,8 +820,9 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = color ?? tc.green;
-    return GestureDetector(
+    return _Pressable(
       onTap: onTap,
+      pressedScale: 0.94,
       child: Container(
         margin: const EdgeInsets.only(right: 6),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -789,7 +850,7 @@ class _LoadMoreButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
-      child: GestureDetector(
+      child: _Pressable(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -854,7 +915,7 @@ class _HadithCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isRead = ref.watch(readHadithsProvider.select(
         (s) => s.contains('${hadith.collection}_${hadith.hadithNumber}')));
-    return GestureDetector(
+    return _Pressable(
       onTap: () => _openReader(context, ref),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -907,6 +968,8 @@ class _HadithCard extends ConsumerWidget {
 
   void _openReader(BuildContext context, WidgetRef ref) {
     ref.read(readHadithsProvider.notifier).markAsRead(hadith);
+    // Auto-cache for offline use
+    ref.read(offlineContentProvider.notifier).cacheSingleHadith(hadith);
     Navigator.of(context, rootNavigator: true).push(
       PageRouteBuilder(
         fullscreenDialog: true,
@@ -993,6 +1056,14 @@ class _HadithReaderScreenState extends ConsumerState<HadithReaderScreen> {
         h.collection == widget.hadith.collection) ?? 0;
     if (_currentIndex < 0) _currentIndex = 0;
     _pageController = PageController(initialPage: _currentIndex);
+    
+    // Auto-cache first hadith when reader opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final hadiths = widget.allHadiths ?? [widget.hadith];
+      if (hadiths.isNotEmpty) {
+        ref.read(offlineContentProvider.notifier).cacheSingleHadith(hadiths[_currentIndex]);
+      }
+    });
   }
 
   @override
@@ -1040,8 +1111,9 @@ class _HadithReaderScreenState extends ConsumerState<HadithReaderScreen> {
                 itemCount: hadiths.length,
                 onPageChanged: (i) {
                   setState(() => _currentIndex = i);
-                  HapticFeedback.selectionClick();
                   ref.read(readHadithsProvider.notifier).markAsRead(hadiths[i]);
+                  // Auto-cache as user swipes
+                  ref.read(offlineContentProvider.notifier).cacheSingleHadith(hadiths[i]);
                 },
                 itemBuilder: (_, i) => _HadithPage(hadith: hadiths[i], totalInChapter: hadiths.length),
               ),
@@ -1116,8 +1188,9 @@ class _ReaderTopBar extends ConsumerWidget {
         ])),
         // Bookmark
         GestureDetector(
-          onTap: () { HapticFeedback.lightImpact();
-            ref.read(readHadithsProvider.notifier).toggleRead(hadith); },
+          onTap: () {
+            ref.read(readHadithsProvider.notifier).toggleRead(hadith);
+          },
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Icon(
@@ -1129,7 +1202,7 @@ class _ReaderTopBar extends ConsumerWidget {
         ),
         // Settings
         GestureDetector(
-          onTap: () { HapticFeedback.lightImpact(); onSettings(); },
+          onTap: onSettings,
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Icon(Icons.tune_rounded,
@@ -1337,9 +1410,15 @@ class _HadithPage extends ConsumerWidget {
         const SizedBox(height: 16),
         // Swipe hint
         if (totalInChapter > 1)
-          Center(child: Text('swipe to navigate',
-              style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.14),
-                  fontSize: 10.5, letterSpacing: 0.8))),
+          Center(child: Row(mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.swipe_rounded,
+                color: tc.textSecondary.withValues(alpha: 0.22), size: 13),
+            const SizedBox(width: 6),
+            Text('swipe to navigate',
+                style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.24),
+                    fontSize: 10.5, letterSpacing: 0.8)),
+          ])),
         const SizedBox(height: 32),
       ]),
     );
@@ -1398,7 +1477,6 @@ class _ReaderActionBar extends ConsumerWidget {
         // Copy
         _ActBtn(icon: Icons.copy_outlined, tc: tc, tooltip: 'Copy', onTap: () {
           Clipboard.setData(ClipboardData(text: hadith.shareableText));
-          HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: const Text('Copied to clipboard',
                   style: TextStyle(color: Colors.white, fontSize: 13)),
@@ -1441,7 +1519,7 @@ class _NavBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-    onTap: enabled ? () { HapticFeedback.lightImpact(); onTap?.call(); } : null,
+    onTap: enabled ? onTap : null,
     child: AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.all(9),
@@ -1470,7 +1548,7 @@ class _ActBtn extends StatelessWidget {
   Widget build(BuildContext context) => Tooltip(
     message: tooltip,
     child: GestureDetector(
-      onTap: () { HapticFeedback.lightImpact(); onTap?.call(); },
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Icon(icon, color: tc.textSecondary.withValues(alpha: 0.45), size: 21),
@@ -1570,7 +1648,6 @@ class _ReaderSettingsSheet extends ConsumerWidget {
         // Reset button
         GestureDetector(
           onTap: () {
-            HapticFeedback.lightImpact();
             ref.read(_readerPrefsProvider.notifier).state = const _ReaderPrefs();
           },
           child: Container(

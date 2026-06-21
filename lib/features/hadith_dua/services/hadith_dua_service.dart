@@ -93,7 +93,7 @@ class HadithDuaService {
   Future<List<Hadith>> fetchHadiths(
     HadithCollection collection, {
     int? chapterId,
-    int maxPages = 5,
+    int maxPages = 1,
     String language = 'eng',
   }) async {
     // Cache key includes language so switching language fetches fresh data

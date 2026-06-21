@@ -56,14 +56,17 @@ class _ZenModePermissionsScreenState
   late AnimationController _checkCtrl;
   late Animation<double> _scaleAnim;
 
-  static const _bg = Color(0xFF080E1A);
-  static const _card = Color(0xFF0F1829);
-  static const _border = Color(0xFF1C2A42);
+  // Fresh minimalist leaf light theme
+  static const _bg       = Color(0xFFFEFFFE);
+  static const _card     = Colors.white;
+  static const _border   = Color(0xFFF1F4F1);
+  static const _text     = Color(0xFF1B2A1D);
+  static const _textSoft = Color(0xFF6E8270);
 
-  Color get _sage => ref.watch(themeColorProvider).color;
-  Color get _sageLight => _sage.withValues(alpha: 0.85);
-  static const _amber = Color(0xFFD4A853);
-  static const _red = Color(0xFFD45C5C);
+  static const _sage     = Color(0xFF4A6741);
+  static const _sageLight = Color(0xFF8BA883);
+  static const _amber    = Color(0xFFC48B47);
+  static const _red      = Color(0xFFB33F3F);
 
   @override
   void initState() {
@@ -73,7 +76,7 @@ class _ZenModePermissionsScreenState
         id: 'usage',
         icon: Icons.bar_chart_rounded,
         title: 'Usage Access',
-        why: 'Lets Muraqaba detect and block all other apps — the core of focus.',
+        why: 'Lets Kahf Mode detect and block all other apps — the core of focus.',
         hint: 'Open Settings → Special App Access → Usage Access → Enable Sukoon',
       ),
       _PermItem(
@@ -150,7 +153,6 @@ class _ZenModePermissionsScreenState
       _isChecking = true;
       _perms[_currentIndex].status = _PermStatus.checking;
     });
-    HapticFeedback.mediumImpact();
 
     final perm = _perms[_currentIndex];
 
@@ -201,7 +203,6 @@ class _ZenModePermissionsScreenState
     });
 
     if (granted) {
-      HapticFeedback.lightImpact();
       _checkCtrl.forward(from: 0);
       await Future.delayed(const Duration(milliseconds: 700));
       _advanceToNext();
@@ -221,7 +222,6 @@ class _ZenModePermissionsScreenState
   }
 
   void _proceedToEmergency() {
-    HapticFeedback.heavyImpact();
     _startZenSession();
   }
 
@@ -244,11 +244,13 @@ class _ZenModePermissionsScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _bg,
-      body: SafeArea(
-        child: Column(
-          children: [
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: _bg,
+        body: SafeArea(
+          child: Column(
+            children: [
             _buildTopBar(),
             Expanded(
               child: SingleChildScrollView(
@@ -266,7 +268,8 @@ class _ZenModePermissionsScreenState
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -287,11 +290,22 @@ class _ZenModePermissionsScreenState
                 border: Border.all(color: _border),
               ),
               child: const Icon(Icons.arrow_back_rounded,
-                  color: Colors.white54, size: 18),
+                  color: _textSoft, size: 20),
             ),
           ),
           const Spacer(),
-          // Step indicator
+          // Step indicator text
+          Text(
+            '${_allGranted ? 3 : _currentIndex + 1} of 3',
+            style: const TextStyle(
+              color: _textSoft,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Step indicator dots
           Row(
             children: List.generate(
               _perms.length,
@@ -300,16 +314,16 @@ class _ZenModePermissionsScreenState
                 final isActive = i == _currentIndex && !_allGranted;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
-                  width: isActive ? 24 : 8,
-                  height: 8,
+                  width: isActive ? 16 : 6,
+                  height: 6,
                   margin: const EdgeInsets.only(left: 4),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(4),
                     color: status == _PermStatus.granted
                         ? _sage
                         : isActive
-                            ? Colors.white.withValues(alpha: 0.7)
-                            : Colors.white.withValues(alpha: 0.15),
+                            ? _textSoft
+                            : _border,
                   ),
                 );
               },
@@ -358,22 +372,23 @@ class _ZenModePermissionsScreenState
         ),
         const SizedBox(height: 16),
         const Text(
-          'Permissions',
+          'Preparing the Cave',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
+            color: _text,
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
             letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Text(
-          'Muraqaba needs 3 permissions to fully\nprotect your focus. All are revokable anytime.',
+          'Kahf Mode needs 3 permissions to protect\nyour focus environment from distractions.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.45),
-            fontSize: 13,
-            height: 1.55,
+            color: _textSoft,
+            fontSize: 14,
+            height: 1.5,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
@@ -395,18 +410,18 @@ class _ZenModePermissionsScreenState
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: isGranted
-                ? _sage.withValues(alpha: 0.07)
+                ? _sage.withValues(alpha: 0.05)
                 : isActive
                     ? _card
                     : Colors.transparent,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: isGranted
-                  ? _sage.withValues(alpha: 0.3)
+                  ? _sage.withValues(alpha: 0.25)
                   : isActive
-                      ? _border
-                      : _border.withValues(alpha: 0.4),
-              width: isActive ? 1.5 : 1,
+                      ? _sage
+                      : _border,
+              width: isActive ? 2.0 : 1.5,
             ),
           ),
           child: Row(
@@ -487,29 +502,30 @@ class _ZenModePermissionsScreenState
                       perm.title,
                       style: TextStyle(
                         color: isGranted
-                            ? _sageLight
+                            ? _sage
                             : isActive
-                                ? Colors.white.withValues(alpha: 0.9)
-                                : Colors.white.withValues(alpha: 0.35),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                                ? _text
+                                : _textSoft.withValues(alpha: 0.5),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       isGranted
-                          ? 'Granted ✓'
+                          ? 'Permission secure ✓'
                           : isDenied
-                              ? 'Not granted — try again'
+                              ? 'Denied — tap to try again'
                               : perm.why,
                       style: TextStyle(
                         color: isGranted
                             ? _sage.withValues(alpha: 0.7)
                             : isDenied
-                                ? _red.withValues(alpha: 0.8)
-                                : Colors.white.withValues(alpha: 0.35),
-                        fontSize: 11.5,
+                                ? _red
+                                : _textSoft,
+                        fontSize: 12,
                         height: 1.4,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -517,8 +533,8 @@ class _ZenModePermissionsScreenState
               ),
               if (!isGranted && isActive) ...[
                 const SizedBox(width: 8),
-                const Icon(Icons.chevron_right_rounded,
-                    color: Colors.white24, size: 18),
+                Icon(Icons.chevron_right_rounded,
+                    color: _sage, size: 24),
               ],
             ],
           ),
@@ -531,34 +547,29 @@ class _ZenModePermissionsScreenState
     if (_allGranted) {
       return Column(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-            decoration: BoxDecoration(
-              color: _sage.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(14),
-              border:
-                  Border.all(color: _sage.withValues(alpha: 0.25)),
-            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.check_circle_rounded,
-                    color: _sageLight, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'All permissions granted',
+                const Icon(Icons.check_circle_rounded,
+                    color: _sage, size: 20),
+                const SizedBox(width: 10),
+                const Text(
+                  'All permissions ready',
                   style: TextStyle(
-                      color: _sageLight,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600),
+                      color: _sage,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 20),
           _bigButton(
-            label: 'Continue →',
+            label: 'Start Kahf Session →',
             color: _sage,
+            textColor: Colors.white,
             onTap: _proceedToEmergency,
           ),
         ],
@@ -576,25 +587,26 @@ class _ZenModePermissionsScreenState
           duration: const Duration(milliseconds: 250),
           child: Container(
             key: ValueKey(_currentIndex),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _border),
+              color: _text.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _border, width: 1.5),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.info_outline_rounded,
-                    color: Colors.white.withValues(alpha: 0.25), size: 16),
-                const SizedBox(width: 10),
+                const Icon(Icons.lightbulb_outline_rounded,
+                    color: _amber, size: 18),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Text(
                     perm.hint,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.4),
-                      fontSize: 12,
+                    style: const TextStyle(
+                      color: _textSoft,
+                      fontSize: 13,
                       height: 1.5,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -602,29 +614,63 @@ class _ZenModePermissionsScreenState
             ),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         _bigButton(
-          label: isDenied ? 'Try Again' : 'Grant ${perm.title}',
-          color: isDenied ? _amber : Colors.white,
-          textColor: isDenied ? Colors.black87 : const Color(0xFF080E1A),
+          label: isDenied ? 'Try Again' : 'Grant Permission',
+          color: isDenied ? _amber : _sage,
+          textColor: Colors.white,
           onTap: _isChecking ? null : _requestCurrent,
           isLoading: _isChecking,
         ),
-        if (_allPermissionsCanSkip()) ...[
-          const SizedBox(height: 12),
-          Center(
-            child: GestureDetector(
-              onTap: _proceedToEmergency,
-              child: Text(
-                'Skip for now →',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.25),
-                  fontSize: 12,
+        const SizedBox(height: 48),
+        // Privacy Note
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _border, width: 1.5),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _sage.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.lock_rounded, color: _sage, size: 18),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '100% Private & Offline',
+                      style: TextStyle(
+                        color: _text,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Sukoon never stores or transmits your data. All permissions are used locally to block distractions. No accounts, no cloud, no tracking.',
+                      style: TextStyle(
+                        color: _textSoft,
+                        fontSize: 12,
+                        height: 1.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ],
     );
   }
@@ -673,7 +719,7 @@ class _ZenModePermissionsScreenState
                 : Text(
                     label,
                     style: TextStyle(
-                      color: textColor ?? const Color(0xFF080E1A),
+                      color: textColor ?? Colors.white,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.2,

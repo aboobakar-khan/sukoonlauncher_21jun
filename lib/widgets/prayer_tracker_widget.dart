@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/prayer_provider.dart';
 import '../providers/theme_provider.dart';
-
 import '../screens/prayer_history_dashboard_redesigned.dart';
 
 /// Prayer Tracker Widget - Professional Minimalist Design
@@ -29,10 +28,16 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
   
   // Track which day we're viewing: 0 = today, 1 = yesterday
   int _selectedDayOffset = 0;
+  
+  // Whether nafil section is expanded
+  bool _showNafil = false;
 
   /// Whether the pulse animation is currently running.
-  /// We track this to avoid redundant start/stop calls.
   bool _pulseRunning = false;
+
+  /// Celebration overlay tracking
+  bool _hasShownCelebration = false;
+  int _lastCompletedCount = 0;
 
   // ☪️ Sukoon brand design tokens — semi-transparent to follow dashboard theme
   static final Color _bgDark = Colors.white.withValues(alpha: 0.02);
@@ -78,6 +83,34 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
       'icon': Icons.dark_mode_rounded,
       'time': 'Night',
       'virtue': 'Half night prayer',
+    },
+  ];
+
+  // Nafil (voluntary) prayers
+  static const List<Map<String, dynamic>> _nafilPrayers = [
+    {
+      'name': 'Tahajjud',
+      'arabicName': 'تهجد',
+      'icon': Icons.bedtime_rounded,
+      'time': 'Last third of night',
+    },
+    {
+      'name': 'Ishraq',
+      'arabicName': 'اشراق',
+      'icon': Icons.wb_twilight_rounded,
+      'time': '15min after sunrise',
+    },
+    {
+      'name': 'Chasht',
+      'arabicName': 'چاشت',
+      'icon': Icons.light_mode_rounded,
+      'time': 'Mid-morning',
+    },
+    {
+      'name': 'Awwabin',
+      'arabicName': 'اوابین',
+      'icon': Icons.nights_stay_rounded,
+      'time': 'After Maghrib',
     },
   ];
 
@@ -183,9 +216,27 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
         return todayRecord.maghrib;
       case 'isha':
         return todayRecord.isha;
+      case 'tahajjud':
+        return todayRecord.tahajjud;
+      case 'ishraq':
+        return todayRecord.ishraq;
+      case 'chasht':
+        return todayRecord.chasht;
+      case 'awwabin':
+        return todayRecord.awwabin;
       default:
         return false;
     }
+  }
+
+  int _getNafilCount(dynamic record) {
+    if (record == null) return 0;
+    int count = 0;
+    if (record.tahajjud) count++;
+    if (record.ishraq) count++;
+    if (record.chasht) count++;
+    if (record.awwabin) count++;
+    return count;
   }
 
   @override
@@ -206,7 +257,6 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
 
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
         Navigator.of(context).push(
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) =>
@@ -231,22 +281,22 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
         );
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
+        margin: EdgeInsets.zero,
         decoration: BoxDecoration(
           color: _cardBg,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: completedCount == 5 
-                ? accent.withValues(alpha: 0.4) 
+                ? accent.withValues(alpha: 0.25) 
                 : _borderColor,
-            width: completedCount == 5 ? 1.5 : 1,
+            width: completedCount == 5 ? 1.0 : 1,
           ),
           boxShadow: completedCount == 5
               ? [
                   BoxShadow(
-                    color: accent.withValues(alpha: 0.15),
-                    blurRadius: 20,
-                    spreadRadius: -5,
+                    color: accent.withValues(alpha: 0.06),
+                    blurRadius: 12,
+                    spreadRadius: -2,
                   ),
                 ]
               : null,
@@ -316,7 +366,7 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
 
             // Prayer pills
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: _prayers.map((prayer) {
@@ -331,43 +381,11 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
               ),
             ),
 
-            // Progress bar — only animates the pulse when there's actual progress
-            Container(
-              height: 3,
-              decoration: BoxDecoration(
-                color: _borderColor,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
-                ),
-              ),
-              child: progress > 0
-                  ? FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: progress,
-                      child: AnimatedBuilder(
-                        animation: _pulseAnimation,
-                        builder: (context, child) {
-                          return Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  accent.withValues(alpha: 0.6),
-                                  accent,
-                                  accent.withValues(alpha: 0.5 + _pulseAnimation.value * 0.5),
-                                ],
-                              ),
-                              borderRadius: const BorderRadius.only(
-                                bottomLeft: Radius.circular(16),
-                                bottomRight: Radius.circular(3),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    )
-                  : null, // No animation when 0 prayers completed
-            ),
+            // ── Nafil section ──
+            _buildNafilSection(selectedRecord, accent, isEditable),
+
+            // Bottom padding for visual balance
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -401,7 +419,6 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
     
     return GestureDetector(
       onTap: () {
-        HapticFeedback.selectionClick();
         setState(() {
           _selectedDayOffset = dayOffset;
         });
@@ -480,7 +497,9 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
               );
             },
           ),
-          // Center icon/count
+          // Center indicator — ring carries progress visually; the exact
+          // count lives in the adjacent label, so we avoid restating a number
+          // here. Only a checkmark appears on full completion.
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child: completed == 5
@@ -490,18 +509,103 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
                     color: accent,
                     size: 24,
                   )
-                : Text(
-                    '$completed',
-                    key: ValueKey(completed),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: _textPrimary,
-                    ),
-                  ),
+                : const SizedBox.shrink(key: ValueKey('empty')),
           ),
         ],
       ),
+    );
+  }
+  Widget _buildNafilSection(dynamic selectedRecord, Color accent, bool isEditable) {
+    final nafilCount = _getNafilCount(selectedRecord);
+    
+    return Column(
+      children: [
+        // Toggle button
+        GestureDetector(
+          onTap: () {
+            setState(() => _showNafil = !_showNafil);
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: nafilCount > 0
+                    ? accent.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: nafilCount > 0
+                      ? accent.withValues(alpha: 0.15)
+                      : _borderColor,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.add_circle_outline_rounded,
+                    size: 13,
+                    color: nafilCount > 0
+                        ? accent.withValues(alpha: 0.7)
+                        : _textMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    nafilCount > 0
+                        ? 'NAFIL · $nafilCount/4'
+                        : 'NAFIL PRAYERS',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.8,
+                      color: nafilCount > 0
+                          ? accent.withValues(alpha: 0.7)
+                          : _textMuted,
+                    ),
+                  ),
+                  const Spacer(),
+                  AnimatedRotation(
+                    turns: _showNafil ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: _textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Nafil pills (collapsible)
+        AnimatedCrossFade(
+          firstChild: const SizedBox(height: 0, width: double.infinity),
+          secondChild: Container(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: _nafilPrayers.map((prayer) {
+                final isCompleted = _isPrayerCompleted(selectedRecord, prayer['name']);
+                return _buildPrayerPill(
+                  prayer: prayer,
+                  isCompleted: isCompleted,
+                  themeColor: accent,
+                  isEditable: isEditable,
+                );
+              }).toList(),
+            ),
+          ),
+          crossFadeState: _showNafil
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 200),
+          sizeCurve: Curves.easeOutCubic,
+        ),
+      ],
     );
   }
 
@@ -511,24 +615,28 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
     required Color themeColor,
     required bool isEditable,
   }) {
-    final Color pillColor;
+    final Color pillBg;
+    final Color pillBorder;
     final Color iconColor;
     final Color textColor;
     final double opacity;
     
     if (isCompleted) {
-      pillColor = themeColor;
-      iconColor = themeColor;
-      textColor = themeColor.withValues(alpha: 0.8);
+      // Dark tinted fill — NOT bright white/bright accent
+      pillBg = themeColor.withValues(alpha: 0.10);
+      pillBorder = themeColor.withValues(alpha: 0.28);
+      iconColor = themeColor.withValues(alpha: 0.85);
+      textColor = themeColor.withValues(alpha: 0.70);
       opacity = 1.0;
     } else if (!isEditable) {
-      // Non-editable past prayers
-      pillColor = _borderColor;
+      pillBg = Colors.white.withValues(alpha: 0.01);
+      pillBorder = Colors.white.withValues(alpha: 0.04);
       iconColor = _textMuted.withValues(alpha: 0.4);
       textColor = _textMuted.withValues(alpha: 0.5);
       opacity = 0.5;
     } else {
-      pillColor = _borderColor;
+      pillBg = Colors.white.withValues(alpha: 0.03);
+      pillBorder = Colors.white.withValues(alpha: 0.06);
       iconColor = _textMuted;
       textColor = _textSecondary;
       opacity = 1.0;
@@ -537,21 +645,27 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
     return GestureDetector(
       onTap: isEditable
           ? () {
-              HapticFeedback.selectionClick();
               final selectedDate = _getSelectedDate();
               ref.read(prayerRecordListProvider.notifier).togglePrayer(
                 selectedDate,
                 prayer['name'],
               );
-              // Check if all 5 prayers completed
-              Future.delayed(const Duration(milliseconds: 100), () {
-                final todayRecord = ref.read(todayPrayerRecordProvider);
-                if (todayRecord != null &&
-                    todayRecord.fajr && todayRecord.dhuhr && todayRecord.asr &&
-                    todayRecord.maghrib && todayRecord.isha) {
-                  // All prayers completed for today!
-                }
-              });
+              // Check if all 5 Fard prayers completed → celebrate
+              if (_selectedDayOffset == 0) {
+                Future.delayed(const Duration(milliseconds: 150), () {
+                  final todayRecord = ref.read(todayPrayerRecordProvider);
+                  if (todayRecord != null &&
+                      todayRecord.fajr && todayRecord.dhuhr && todayRecord.asr &&
+                      todayRecord.maghrib && todayRecord.isha &&
+                      !_hasShownCelebration) {
+                    _hasShownCelebration = true;
+                    if (mounted) _showCelebrationOverlay(context, themeColor);
+                  } else if (todayRecord != null && !(todayRecord.fajr && todayRecord.dhuhr &&
+                      todayRecord.asr && todayRecord.maghrib && todayRecord.isha)) {
+                    _hasShownCelebration = false;
+                  }
+                });
+              }
             }
           : null,
       child: AnimatedOpacity(
@@ -562,14 +676,10 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: isCompleted 
-                ? pillColor.withValues(alpha: 0.15)
-                : _bgDark,
+            color: pillBg,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isCompleted 
-                  ? pillColor.withValues(alpha: 0.5)
-                  : pillColor,
+              color: pillBorder,
               width: 1,
             ),
           ),
@@ -600,6 +710,251 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
       ),
     );
   }
+
+  void _showCelebrationOverlay(BuildContext context, Color accent) {
+    HapticFeedback.heavyImpact();
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.88),
+      barrierDismissible: true,
+      builder: (ctx) => _CelebrationDialog(accent: accent),
+    );
+  }
+}
+
+/// Fresh-leaf celebration dialog — shown once when all 5 prayers are marked
+class _CelebrationDialog extends StatefulWidget {
+  final Color accent;
+  const _CelebrationDialog({required this.accent});
+
+  @override
+  State<_CelebrationDialog> createState() => _CelebrationDialogState();
+}
+
+class _CelebrationDialogState extends State<_CelebrationDialog>
+    with TickerProviderStateMixin {
+  late AnimationController _enterCtrl;
+  late AnimationController _glowCtrl;
+  late Animation<double> _scaleAnim;
+  late Animation<double> _fadeAnim;
+  late Animation<double> _glowAnim;
+
+  // minimal floating dot positions
+  final _rng = math.Random(7);
+  late final List<_Star> _dots;
+
+  static const _green = Color(0xFF4CAF50);
+  static const _greenLight = Color(0xFF81C784);
+
+  @override
+  void initState() {
+    super.initState();
+    _dots = List.generate(14, (i) => _Star(
+      x: _rng.nextDouble(),
+      y: _rng.nextDouble(),
+      size: 2.0 + _rng.nextDouble() * 3.0,
+      opacity: 0.15 + _rng.nextDouble() * 0.25,
+    ));
+
+    _enterCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _glowCtrl  = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))
+      ..repeat(reverse: true);
+
+    _scaleAnim = CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutBack);
+    _fadeAnim  = CurvedAnimation(parent: _enterCtrl, curve: const Interval(0.0, 0.5, curve: Curves.easeOut));
+    _glowAnim  = CurvedAnimation(parent: _glowCtrl,  curve: Curves.easeInOut);
+
+    _enterCtrl.forward();
+
+    Future.delayed(const Duration(milliseconds: 4000), () {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  @override
+  void dispose() {
+    _enterCtrl.dispose();
+    _glowCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pop(),
+      child: Material(
+        color: Colors.transparent,
+        child: Stack(
+          children: [
+            // Subtle floating dots
+            ..._dots.map((d) => Positioned(
+              left: d.x * size.width,
+              top: d.y * size.height,
+              child: AnimatedBuilder(
+                animation: _glowAnim,
+                builder: (_, __) {
+                  final pulse = (math.sin(_glowAnim.value * math.pi * 2) + 1) / 2;
+                  return Container(
+                    width: d.size,
+                    height: d.size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _green.withValues(alpha: d.opacity * (0.5 + pulse * 0.5)),
+                    ),
+                  );
+                },
+              ),
+            )),
+
+            // Main card
+            Center(
+              child: ScaleTransition(
+                scale: _scaleAnim,
+                child: FadeTransition(
+                  opacity: _fadeAnim,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 28),
+                    padding: const EdgeInsets.fromLTRB(28, 36, 28, 28),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF080808),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: _green.withValues(alpha: 0.18),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _green.withValues(alpha: 0.10),
+                          blurRadius: 48,
+                          spreadRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Icon — glowing leaf circle
+                        AnimatedBuilder(
+                          animation: _glowAnim,
+                          builder: (_, __) => Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _green.withValues(alpha: 0.06 + _glowAnim.value * 0.06),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _green.withValues(alpha: 0.12 + _glowAnim.value * 0.10),
+                                  blurRadius: 28,
+                                  spreadRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.check_circle_outline_rounded,
+                              size: 32,
+                              color: _greenLight,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Main headline
+                        Text(
+                          'All 5 Salah Complete',
+                          style: TextStyle(
+                            fontSize: 20,
+                            color: Colors.white.withValues(alpha: 0.90),
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Sub-message
+                        Text(
+                          'May Allah accept your prayers\nand grant you peace.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white.withValues(alpha: 0.38),
+                            height: 1.65,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+
+                        const SizedBox(height: 28),
+
+                        // 5 prayer completion dots in green
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(5, (i) => AnimatedBuilder(
+                            animation: _glowAnim,
+                            builder: (_, __) {
+                              final stagger = (math.sin(_glowAnim.value * math.pi * 2 + i * 0.6) + 1) / 2;
+                              return Container(
+                                width: 6, height: 6,
+                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: _green.withValues(alpha: 0.5 + stagger * 0.5),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _green.withValues(alpha: 0.3 * stagger),
+                                      blurRadius: 6,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          )),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Dismiss note
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 16, height: 1,
+                              color: _green.withValues(alpha: 0.15),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'TAP TO CLOSE',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Colors.white.withValues(alpha: 0.18),
+                                letterSpacing: 1.8,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              width: 16, height: 1,
+                              color: _green.withValues(alpha: 0.15),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Star {
+  final double x, y, size, opacity;
+  const _Star({required this.x, required this.y, required this.size, required this.opacity});
 }
 
 /// Custom ring painter for progress indicator

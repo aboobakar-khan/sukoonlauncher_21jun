@@ -271,7 +271,6 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
               else
                 GestureDetector(
                   onTap: () {
-                    HapticFeedback.lightImpact();
                     if (audioState.isPlaying) {
                       ref.read(quranAudioProvider.notifier).pause();
                     } else if (audioState.isPaused) {
@@ -307,7 +306,6 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
               // Stop button
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   ref.read(quranAudioProvider.notifier).stop();
                 },
                 child: Icon(Icons.stop_circle_outlined, color: tc.textSecondary.withValues(alpha: 0.5), size: 28),
@@ -569,7 +567,6 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
             children: [
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   TafseerBottomSheet.show(context,
                     surahId: widget.surah.id, ayahId: verse.id,
                     surahName: widget.surah.transliteration);

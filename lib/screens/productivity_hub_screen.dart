@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../providers/productivity_provider.dart';
@@ -14,6 +14,7 @@ import '../models/productivity_models.dart';
 import '../providers/ambient_sound_provider.dart';
 import '../services/native_app_blocker_service.dart';
 import '../widgets/swipe_back_wrapper.dart';
+import '../widgets/edge_to_edge.dart';
 import 'zen_mode_entry_screen.dart';
 import 'screen_time_settings_screen.dart';
 import 'notification_feed_screen.dart';
@@ -21,6 +22,8 @@ import '../providers/screen_time_provider.dart';
 import '../providers/notification_filter_provider.dart';
 import '../utils/smooth_page_route.dart';
 import 'pomodoro_screen.dart';
+import 'new_schedule_screen.dart';
+
 
 // ─── Sukoon Design Tokens ────────────────────────────────────────────────────
 const Color _warmBrown = Color(0xFFA67B5B);
@@ -117,6 +120,8 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
   }
 
   PomodoroState? _lastPomodoroState;
+  final TextEditingController _todoCtrl = TextEditingController();
+  final FocusNode _todoFocusNode = FocusNode();
 
   // ── Hub always uses dark mode ──
   Color get _card => ref.watch(themeColorProvider).isLight
@@ -182,6 +187,8 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
 
   @override
   void dispose() {
+    _todoFocusNode.dispose();
+    _todoCtrl.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -243,7 +250,7 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
     final screenW = MediaQuery.of(context).size.width;
     // Scale factor: 1.0 at 375px (iPhone SE), clamp 0.85–1.25
     final sf = (screenW / 375).clamp(0.85, 1.25);
-    final hPad = (screenW * 0.053).clamp(14.0, 28.0); // ~20 at 375
+    final hPad = (screenW * 0.058).clamp(18.0, 32.0); // increased from ~20 to ~24 at 375
 
     // Timer display
     final totalSec = pomo.remainingSeconds;
@@ -267,18 +274,21 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
     final protectionActive = [hasActiveBlocker, isScreenTimeActive, isNotifActive, zen.isActive]
         .where((b) => b).length;
 
-    return Container(
-      color: Colors.transparent,
-      child: SafeArea(
-        child: RepaintBoundary(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        color: Colors.transparent,
+        child: SafeArea(
+          child: RepaintBoundary(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: hPad),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
 
                   // ═══════════════════════════════════════════════════════
                   // 1. CONTEXTUAL HEADER — greeting + streak + theme toggle
@@ -293,20 +303,20 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                           children: [
                             Row(
                               children: [
-                                Icon(
+                               Icon(
                                   _greetingIcon,
-                                  size: 18 * sf,
+                                  size: 20 * sf,
                                   color: _sage.withValues(alpha: 0.7),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 10),
                                 Flexible(
                                   child: Text(
                                     _greeting,
                                     style: TextStyle(
                                       color: _text,
-                                      fontSize: (22 * sf).clamp(18.0, 28.0),
+                                      fontSize: (24 * sf).clamp(20.0, 30.0),
                                       fontWeight: FontWeight.w700,
-                                      letterSpacing: -0.5,
+                                      letterSpacing: -0.6,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -319,7 +329,7 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                               _greetingSubtext,
                               style: TextStyle(
                                 color: _textSoft,
-                                fontSize: (13 * sf).clamp(11.0, 16.0),
+                                fontSize: (14 * sf).clamp(12.0, 17.0),
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
@@ -332,7 +342,6 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                   const SizedBox(height: 6),
 
                   // ── Inline stats ribbon (streak + focus today + tasks done) ──
-                  // Psychology: Progress visibility (Endowed Progress Effect)
                   Wrap(
                     spacing: (8 * sf).clamp(5.0, 12.0),
                     runSpacing: (6 * sf).clamp(4.0, 10.0),
@@ -361,7 +370,7 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                     ],
                   ),
 
-                  SizedBox(height: (20 * sf).clamp(14.0, 28.0)),
+                  SizedBox(height: (18 * sf).clamp(14.0, 26.0)),
 
                   // ═══════════════════════════════════════════════════════
                   // 2. HERO FOCUS CARD — tap to open full Focus screen
@@ -377,17 +386,17 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                     },
                     child: Container(
                       width: double.infinity,
-                      padding: EdgeInsets.all((20 * sf).clamp(14.0, 26.0)),
+                      padding: EdgeInsets.symmetric(horizontal: (20 * sf).clamp(16.0, 26.0), vertical: (18 * sf).clamp(14.0, 24.0)),
                       decoration: BoxDecoration(
                         color: isTimerActive
                             ? _sage.withValues(alpha: 0.06)
                             : _card,
-                        borderRadius: BorderRadius.circular(22),
+                        borderRadius: BorderRadius.circular(24),
                         border: Border.all(
                           color: isTimerActive
                               ? _sage.withValues(alpha: 0.2)
                               : _border,
-                          width: isTimerActive ? 1 : 0.5,
+                          width: isTimerActive ? 1.2 : 0.6,
                         ),
                         boxShadow: _paperShadow(elevated: isTimerActive),
                       ),
@@ -395,8 +404,8 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                         children: [
                           // Timer ring (compact) — responsive
                           SizedBox(
-                            width: (56 * sf).clamp(44.0, 68.0),
-                            height: (56 * sf).clamp(44.0, 68.0),
+                            width: (64 * sf).clamp(52.0, 78.0),
+                            height: (64 * sf).clamp(52.0, 78.0),
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
@@ -410,21 +419,21 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                                           : isPaused
                                               ? _sage.withValues(alpha: 0.4)
                                               : _border.withValues(alpha: 0.4),
-                                      strokeWidth: (2.5 * sf).clamp(2.0, 3.5),
+                                      strokeWidth: (3.0 * sf).clamp(2.5, 4.0),
                                     ),
                                   ),
                                 ),
                                 FittedBox(
                                   fit: BoxFit.scaleDown,
                                   child: Padding(
-                                    padding: const EdgeInsets.all(6),
+                                    padding: const EdgeInsets.all(8),
                                     child: Text(
                                       timeStr,
                                       style: TextStyle(
                                         color: isTimerActive
                                             ? _text
                                             : _text.withValues(alpha: 0.45),
-                                        fontSize: (14 * sf).clamp(11.0, 17.0),
+                                        fontSize: (16 * sf).clamp(13.0, 19.0),
                                         fontWeight: FontWeight.w600,
                                         letterSpacing: 0.5,
                                         fontFeatures: const [FontFeature.tabularFigures()],
@@ -453,9 +462,9 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                                           : 'Focus',
                                   style: TextStyle(
                                     color: _text,
-                                    fontSize: (17 * sf).clamp(14.0, 22.0),
+                                    fontSize: (19 * sf).clamp(16.0, 26.0),
                                     fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.3,
+                                    letterSpacing: -0.4,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -482,7 +491,6 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                           // Play / Pause — responsive
                           GestureDetector(
                             onTap: () {
-                              HapticFeedback.mediumImpact();
                               if (isPaused) {
                                 ref.read(pomodoroProvider.notifier).resume();
                               } else if (isFocusing) {
@@ -493,26 +501,19 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                             },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              width: (44 * sf).clamp(36.0, 54.0),
-                              height: (44 * sf).clamp(36.0, 54.0),
+                              width: (46 * sf).clamp(38.0, 56.0),
+                              height: (46 * sf).clamp(38.0, 56.0),
                               decoration: BoxDecoration(
                                 color: isTimerActive
                                     ? _sage.withValues(alpha: 0.12)
-                                    : _sage,
+                                    : Colors.transparent,
                                 shape: BoxShape.circle,
-                                border: isTimerActive
-                                    ? Border.all(
-                                        color: _sage.withValues(alpha: 0.25),
-                                        width: 1.5,
-                                      )
-                                    : null,
-                                boxShadow: !isTimerActive
-                                    ? [BoxShadow(
-                                        color: _sage.withValues(alpha: 0.25),
-                                        offset: const Offset(0, 4),
-                                        blurRadius: 12,
-                                      )]
-                                    : null,
+                                border: Border.all(
+                                  color: isTimerActive
+                                      ? _sage.withValues(alpha: 0.3)
+                                      : _sage.withValues(alpha: 0.45),
+                                  width: 1.4,
+                                ),
                               ),
                               child: Icon(
                                 isPaused
@@ -520,12 +521,8 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                                     : isFocusing
                                         ? Icons.pause_rounded
                                         : Icons.play_arrow_rounded,
-                                color: isTimerActive
-                                    ? _sage
-                                    : (_sage.computeLuminance() > 0.45
-                                        ? Colors.black
-                                        : Colors.white),
-                                size: (22 * sf).clamp(18.0, 28.0),
+                                color: _sage.withValues(alpha: isTimerActive ? 0.9 : 0.6),
+                                size: (24 * sf).clamp(20.0, 30.0),
                               ),
                             ),
                           ),
@@ -534,111 +531,83 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                     ),
                   ),
 
-                  const SizedBox(height: 20),
-
-                  // ═══════════════════════════════════════════════════════
-                  // 3. TASKS — inline preview (no extra card chrome)
-                  //    Psychology: Zeigarnik Effect — showing incomplete
-                  //    tasks creates urge to complete them
-                  // ═══════════════════════════════════════════════════════
-                  _buildTaskPreview(context, pendingTodos, sf),
-
-                  const SizedBox(height: 20),
-
-                  // ═══════════════════════════════════════════════════════
-                  // 4. DIGITAL WELLBEING SECTION — grouped protection tools
-                  //    Psychology: Gestalt Law of Proximity — related tools
-                  //    are perceived as belonging together
-                  // ═══════════════════════════════════════════════════════
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          'Digital Wellbeing',
-                          style: TextStyle(
-                            color: _text,
-                            fontSize: (15 * sf).clamp(13.0, 19.0),
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (protectionActive > 0)
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 7 * sf, vertical: 3 * sf),
-                          decoration: BoxDecoration(
-                            color: _sage.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '$protectionActive active',
-                            style: TextStyle(
-                              color: _sage,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
                   const SizedBox(height: 12),
 
-                  // ── 2x2 Compact Grid: Zen Mode · Notifications · Blocker · Screen Time ──
-                  // Psychology: Miller's Law — chunked into digestible groups
+                  // 3. TASKS — inline minimalist to-do list
+                  // ═══════════════════════════════════════════════════════
+                  _buildInlineTodoList(context, todos, sf),
+
+                  const SizedBox(height: 12),
+
+                  // ═══════════════════════════════════════════════════════
+                  // 4. DIGITAL WELLBEING — 2×2 grid of widget tiles
+                  // ═══════════════════════════════════════════════════════
                   Row(
                     children: [
-                      // Zen Mode
+                      Text(
+                        'DIGITAL WELLBEING',
+                        style: TextStyle(
+                          color: _textSoft.withValues(alpha: 0.45),
+                          fontSize: 11.5 * sf,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.8,
+                        ),
+                      ),
+                      if (protectionActive > 0) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 5, height: 5,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _sage.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // ── 2×2 grid ──
+                  Row(
+                    children: [
                       Expanded(
                         child: _wellbeingTile(
                           icon: zen.isActive
                               ? Icons.self_improvement_rounded
                               : Icons.phone_android_rounded,
-                          label: 'Muraqaba',
+                          label: 'Kahf Mode',
                           value: zen.isActive ? 'Active' : 'Off',
                           isActive: zen.isActive,
-                          accentColor: zen.isActive ? _sage : null,
-                          sf: sf,
                           onTap: () {
                             if (zen.isActive) {
                               ref.read(zenModeProvider.notifier).endZenMode();
                             } else {
                               Navigator.push(context, SmoothForwardRoute(
-                                child: const ZenModeEntryScreen(),
-                              ));
+                                child: const ZenModeEntryScreen()));
                             }
                           },
                         ),
                       ),
-                      SizedBox(width: (10 * sf).clamp(6.0, 14.0)),
-                      // Notifications
+                      const SizedBox(width: 14),
                       Expanded(
                         child: _wellbeingTile(
                           icon: Icons.notifications_outlined,
-                          label: 'Notifications',
+                          label: 'Notifs',
                           value: isNotifActive
                               ? '${nf.totalCount} queued'
                               : 'Off',
                           isActive: isNotifActive,
                           badge: isNotifActive && nf.totalCount > 0
-                              ? nf.totalCount
-                              : null,
-                          sf: sf,
-                          onTap: () {
-                            Navigator.push(context, SmoothForwardRoute(
-                              child: const NotificationFeedScreen(),
-                            ));
-                          },
+                              ? nf.totalCount : null,
+                          onTap: () => Navigator.push(context, SmoothForwardRoute(
+                              child: const NotificationFeedScreen())),
                         ),
                       ),
                     ],
                   ),
-                  SizedBox(height: (10 * sf).clamp(6.0, 14.0)),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
-                      // App Blocker
                       Expanded(
                         child: _wellbeingTile(
                           icon: Icons.shield_rounded,
@@ -647,45 +616,36 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                               ? '$activeBlockedCount blocked'
                               : 'Off',
                           isActive: hasActiveBlocker,
-                          sf: sf,
-                          onTap: () {
-                            Navigator.push(context, SmoothForwardRoute(
+                          onTap: () => Navigator.push(context, SmoothForwardRoute(
                               child: _ProductivitySubScreen(
                                 title: 'App Blocker',
-                                child: _BlockerTab(),
-                              ),
-                            ));
-                          },
+                                child: _BlockerTab()))),
                         ),
                       ),
-                      SizedBox(width: (10 * sf).clamp(6.0, 14.0)),
-                      // Screen Time
+                      const SizedBox(width: 14),
                       Expanded(
                         child: _wellbeingTile(
                           icon: Icons.timer_outlined,
-                          label: 'Screen Time',
+                          label: 'App Timer',
                           value: isScreenTimeActive ? stLabel : 'Off',
                           isActive: isScreenTimeActive,
-                          sf: sf,
-                          onTap: () {
-                            Navigator.push(context, SmoothForwardRoute(
-                              child: const ScreenTimeSettingsScreen(),
-                            ));
-                          },
+                          onTap: () => Navigator.push(context, SmoothForwardRoute(
+                              child: const ScreenTimeSettingsScreen())),
                         ),
                       ),
                     ],
                   ),
 
                   // Bottom safe area padding — responsive
-                  SizedBox(height: (32 * sf).clamp(20.0, 48.0)),
+                  SizedBox(height: (16 * sf).clamp(10.0, 32.0)),
                 ],              // Column children
               ),                // Column
             ),                  // Padding
           ),                    // SingleChildScrollView
         ),                      // RepaintBoundary
-      ),                        // SafeArea
-    );                          // Container
+        ),                      // SafeArea
+      ),                        // Container
+    );                          // GestureDetector
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -699,8 +659,8 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
   }) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: (10 * sf).clamp(6.0, 14.0),
-        vertical: (5 * sf).clamp(3.0, 8.0),
+        horizontal: (12 * sf).clamp(8.0, 16.0),
+        vertical: (6 * sf).clamp(4.0, 10.0),
       ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
@@ -710,13 +670,13 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: (13 * sf).clamp(10.0, 17.0), color: color.withValues(alpha: 0.7)),
-          SizedBox(width: (5 * sf).clamp(3.0, 8.0)),
+          Icon(icon, size: (14 * sf).clamp(11.0, 18.0), color: color.withValues(alpha: 0.7)),
+          SizedBox(width: (6 * sf).clamp(4.0, 10.0)),
           Text(
             label,
             style: TextStyle(
               color: color.withValues(alpha: 0.85),
-              fontSize: (11.5 * sf).clamp(9.0, 15.0),
+              fontSize: (12.5 * sf).clamp(10.0, 16.0),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -725,8 +685,10 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
     );
   }
 
+
+
   // ─────────────────────────────────────────────────────────────────────────
-  // WELLBEING TILE — compact card for the 2x2 grid
+  // WELLBEING TILE — compact 2×2 grid card (replaces stacked rows)
   // ─────────────────────────────────────────────────────────────────────────
   Widget _wellbeingTile({
     required IconData icon,
@@ -734,98 +696,88 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
     required String value,
     required bool isActive,
     required VoidCallback onTap,
-    Color? accentColor,
     int? badge,
-    double sf = 1.0,
   }) {
-    final color = accentColor ?? _sage;
+    final color = _sage;
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.all((16 * sf).clamp(12.0, 22.0)),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
         decoration: BoxDecoration(
-          color: _card,
+          color: isActive ? color.withValues(alpha: 0.06) : _card,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isActive
-                ? color.withValues(alpha: 0.20)
-                : _border,
-            width: 0.5,
+            color: isActive ? color.withValues(alpha: 0.20) : _border,
+            width: 0.9,
           ),
-          boxShadow: _paperShadow(),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Top row: icon + status dot
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Container(
-                  padding: EdgeInsets.all((8 * sf).clamp(6.0, 12.0)),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 34, height: 34,
                   decoration: BoxDecoration(
+                    shape: BoxShape.circle,
                     color: isActive
-                        ? color.withValues(alpha: 0.10)
-                        : _cardLight,
-                    borderRadius: BorderRadius.circular(10),
+                        ? color.withValues(alpha: 0.15)
+                        : _textSoft.withValues(alpha: 0.07),
                   ),
-                  child: Icon(icon, size: (16 * sf).clamp(13.0, 20.0), color: isActive ? color : _textSoft),
+                  child: Icon(icon, size: 16,
+                    color: isActive
+                        ? color.withValues(alpha: 0.90)
+                        : _textSoft.withValues(alpha: 0.35)),
                 ),
                 const Spacer(),
-                if (badge != null)
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6 * sf, vertical: 2 * sf),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '$badge',
-                      style: TextStyle(
-                        color: color,
-                        fontSize: (10 * sf).clamp(8.0, 13.0),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  )
-                else if (isActive)
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: color,
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.4),
-                          blurRadius: 6,
-                        ),
-                      ],
-                    ),
+                // Active status dot
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 6, height: 6,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isActive
+                        ? color.withValues(alpha: 0.75)
+                        : Colors.transparent,
                   ),
+                ),
               ],
             ),
-            SizedBox(height: (12 * sf).clamp(8.0, 16.0)),
-            Text(
-              label,
-              style: TextStyle(
-                color: _text,
-                fontSize: (13.5 * sf).clamp(11.0, 17.0),
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.2,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: TextStyle(
-                color: isActive ? color : _textSoft,
-                fontSize: (11.5 * sf).clamp(9.5, 15.0),
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            const SizedBox(height: 8),
+            // Label
+            Text(label, style: TextStyle(
+              color: isActive
+                  ? _text.withValues(alpha: 0.90)
+                  : _text.withValues(alpha: 0.55),
+              fontSize: 13.5,
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+              letterSpacing: -0.2,
+            )),
+            const SizedBox(height: 3),
+            // Value or badge
+            badge != null
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text('$badge', style: TextStyle(
+                      color: color, fontSize: 10, fontWeight: FontWeight.w700,
+                    )),
+                  )
+                : Text(value, style: TextStyle(
+                    color: isActive
+                        ? color.withValues(alpha: 0.60)
+                        : _textSoft.withValues(alpha: 0.35),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  )),
           ],
         ),
       ),
@@ -836,200 +788,227 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
   // (Old status bar and focus engine removed — replaced by new hub design)
   // ─────────────────────────────────────────────────────────────────────────
 
+
   // ─────────────────────────────────────────────────────────────────────────
-  // 3. COMPACT TASK PREVIEW
+  // 3. INLINE TO-DO LIST
   // ─────────────────────────────────────────────────────────────────────────
 
-  Widget _buildTaskPreview(BuildContext context, List<TodoItem> pendingTodos, double sf) {
-    final previewTodos = pendingTodos.take(2).toList();
-    final remaining = pendingTodos.length - previewTodos.length;
+  Widget _buildInlineTodoList(BuildContext context, List<TodoItem> allTodos, double sf) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Title
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            'Your To Do',
+            style: TextStyle(
+              color: _text,
+              fontSize: (18.5 * sf).clamp(15.0, 24.0),
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+        ),
+        
+        SizedBox(height: (8 * sf).clamp(6.0, 12.0)),
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all((20 * sf).clamp(14.0, 26.0)),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _border, width: 0.5),
-        boxShadow: _paperShadow(),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header row
-          Row(
+        // Input Field
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
             children: [
-              Text(
-                'Tasks',
-                style: TextStyle(
-                  color: _text,
-                  fontSize: (17 * sf).clamp(14.0, 22.0),
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
+              Expanded(
+                child: TextField(
+                  controller: _todoCtrl,
+                  focusNode: _todoFocusNode,
+                  onTapOutside: (_) => _todoFocusNode.unfocus(),
+                  style: TextStyle(
+                    color: _text.withValues(alpha: 0.85),
+                    fontSize: (16 * sf).clamp(14.0, 20.0),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Add new task',
+                    hintStyle: TextStyle(
+                      color: _textSoft.withValues(alpha: 0.5),
+                      fontSize: (16 * sf).clamp(14.0, 20.0),
+                    ),
+                    border: UnderlineInputBorder(
+                      borderSide: BorderSide(color: _border, width: 1.5),
+                    ),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: _border, width: 1.5),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: _sage, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    isDense: true,
+                  ),
+                  onSubmitted: (val) {
+                    if (val.trim().isNotEmpty) {
+                      ref.read(todoProvider.notifier).addTodo(title: val.trim());
+                      _todoCtrl.clear();
+                    }
+                  },
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
               GestureDetector(
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    SmoothForwardRoute(
-                      child: _ProductivitySubScreen(
-                        title: 'Tasks',
-                        child: _TodoTab(),
-                      ),
-                    ),
-                  );
+                  final val = _todoCtrl.text.trim();
+                  if (val.isNotEmpty) {
+                    ref.read(todoProvider.notifier).addTodo(title: val);
+                    _todoCtrl.clear();
+                  }
                 },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'View All',
-                      style: TextStyle(
-                        color: _sage,
-                        fontSize: (12.5 * sf).clamp(10.0, 16.0),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Icon(
-                      Icons.arrow_forward_rounded,
-                      size: (13 * sf).clamp(10.0, 16.0),
-                      color: _sage,
-                    ),
-                  ],
+                child: Container(
+                  width: (40 * sf).clamp(34.0, 48.0),
+                  height: (40 * sf).clamp(34.0, 48.0),
+                  decoration: BoxDecoration(
+                    color: _text.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.add_rounded, color: _text, size: 22 * sf),
                 ),
               ),
             ],
           ),
+        ),
 
-          SizedBox(height: (16 * sf).clamp(10.0, 22.0)),
+        const SizedBox(height: 6),
 
-          // Task rows
-          if (previewTodos.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'All done for today ✨',
-                style: TextStyle(
-                  color: _textSoft.withValues(alpha: 0.7),
-                  fontSize: (13.5 * sf).clamp(11.0, 17.0),
-                  fontWeight: FontWeight.w400,
-                ),
+        // Task List — Standard preview (showing 3)
+        ...allTodos.take(3).map((todo) {
+          final isDone = todo.isCompleted;
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: (4 * sf).clamp(2.0, 6.0)),
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: (14 * sf).clamp(10.0, 18.0),
+                vertical: (8 * sf).clamp(6.0, 12.0),
               ),
-            )
-          else
-            ...previewTodos.asMap().entries.map((entry) {
-              final i = entry.key;
-              final todo = entry.value;
-              final isHigh = todo.priority >= 2;
-              final isLast = i == previewTodos.length - 1 && remaining <= 0;
-
-              return Column(
+              decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _border, width: 1.2),
+              ),
+              child: Row(
                 children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: (8 * sf).clamp(5.0, 12.0)),
-                    child: Row(
-                      children: [
-                        // Checkbox circle — responsive
-                        GestureDetector(
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            ref.read(todoProvider.notifier).toggleTodo(todo.id);
-                          },
-                          child: Container(
-                            width: (22 * sf).clamp(18.0, 30.0),
-                            height: (22 * sf).clamp(18.0, 30.0),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _cardLight,
-                              border: Border.all(
-                                color: _border,
-                                width: 1.5,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: (12 * sf).clamp(8.0, 16.0)),
-                        // Priority indicator
-                        if (isHigh)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: Icon(
-                              Icons.lightbulb_rounded,
-                              size: 14,
-                              color: _gold.withValues(alpha: 0.8),
-                            ),
-                          ),
-                        // Task title
-                        Expanded(
-                          child: Text(
-                            todo.title,
-                            style: TextStyle(
-                              color: _text.withValues(alpha: 0.8),
-                              fontSize: (14.5 * sf).clamp(12.0, 18.0),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        // Priority dot
-                        Container(
-                          width: (6 * sf).clamp(4.0, 8.0),
-                          height: (6 * sf).clamp(4.0, 8.0),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isHigh
-                                ? _sage
-                                : _border,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isLast)
-                    Container(
-                      height: 0.5,
+                  // Checkbox
+                  GestureDetector(
+                    onTap: () {
+                      ref.read(todoProvider.notifier).toggleTodo(todo.id);
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: (24 * sf).clamp(20.0, 28.0),
+                      height: (24 * sf).clamp(20.0, 28.0),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            _border.withValues(alpha: 0.0),
-                            _border.withValues(alpha: 0.3),
-                            _border.withValues(alpha: 0.3),
-                            _border.withValues(alpha: 0.0),
-                          ],
-                          stops: const [0.0, 0.2, 0.8, 1.0],
+                        color: isDone ? _textSoft.withValues(alpha: 0.7) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(
+                          color: isDone ? Colors.transparent : _border.withValues(alpha: 0.8),
+                          width: 1.6,
                         ),
                       ),
+                      child: isDone
+                          ? Icon(Icons.check_rounded, size: 18 * sf, color: _card)
+                          : null,
                     ),
-                ],
-              );
-            }),
+                  ),
+                  const SizedBox(width: 14),
 
-          // "+N more" indicator
-          if (remaining > 0)
-            Padding(
-              padding: EdgeInsets.only(top: (8 * sf).clamp(5.0, 12.0)),
+                  // Title
+                  Expanded(
+                    child: Text(
+                      todo.title,
+                      style: TextStyle(
+                        color: isDone
+                            ? _textSoft.withValues(alpha: 0.5)
+                            : _text.withValues(alpha: 0.85),
+                          fontSize: (15.5 * sf).clamp(13.0, 20.0),
+                        fontWeight: isDone ? FontWeight.w500 : FontWeight.w600,
+                        decoration: isDone ? TextDecoration.lineThrough : null,
+                        decorationThickness: 1.5,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // Delete button
+                  GestureDetector(
+                    onTap: () {
+                      ref.read(todoProvider.notifier).deleteTodo(todo.id);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: (18 * sf).clamp(14.0, 22.0),
+                        color: _textSoft.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+        
+        if (allTodos.length > 3)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0, bottom: 8.0, left: 4.0),
+            child: GestureDetector(
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                Navigator.push(
+                  context,
+                  SmoothForwardRoute(
+                    child: _ProductivitySubScreen(
+                      title: 'Tasks',
+                      child: _TodoTab(),
+                    ),
+                  ),
+                );
+              },
+              behavior: HitTestBehavior.opaque,
               child: Text(
-                '+$remaining more',
+                '+${allTodos.length - 3} more',
                 style: TextStyle(
-                  color: _textSoft.withValues(alpha: 0.6),
-                  fontSize: (12.5 * sf).clamp(10.0, 16.0),
-                  fontWeight: FontWeight.w500,
+                  color: _textSoft,
+                  fontSize: (14 * sf).clamp(12.0, 17.0),
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
                 ),
               ),
             ),
-        ],
-      ),
+          ),
+        
+        if (allTodos.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Your space is clear. Relax.',
+                  style: TextStyle(
+                    color: _textSoft.withValues(alpha: 0.5),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // (Old doubts/blocker/screen-time/notification/zen-mode cards removed
-  //  — replaced by new hub Digital Wellbeing 2x2 grid)
-  // ─────────────────────────────────────────────────────────────────────────
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1112,8 +1091,11 @@ class _ProductivitySubScreen extends ConsumerWidget {
 
     return SwipeBackWrapper(
       child: Scaffold(
+      // Scaffold fills edge-to-edge behind the system bars; EdgeToEdge insets
+      // the content. Icon brightness follows the light/dark theme.
       backgroundColor: themeBg,
-      body: SafeArea(
+      body: EdgeToEdge(
+        iconBrightness: isLight ? Brightness.dark : Brightness.light,
         child: Column(
           children: [
             // Minimal back header
@@ -1223,7 +1205,7 @@ class _TodoTabState extends ConsumerState<_TodoTab> {
                 '$pending tasks pending',
                 style: TextStyle(
                   color: _textSoft,
-                  fontSize: 12,
+                  fontSize: 13,
                 ),
               ),
               const Spacer(),
@@ -1310,7 +1292,7 @@ class _TodoTabState extends ConsumerState<_TodoTab> {
                       Text('Event',
                           style: TextStyle(
                             color: _gold.withValues(alpha: 0.8),
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.w500,
                           )),
                     ],
@@ -1331,7 +1313,7 @@ class _TodoTabState extends ConsumerState<_TodoTab> {
         text,
         style: TextStyle(
           color: _textSoft,
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w500,
           letterSpacing: 0.3,
         ),
@@ -1379,12 +1361,12 @@ class _TodoTabState extends ConsumerState<_TodoTab> {
                   Text(event.title,
                       style: TextStyle(
                           color: _text,
-                          fontSize: 13, fontWeight: FontWeight.w500)),
+                          fontSize: 14, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 2),
                   Text(timeText,
                       style: TextStyle(
                           color: _textSoft,
-                          fontSize: 11)),
+                          fontSize: 12)),
                 ],
               ),
             ),
@@ -1484,7 +1466,7 @@ class _TodoTabState extends ConsumerState<_TodoTab> {
         child: Text(
           label[0].toUpperCase() + label.substring(1),
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             color: selected ? _sageDark : _textSoft,
           ),
         ),
@@ -1526,7 +1508,6 @@ class _TodoTabState extends ConsumerState<_TodoTab> {
           dense: true,
           leading: GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               ref.read(todoProvider.notifier).toggleTodo(todo.id);
             },
             child: AnimatedContainer(
@@ -1556,7 +1537,7 @@ class _TodoTabState extends ConsumerState<_TodoTab> {
               color: todo.isCompleted
                   ? _textSoft.withValues(alpha: 0.5)
                   : _text,
-              fontSize: 14,
+              fontSize: 15,
               decoration:
                   todo.isCompleted ? TextDecoration.lineThrough : null,
             ),
@@ -1565,7 +1546,7 @@ class _TodoTabState extends ConsumerState<_TodoTab> {
               ? Text(
                   DateFormat('MMM d, h:mm a').format(todo.dueDate!),
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: _isDueToday(todo.dueDate!)
                         ? const Color(0xFFD97B4A)
                         : _textSoft,
@@ -3382,6 +3363,66 @@ class _EventsTabState extends ConsumerState<_EventsTab> {
 // 🛡️ APP BLOCKER TAB
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// A ready-made block schedule the user can flip on/off with one switch.
+class _BlockPreset {
+  final String name; // also the AppBlockRule identity
+  final IconData icon;
+  final int startHour, startMinute, endHour, endMinute;
+  final List<int> days; // 1=Mon .. 7=Sun
+  const _BlockPreset({
+    required this.name,
+    required this.icon,
+    required this.startHour,
+    required this.startMinute,
+    required this.endHour,
+    required this.endMinute,
+    required this.days,
+  });
+}
+
+const _kAllDays = [1, 2, 3, 4, 5, 6, 7];
+const _kWeekdays = [1, 2, 3, 4, 5];
+
+const _kBlockPresets = <_BlockPreset>[
+  _BlockPreset(
+    name: 'Fajr Focus',
+    icon: Icons.wb_twilight_rounded,
+    startHour: 4, startMinute: 30, endHour: 6, endMinute: 30,
+    days: _kAllDays,
+  ),
+  _BlockPreset(
+    name: 'Work Focus',
+    icon: Icons.work_outline_rounded,
+    startHour: 9, startMinute: 0, endHour: 17, endMinute: 0,
+    days: _kWeekdays,
+  ),
+  _BlockPreset(
+    name: 'Evening Wind-down',
+    icon: Icons.nights_stay_rounded,
+    startHour: 21, startMinute: 0, endHour: 23, endMinute: 30,
+    days: _kAllDays,
+  ),
+];
+
+/// Common distracting apps a preset blocks — intersected with what's actually
+/// installed when the preset is first switched on.
+const _kDistractingPackages = <String>[
+  'com.instagram.android',
+  'com.zhiliaoapp.musically', // TikTok
+  'com.ss.android.ugc.trill', // TikTok (intl)
+  'com.facebook.katana', // Facebook
+  'com.facebook.orca', // Messenger
+  'com.google.android.youtube',
+  'com.twitter.android',
+  'com.x.android', // X
+  'com.snapchat.android',
+  'com.reddit.frontpage',
+  'com.netflix.mediaclient',
+  'com.pinterest',
+  'com.linkedin.android',
+  'com.whatsapp',
+];
+
 class _BlockerTab extends ConsumerStatefulWidget {
   const _BlockerTab();
   @override
@@ -3391,24 +3432,26 @@ class _BlockerTab extends ConsumerStatefulWidget {
 class _BlockerTabState extends ConsumerState<_BlockerTab> {
   // ── Theme-aware colors ──
   bool get _isLight => ref.watch(themeColorProvider).isLight;
-  Color get _bg => _isLight ? const Color(0xFFF5F5F5) : _ftBg;
   Color get _card => _isLight ? Colors.black.withValues(alpha: 0.04) : _ftCard;
   Color get _text => _isLight ? const Color(0xFF0D0D0D) : _ftText;
   Color get _textSoft => _isLight ? const Color(0xFF6B6B6B) : _ftTextSoft;
   Color get _border => _isLight ? Colors.black.withValues(alpha: 0.08) : _ftBorder;
   Color get _sage => ref.watch(themeColorProvider).color;
-  Color get _sageDark {
-    final themeColor = ref.watch(themeColorProvider).color;
-    final hslColor = HSLColor.fromColor(themeColor);
-    return hslColor
-        .withLightness((hslColor.lightness * 0.85).clamp(0.0, 1.0))
-        .toColor();
-  }
-  Color get _gold => _ftGold;
+  // Readable ink for text/icons sitting on a solid [_sage] fill — flips to
+  // dark on light theme colors, white on dark ones.
+  Color get _onSage =>
+      ref.watch(themeColorProvider).color.computeLuminance() > 0.55
+          ? const Color(0xFF0D0D0D)
+          : Colors.white;
 
   @override
   Widget build(BuildContext context) {
-    final rules = ref.watch(appBlockRuleProvider);
+    final allRules = ref.watch(appBlockRuleProvider);
+    // Preset-backed rules are surfaced as their own toggle cards below, so
+    // keep them out of the custom-rules list to avoid a duplicate entry.
+    final presetNames = _kBlockPresets.map((p) => p.name).toSet();
+    final rules =
+        allRules.where((r) => !presetNames.contains(r.name)).toList();
 
     return Column(
       children: [
@@ -3419,12 +3462,12 @@ class _BlockerTabState extends ConsumerState<_BlockerTab> {
             children: [
               Icon(Icons.shield,
                   size: 14,
-                  color: rules.any((r) => r.isEnabled)
+                  color: allRules.any((r) => r.isEnabled && !r.isSnoozed)
                       ? _sage
                       : _textSoft),
               const SizedBox(width: 6),
               Text(
-                '${rules.where((r) => r.isEnabled).length} active rules',
+                '${allRules.where((r) => r.isEnabled && !r.isSnoozed).length} active now',
                 style: TextStyle(
                     color: _textSoft,
                     fontSize: 12),
@@ -3432,741 +3475,347 @@ class _BlockerTabState extends ConsumerState<_BlockerTab> {
             ],
           ),
         ),
-        // Rules list
+        // Unified list: ready-made presets (always shown) + custom schedules.
         Expanded(
-          child: rules.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.shield_outlined,
-                          size: 48,
-                          color: _border),
-                      const SizedBox(height: 12),
-                      Text('No block rules',
-                          style: TextStyle(
-                              color: _textSoft)),
-                      const SizedBox(height: 4),
-                      Text('Block distracting apps 🌙',
-                          style: TextStyle(
-                              color: _textSoft.withValues(alpha: 0.5),
-                              fontSize: 12)),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  itemCount: rules.length,
-                  itemBuilder: (ctx, i) => _ruleCard(ctx, ref, rules[i]),
-                ),
-        ),
-        // ── Direct access buttons: Custom Block + Smart Packs ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Row(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             children: [
-              Expanded(
-                child: _AddButton(
-                  label: 'Custom Block',
-                  icon: Icons.tune_rounded,
-                  onTap: () => _launchCustomBlock(context, ref),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _AddButton(
-                  label: 'Smart Packs',
-                  icon: Icons.inventory_2_rounded,
-                  onTap: () => _launchSmartPacks(context, ref),
-                ),
-              ),
+              for (final p in _kBlockPresets)
+                _scheduleCard(preset: p, rule: _ruleForPreset(allRules, p)),
+              for (final r in rules) _scheduleCard(preset: null, rule: r),
             ],
           ),
+        ),
+        // ── Primary: New schedule (time-window block) ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: GestureDetector(
+            onTap: () => _launchNewSchedule(context, ref),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              decoration: BoxDecoration(
+                color: _sage,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_alarm_rounded, size: 18, color: _onSage),
+                  const SizedBox(width: 8),
+                  Text(
+                    'New schedule',
+                    style: TextStyle(
+                      color: _onSage,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+      ],
+    );
+  }
+
+  // ── Quick presets ────────────────────────────────────────────────────
+
+  AppBlockRule? _ruleForPreset(List<AppBlockRule> rules, _BlockPreset p) {
+    for (final r in rules) {
+      if (r.name == p.name) return r;
+    }
+    return null;
+  }
+
+  String _fmt12(int h, int m) {
+    final period = h < 12 ? 'AM' : 'PM';
+    final hh = (h % 12 == 0) ? 12 : h % 12;
+    return '${hh.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')} $period';
+  }
+
+  /// One schedule card. [rule] is null for a preset that hasn't been turned on
+  /// yet (it shows in the "off" state and materialises a rule on first toggle).
+  Widget _scheduleCard({_BlockPreset? preset, required AppBlockRule? rule}) {
+    final name = rule?.name ?? preset!.name;
+    final icon = preset?.icon ?? Icons.lock_clock_rounded;
+    final timeBased = rule?.isTimeBased ?? true;
+    final sh = rule?.startHour ?? preset?.startHour ?? 0;
+    final sm = rule?.startMinute ?? preset?.startMinute ?? 0;
+    final eh = rule?.endHour ?? preset?.endHour ?? 0;
+    final em = rule?.endMinute ?? preset?.endMinute ?? 0;
+    final days = rule?.activeDays ?? preset?.days ?? _kAllDays;
+    final appCount = rule?.blockedPackages.length ?? 0;
+
+    final on = rule != null && rule.isEnabled && !rule.isSnoozed;
+    final snoozed = rule != null && rule.isEnabled && rule.isSnoozed;
+    final accent = _sage;
+
+    final timeLabel = timeBased
+        ? '${_fmt12(sh, sm)} – ${_fmt12(eh, em)}'
+        : (rule?.expiresAt != null ? 'Until timer ends' : 'Always on');
+    // Secondary line carries the full "when": time window + a readable day
+    // summary ("Every day" / "Weekdays") instead of raw letter glyphs.
+    final whenLine =
+        timeBased ? '$timeLabel  ·  ${_daysSummary(days)}' : timeLabel;
+
+    return GestureDetector(
+      // Tapping a real schedule opens it for editing (rename, times, apps).
+      onTap: rule != null ? () => _openEdit(rule) : null,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.fromLTRB(14, 14, 8, 14),
+        decoration: BoxDecoration(
+          color: on ? accent.withValues(alpha: 0.10) : _card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: on ? accent.withValues(alpha: 0.45) : _border,
+            width: on ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Primary: icon · (name + when) · switch ──
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: on
+                        ? accent.withValues(alpha: 0.18)
+                        : (_isLight
+                            ? Colors.black.withValues(alpha: 0.05)
+                            : Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Icon(icon, size: 20, color: on ? accent : _textSoft),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color:
+                                  on ? _text : _text.withValues(alpha: 0.78),
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3)),
+                      const SizedBox(height: 3),
+                      Text(whenLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: on
+                                  ? accent.withValues(alpha: 0.85)
+                                  : _textSoft,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Switch.adaptive(
+                  value: on,
+                  activeTrackColor: accent,
+                  onChanged: (v) => _onCardSwitch(preset, rule, v),
+                ),
+              ],
+            ),
+            // ── Tertiary: app count / snooze controls + overflow menu ──
+            Padding(
+              padding: const EdgeInsets.only(top: 10, left: 55),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: snoozed
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Paused — turns back on tomorrow',
+                                  style: TextStyle(
+                                      color: _textSoft, fontSize: 12)),
+                              const SizedBox(height: 8),
+                              GestureDetector(
+                                onTap: () => ref
+                                    .read(appBlockRuleProvider.notifier)
+                                    .forceDisableRule(rule.id),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: _border),
+                                  ),
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.block_rounded,
+                                            size: 15, color: _textSoft),
+                                        const SizedBox(width: 8),
+                                        Text('Turn off permanently',
+                                            style: TextStyle(
+                                                color: _text,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500)),
+                                      ]),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: Text(
+                              rule == null
+                                  ? 'Blocks common distractions'
+                                  : '$appCount app${appCount == 1 ? '' : 's'} blocked  ·  tap to edit',
+                              style: TextStyle(
+                                  color: _textSoft.withValues(alpha: 0.75),
+                                  fontSize: 11.5),
+                            ),
+                          ),
+                  ),
+                  if (rule != null) _cardMenuButton(rule),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Human-readable recurrence ("Every day", "Weekdays", "Mon, Wed, Fri").
+  String _daysSummary(List<int> days) {
+    final s = days.toSet();
+    if (s.length >= 7) return 'Every day';
+    if (s.length == 5 && s.containsAll(const {1, 2, 3, 4, 5})) {
+      return 'Weekdays';
+    }
+    if (s.length == 2 && s.containsAll(const {6, 7})) return 'Weekends';
+    const names = {
+      1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun'
+    };
+    final sorted = s.toList()..sort();
+    return sorted.map((d) => names[d]).join(', ');
+  }
+
+  Future<void> _openEdit(AppBlockRule rule) async {
+    await Navigator.push<bool>(
+      context,
+      SmoothForwardRoute(child: NewScheduleScreen(existing: rule)),
+    );
+  }
+
+  Widget _cardMenuButton(AppBlockRule rule) {
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert_rounded, size: 18, color: _textSoft),
+      color: _isLight ? Colors.white : const Color(0xFF1A1A1A),
+      padding: EdgeInsets.zero,
+      splashRadius: 18,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onSelected: (v) {
+        if (v == 'edit') {
+          _openEdit(rule);
+        } else if (v == 'delete') {
+          _confirmDelete(rule);
+        }
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem<String>(
+          value: 'edit',
+          child: Row(children: [
+            Icon(Icons.edit_outlined, size: 18, color: _textSoft),
+            const SizedBox(width: 10),
+            Text('Edit', style: TextStyle(color: _text, fontSize: 14)),
+          ]),
+        ),
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: Row(children: [
+            const Icon(Icons.delete_outline_rounded,
+                size: 18, color: Color(0xFFD97B4A)),
+            const SizedBox(width: 10),
+            Text('Delete', style: TextStyle(color: _text, fontSize: 14)),
+          ]),
         ),
       ],
     );
   }
 
-  Widget _ruleCard(BuildContext context, WidgetRef ref, AppBlockRule rule) {
-    final dangerColor = const Color(0xFFD97B4A);
-    return GestureDetector(
-      onTap: () => _showRuleInfoSheet(context, ref, rule),
-      child: Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: rule.isHardBlock
-            ? dangerColor.withValues(alpha: 0.06)
-            : _card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: rule.isHardBlock
-              ? dangerColor.withValues(alpha: 0.25)
-              : rule.isEnabled
-                  ? _sage.withValues(alpha: 0.25)
-                  : _border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              if (rule.isHardBlock) ...[
-                Icon(Icons.lock, size: 14, color: dangerColor.withValues(alpha: 0.7)),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Text(
-                  rule.name,
-                  style: TextStyle(
-                    color: _text,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              if (rule.isHardBlock)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: dangerColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    'HARD BLOCK',
-                    style: TextStyle(
-                      color: dangerColor,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                )
-              else
-                // Toggle
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    if (rule.isEnabled) {
-                      _showDeactivateConfirmation(context, ref, rule);
-                    } else {
-                      ref.read(appBlockRuleProvider.notifier).toggleRule(rule.id);
-                    }
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 44,
-                    height: 24,
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: rule.isEnabled
-                          ? _sage.withValues(alpha: 0.3)
-                          : _border,
-                    ),
-                    child: AnimatedAlign(
-                      duration: const Duration(milliseconds: 200),
-                      alignment: rule.isEnabled
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color:
-                              rule.isEnabled ? _sage : _textSoft,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Time / type info
-          Row(
-            children: [
-              Icon(
-                rule.isTimeBased ? Icons.schedule : Icons.block,
-                size: 12,
-                color: _textSoft,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                rule.isTimeBased
-                    ? '${_formatHour(rule.startHour, rule.startMinute)} — ${_formatHour(rule.endHour, rule.endMinute)}'
-                    : 'Manual toggle',
-                style: TextStyle(
-                    color: _textSoft,
-                    fontSize: 11),
-              ),
-              const Spacer(),
-              Text(
-                '${rule.blockedPackages.length} apps',
-                style: TextStyle(
-                    color: _textSoft,
-                    fontSize: 11),
-              ),
-            ],
-          ),
-          if (rule.allowBreaks) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.free_breakfast_outlined, size: 11,
-                    color: _textSoft.withValues(alpha: 0.6)),
-                const SizedBox(width: 4),
-                Text(
-                  'Breaks allowed',
-                  style: TextStyle(
-                      color: _textSoft.withValues(alpha: 0.6), fontSize: 10),
-                ),
-              ],
-            ),
-          ],
-          if (rule.isHardBlock)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, size: 11, color: _textSoft.withValues(alpha: 0.5)),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Locked — cannot be modified or deleted',
-                    style: TextStyle(
-                      color: _textSoft.withValues(alpha: 0.5),
-                      fontSize: 10,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    ),
-    );
-  }
-
-  String _formatHour(int? h, int? m) {
-    if (h == null) return '--:--';
-    final hour = h % 12 == 0 ? 12 : h % 12;
-    final ampm = h < 12 ? 'AM' : 'PM';
-    return '$hour:${(m ?? 0).toString().padLeft(2, '0')} $ampm';
-  }
-
-  // ── Deactivation confirmation for easy-mode blockers ──
-  void _showDeactivateConfirmation(BuildContext context, WidgetRef ref, AppBlockRule rule) {
-    final dangerColor = const Color(0xFFD97B4A);
-    showModalBottomSheet(
+  Future<void> _confirmDelete(AppBlockRule rule) async {
+    final ok = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111111),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Drag handle
-            Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: _border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 28),
-            // Shield icon
-            Container(
-              width: 64, height: 64,
-              decoration: BoxDecoration(
-                color: dangerColor.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.shield_outlined, size: 30,
-                  color: dangerColor.withValues(alpha: 0.7)),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Stay Focused',
-              style: TextStyle(
-                color: _text,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'You set this blocker for a reason.\nDisabling it now means giving in to distraction.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _textSoft,
-                fontSize: 13,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: _gold.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _gold.withValues(alpha: 0.15)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.format_quote, size: 14,
-                      color: _gold.withValues(alpha: 0.6)),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      '"Discipline is choosing between what you\nwant now and what you want most."',
-                      style: TextStyle(
-                        color: _gold,
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Keep it ON button (primary)
-            SizedBox(
-              width: double.infinity,
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.pop(ctx);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: _sage.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _sage.withValues(alpha: 0.3)),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Keep Blocker Active',
-                      style: TextStyle(
-                        color: _sageDark,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Confirm deactivate
-            SizedBox(
-              width: double.infinity,
-              child: GestureDetector(
-                onTap: () {
-                  HapticFeedback.mediumImpact();
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    SmoothForwardRoute(
-                      child: _DeactivateRuleConfirmScreen(
-                        ruleId: rule.id,
-                        ruleName: rule.name,
-                      ),
-                    ),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    color: _bg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Confirm Deactivate',
-                      style: TextStyle(
-                        color: _textSoft,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Rule Info Sheet (shown after creation) ──
-  void _showRuleInfoSheet(BuildContext context, WidgetRef ref, AppBlockRule rule) {
-    final allApps = ref.read(installedAppsProvider);
-    final dayLabels = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-        constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.75),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111111),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Drag handle
-              Center(
-                child: Container(
-                  width: 36, height: 4,
-                  decoration: BoxDecoration(
-                    color: _border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Success indicator
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _sage.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(Icons.check_circle_rounded,
-                        color: _sage, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Rule Created',
-                            style: TextStyle(
-                                color: _sage,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 2),
-                        Text(rule.name,
-                            style: TextStyle(
-                                color: _text,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                  if (rule.isHardBlock)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _desertSunset.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.lock, size: 10, color: _desertSunset.withValues(alpha: 0.8)),
-                          const SizedBox(width: 4),
-                          Text('HARD',
-                              style: TextStyle(
-                                  color: _desertSunset.withValues(alpha: 0.8),
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700)),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // ── Schedule / Timer info ──
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _bg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.schedule_rounded, size: 14,
-                            color: _gold),
-                        const SizedBox(width: 6),
-                        Text('Schedule',
-                            style: TextStyle(
-                                color: _gold,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _infoChip(
-                            Icons.play_arrow_rounded,
-                            'Start',
-                            _formatHour(rule.startHour, rule.startMinute),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(Icons.arrow_forward, size: 12,
-                            color: _border),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _infoChip(
-                            Icons.stop_rounded,
-                            'End',
-                            _formatHour(rule.endHour, rule.endMinute),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (rule.activeDays.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        children: rule.activeDays.map((d) {
-                          final label = d >= 1 && d <= 7 ? dayLabels[d] : '?';
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _gold.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(label,
-                                style: TextStyle(
-                                    color: _gold,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500)),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // ── Blocked Apps ──
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _bg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.block_rounded, size: 14,
-                            color: _desertSunset.withValues(alpha: 0.7)),
-                        const SizedBox(width: 6),
-                        Text('Blocked Apps',
-                            style: TextStyle(
-                                color: _desertSunset.withValues(alpha: 0.8),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        Text('${rule.blockedPackages.length}',
-                            style: TextStyle(
-                                color: _textSoft,
-                                fontSize: 11)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: rule.blockedPackages.map((pkg) {
-                        final appName = allApps
-                            .where((a) => a.packageName == pkg)
-                            .map((a) => a.appName)
-                            .firstOrNull ?? pkg.split('.').last;
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: _desertSunset.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: _desertSunset.withValues(alpha: 0.12)),
-                          ),
-                          child: Text(appName,
-                              style: TextStyle(
-                                  color: _text,
-                                  fontSize: 11)),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // ── Settings info ──
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _bg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _border),
-                ),
-                child: Row(
-                  children: [
-                    _settingPill(Icons.shield, rule.isHardBlock ? 'Hard Block' : 'Easy Block',
-                        rule.isHardBlock ? _desertSunset : _sage),
-                    const SizedBox(width: 8),
-                    if (rule.allowBreaks)
-                      _settingPill(Icons.free_breakfast_outlined, 'Breaks On', _gold),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── Delete button ──
-              if (!rule.isHardBlock)
-                SizedBox(
-                  width: double.infinity,
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      Navigator.of(context).push(
-                        SmoothForwardRoute(
-                          child: _DeleteRuleConfirmScreen(
-                            ruleId: rule.id,
-                            ruleName: rule.name,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.red.withValues(alpha: 0.15)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.delete_outline, size: 16,
-                              color: Colors.red.withValues(alpha: 0.6)),
-                          const SizedBox(width: 8),
-                          Text('Delete Rule',
-                              style: TextStyle(
-                                  color: Colors.red.withValues(alpha: 0.6),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-              // ── Done button ──
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(ctx),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: _sage.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Text('Done',
-                          style: TextStyle(
-                              color: _sageDark,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _infoChip(IconData icon, String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: _bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 11, color: _textSoft),
-              const SizedBox(width: 4),
-              Text(label, style: TextStyle(
-                  color: _textSoft, fontSize: 10)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(
-              color: _text, fontSize: 13,
-              fontWeight: FontWeight.w500)),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161616),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete schedule?',
+            style: TextStyle(
+                color: _text, fontSize: 16, fontWeight: FontWeight.w700)),
+        content: Text('"${rule.name}" will be removed.',
+            style: TextStyle(color: _textSoft, fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: _textSoft))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFD97B4A)),
+              child: const Text('Delete',
+                  style: TextStyle(fontWeight: FontWeight.w700))),
         ],
       ),
     );
+    if (ok == true) {
+      ref.read(appBlockRuleProvider.notifier).deleteRule(rule.id);
+    }
   }
 
-  Widget _settingPill(IconData icon, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color.withValues(alpha: 0.7)),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(
-              color: color.withValues(alpha: 0.8), fontSize: 11,
-              fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
+  Future<void> _onCardSwitch(
+      _BlockPreset? preset, AppBlockRule? rule, bool v) async {
+    final notifier = ref.read(appBlockRuleProvider.notifier);
+    if (v) {
+      if (!await _ensureBlockerPermissions(context)) return;
+      if (rule == null && preset != null) {
+        await _createPresetRule(preset);
+      } else if (rule != null) {
+        await notifier.enableRule(rule.id);
+      }
+    } else if (rule != null && rule.isEnabled) {
+      // Switch off = pause for today; auto-resumes tomorrow.
+      await notifier.snoozeRuleUntilTomorrow(rule.id);
+    }
+  }
+
+  /// Materialise a preset into a real rule that blocks whichever common
+  /// distracting apps are actually installed.
+  Future<void> _createPresetRule(_BlockPreset p) async {
+    final installed =
+        ref.read(installedAppsProvider).map((a) => a.packageName).toSet();
+    var pkgs = _kDistractingPackages.where(installed.contains).toList();
+    if (pkgs.isEmpty) pkgs = List<String>.from(_kDistractingPackages);
+    await ref.read(appBlockRuleProvider.notifier).addRule(
+          name: p.name,
+          blockedPackages: pkgs,
+          isTimeBased: true,
+          startHour: p.startHour,
+          startMinute: p.startMinute,
+          endHour: p.endHour,
+          endMinute: p.endMinute,
+          activeDays: List<int>.from(p.days),
+        );
   }
 
   // ── Permission check helper — returns true if all permissions granted ──
@@ -4192,1891 +3841,27 @@ class _BlockerTabState extends ConsumerState<_BlockerTab> {
     return true;
   }
 
-  // ── Direct launch: Custom Block (skips chooser) ──
-  void _launchCustomBlock(BuildContext context, WidgetRef ref) async {
+  void _launchNewSchedule(BuildContext context, WidgetRef ref) async {
     if (!await _ensureBlockerPermissions(context)) return;
     if (!context.mounted) return;
-    _showUnifiedBlockSheet(context, ref);
-  }
-
-  // ── Direct launch: Smart Packs (skips chooser) ──
-  void _launchSmartPacks(BuildContext context, WidgetRef ref) async {
-    if (!await _ensureBlockerPermissions(context)) return;
-    if (!context.mounted) return;
-    _showSmartPackSheet(context, ref);
-  }
-
-  // ── Unified Block Sheet (replaces Block Now + Scheduled Block) ──
-  void _showUnifiedBlockSheet(BuildContext context, WidgetRef ref) {
-    final nameCtrl = TextEditingController();
-    Set<String> selectedApps = {};
-    int scheduleMode = 0; // 0=Always, 1=Duration, 2=Time Window
-    int durationMinutes = 30;
-    int startH = 9, startM = 0, endH = 17, endM = 0;
-    Set<int> activeDays = {1, 2, 3, 4, 5};
-    int breakDifficulty = 0;
-    final durations = [15, 30, 45, 60, 90, 120];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setBS) => Container(
-          padding: EdgeInsets.fromLTRB(
-              20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(ctx).size.height * 0.88),
-          decoration: BoxDecoration(
-            color: const Color(0xFF111111),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Icon(Icons.tune_rounded,
-                      color: _sage, size: 20),
-                  const SizedBox(width: 8),
-                  Text('Custom Block',
-                      style: TextStyle(
-                          color: _text,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600)),
-                ]),
-                const SizedBox(height: 16),
-                // Rule name
-                TextField(
-                  controller: nameCtrl,
-                  style: TextStyle(color: _text),
-                  decoration: InputDecoration(
-                    hintText: 'Rule name (e.g. Study Focus)',
-                    hintStyle: TextStyle(color: _textSoft),
-                    filled: true,
-                    fillColor: _bg,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: _border)),
-                    enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: _border)),
-                    focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: _sage)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Add Apps
-                _buildAddAppsButton(ctx, ref, selectedApps, setBS),
-                const SizedBox(height: 16),
-
-                // Schedule mode selector
-                Text('Schedule',
-                    style: TextStyle(
-                        color: _textSoft,
-                        fontSize: 13)),
-                const SizedBox(height: 8),
-                Row(children: [
-                  _buildScheduleChip("Always On", 0, scheduleMode, _sage, (v) => setBS(() => scheduleMode = v)),
-                  const SizedBox(width: 8),
-                  _buildScheduleChip("Duration", 1, scheduleMode, _sage, (v) => setBS(() => scheduleMode = v)),
-                  const SizedBox(width: 8),
-                  _buildScheduleChip("Time Window", 2, scheduleMode, _sage, (v) => setBS(() => scheduleMode = v)),
-                ]),
-
-                // Duration picker (mode 1)
-                if (scheduleMode == 1) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: durations.map((d) {
-                      final isSelected = durationMinutes == d;
-                      final label = d >= 60 ? '${d ~/ 60}h${d % 60 > 0 ? " ${d % 60}m" : ""}' : '${d}m';
-                      return GestureDetector(
-                        onTap: () => setBS(() => durationMinutes = d),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? _sage.withValues(alpha: 0.12)
-                                : _bg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: isSelected
-                                    ? _sage.withValues(alpha: 0.4)
-                                    : _border),
-                          ),
-                          child: Text(label,
-                              style: TextStyle(
-                                  color: isSelected
-                                      ? _sageDark
-                                      : _textSoft,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500)),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-
-                // Time window picker (mode 2)
-                if (scheduleMode == 2) ...[
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          final time = await showTimePicker(
-                              context: ctx, initialTime: TimeOfDay(hour: startH, minute: startM));
-                          if (time != null) setBS(() { startH = time.hour; startM = time.minute; });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _bg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _border),
-                          ),
-                          child: Text('Start: ${_formatHour(startH, startM)}',
-                              style: TextStyle(color: _text, fontSize: 13),
-                              textAlign: TextAlign.center),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          final time = await showTimePicker(
-                              context: ctx, initialTime: TimeOfDay(hour: endH, minute: endM));
-                          if (time != null) setBS(() { endH = time.hour; endM = time.minute; });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _bg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _border),
-                          ),
-                          child: Text('End: ${_formatHour(endH, endM)}',
-                              style: TextStyle(color: _text, fontSize: 13),
-                              textAlign: TextAlign.center),
-                        ),
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(7, (i) {
-                      final day = i + 1;
-                      final labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-                      final active = activeDays.contains(day);
-                      return GestureDetector(
-                        onTap: () => setBS(() {
-                          if (active) {
-                            activeDays.remove(day);
-                          } else {
-                            activeDays.add(day);
-                          }
-                        }),
-                        child: Container(
-                          width: 36, height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: active
-                                ? _sage.withValues(alpha: 0.15)
-                                : _bg,
-                          ),
-                          child: Center(
-                            child: Text(labels[i],
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: active ? _sageDark : _textSoft)),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ],
-
-                const SizedBox(height: 16),
-                // Break difficulty
-                _buildBreakDifficultySelector(ref, breakDifficulty, (v) => setBS(() => breakDifficulty = v), ctx),
-                const SizedBox(height: 20),
-                // Create button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      if (nameCtrl.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                          content: const Text('Please enter a rule name'),
-                          backgroundColor: Colors.red.withValues(alpha: 0.8),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ));
-                        return;
-                      }
-                      if (selectedApps.isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                          content: const Text('Please add at least one app to block'),
-                          backgroundColor: Colors.red.withValues(alpha: 0.8),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ));
-                        return;
-                      }
-
-                      int sH = 0, sM = 0, eH = 23, eM = 59;
-                      List<int> days = List.generate(7, (i) => i + 1);
-                      bool isTimeBased = true;
-                      DateTime? expiresAt;
-
-                      if (scheduleMode == 1) {
-                        final now = DateTime.now();
-                        final end = now.add(Duration(minutes: durationMinutes));
-                        sH = now.hour; sM = now.minute;
-                        eH = end.hour; eM = end.minute;
-                        days = [now.weekday];
-                        expiresAt = end; // Exact expiry time for duration-based blocks
-                      } else if (scheduleMode == 2) {
-                        sH = startH; sM = startM;
-                        eH = endH; eM = endM;
-                        days = activeDays.toList();
-                      } else {
-                        isTimeBased = false;
-                      }
-
-                      final newRule = await ref.read(appBlockRuleProvider.notifier).addRule(
-                        name: nameCtrl.text.trim(),
-                        blockedPackages: selectedApps.toList(),
-                        isTimeBased: isTimeBased,
-                        startHour: sH,
-                        startMinute: sM,
-                        endHour: eH,
-                        endMinute: eM,
-                        activeDays: days,
-                        isHardBlock: breakDifficulty == 1,
-                        allowBreaks: breakDifficulty == 0,
-                        expiresAt: expiresAt,
-                      );
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx);
-                      HapticFeedback.lightImpact();
-                      if (context.mounted) {
-                        _showRuleInfoSheet(context, ref, newRule);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _sage.withValues(alpha: 0.15),
-                      foregroundColor: _sageDark,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text(scheduleMode == 1
-                        ? 'Start Blocking \u00b7 ${durationMinutes}min'
-                        : 'Create Rule'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    final created = await Navigator.push<bool>(
+      context,
+      SmoothForwardRoute(child: const NewScheduleScreen()),
     );
-  }
-
-  // ── Smart Packs (pre-built app packs) ──
-  static const _smartPacks = <Map<String, dynamic>>[
-    {
-      'id': 'social_media',
-      'name': 'Social Media',
-      'icon': Icons.people_alt_rounded,
-      'color': Color(0xFFE8915A), // desertSunset
-      'desc': 'Instagram, TikTok, Facebook, Twitter & more',
-      'apps': <Map<String, String>>[
-        {'pkg': 'com.instagram.android', 'name': 'Instagram'},
-        {'pkg': 'com.facebook.katana', 'name': 'Facebook'},
-        {'pkg': 'com.twitter.android', 'name': 'X (Twitter)'},
-        {'pkg': 'com.snapchat.android', 'name': 'Snapchat'},
-        {'pkg': 'com.tiktok.android', 'name': 'TikTok'},
-        {'pkg': 'com.zhiliaoapp.musically', 'name': 'TikTok Lite'},
-        {'pkg': 'com.pinterest', 'name': 'Pinterest'},
-        {'pkg': 'com.reddit.frontpage', 'name': 'Reddit'},
-        {'pkg': 'com.linkedin.android', 'name': 'LinkedIn'},
-        {'pkg': 'org.telegram.messenger', 'name': 'Telegram'},
-        {'pkg': 'com.whatsapp', 'name': 'WhatsApp'},
-        {'pkg': 'com.discord', 'name': 'Discord'},
-        {'pkg': 'com.Slack', 'name': 'Slack'},
-      ],
-    },
-    {
-      'id': 'entertainment',
-      'name': 'Entertainment',
-      'icon': Icons.movie_rounded,
-      'color': Color(0xFFC2A366), // sandGold
-      'desc': 'YouTube, Netflix, Spotify, Twitch & more',
-      'apps': <Map<String, String>>[
-        {'pkg': 'com.google.android.youtube', 'name': 'YouTube'},
-        {'pkg': 'com.netflix.mediaclient', 'name': 'Netflix'},
-        {'pkg': 'com.spotify.music', 'name': 'Spotify'},
-        {'pkg': 'tv.twitch.android.app', 'name': 'Twitch'},
-        {'pkg': 'com.amazon.avod.thirdpartyclient', 'name': 'Prime Video'},
-        {'pkg': 'com.disney.disneyplus', 'name': 'Disney+'},
-        {'pkg': 'com.hulu.livingroomplus', 'name': 'Hulu'},
-      ],
-    },
-    {
-      'id': 'gaming',
-      'name': 'Gaming',
-      'icon': Icons.sports_esports_rounded,
-      'color': Color(0xFF7BAE6E), // oasisGreen
-      'desc': 'Popular games & game stores',
-      'apps': <Map<String, String>>[
-        {'pkg': 'com.supercell.clashofclans', 'name': 'Clash of Clans'},
-        {'pkg': 'com.supercell.clashroyale', 'name': 'Clash Royale'},
-        {'pkg': 'com.supercell.brawlstars', 'name': 'Brawl Stars'},
-        {'pkg': 'com.kiloo.subwaysurf', 'name': 'Subway Surfers'},
-        {'pkg': 'com.epicgames.fortnite', 'name': 'Fortnite'},
-        {'pkg': 'com.mojang.minecraftpe', 'name': 'Minecraft'},
-        {'pkg': 'com.activision.callofduty.shooter', 'name': 'COD Mobile'},
-        {'pkg': 'com.tencent.ig', 'name': 'PUBG Mobile'},
-        {'pkg': 'com.riotgames.league.wildrift', 'name': 'Wild Rift'},
-        {'pkg': 'com.mobile.legends', 'name': 'Mobile Legends'},
-      ],
-    },
-  ];
-
-  // Check if a smart pack is already active (has a matching rule)
-  Map<String, dynamic>? _getActivePackRule(WidgetRef ref, Map<String, dynamic> pack) {
-    final rules = ref.read(appBlockRuleProvider);
-    final packName = pack['name'] as String;
-    final packApps = (pack['apps'] as List<Map<String, String>>).map((a) => a['pkg']!).toSet();
-
-    for (final rule in rules) {
-      // Match by name containing pack name, OR by significant overlap in blocked apps
-      final rulePackages = rule.blockedPackages.toSet();
-      final overlap = rulePackages.intersection(packApps);
-      if (rule.name.toLowerCase().contains(packName.toLowerCase()) ||
-          (overlap.length >= 3 && overlap.length >= rulePackages.length * 0.5)) {
-        return {'rule': rule, 'isEnabled': rule.isEnabled};
-      }
+    if (created == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Schedule created'),
+        behavior: SnackBarBehavior.floating,
+      ));
     }
-    return null;
   }
 
-  void _showSmartPackSheet(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111111),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.inventory_2_rounded, color: _gold, size: 20),
-              const SizedBox(width: 8),
-              Text("Smart Packs",
-                  style: TextStyle(
-                      color: _text,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600)),
-            ]),
-            const SizedBox(height: 4),
-            Text("One-tap block packs — review & customize apps",
-                style: TextStyle(
-                    color: _textSoft, fontSize: 13)),
-            const SizedBox(height: 20),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: _smartPacks.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (_, i) {
-                  final pack = _smartPacks[i];
-                  final packColor = pack['color'] as Color;
-                  final apps = pack['apps'] as List<Map<String, String>>;
-                  final activeInfo = _getActivePackRule(ref, pack);
-                  final isActive = activeInfo != null && activeInfo['isEnabled'] == true;
-                  final isInactive = activeInfo != null && activeInfo['isEnabled'] == false;
 
-                  return GestureDetector(
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      if (isActive || isInactive) {
-                        // Edit existing rule — pass the active rule
-                        final existingRule = activeInfo['rule'] as AppBlockRule;
-                        _showPackEditSheet(context, ref, pack, existingRule);
-                      } else {
-                        _showPackCustomizeSheet(context, ref, pack);
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? packColor.withValues(alpha: 0.1)
-                            : packColor.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isActive
-                              ? packColor.withValues(alpha: 0.4)
-                              : packColor.withValues(alpha: 0.15),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: packColor.withValues(alpha: isActive ? 0.18 : 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(pack['icon'] as IconData, color: packColor.withValues(alpha: 0.8), size: 22),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(pack['name'] as String,
-                                          style: TextStyle(
-                                              color: _text,
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600)),
-                                    ),
-                                    if (isActive) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: _sage.withValues(alpha: 0.12),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.shield_rounded, size: 10, color: _sage),
-                                            const SizedBox(width: 3),
-                                            Text("ACTIVE",
-                                                style: TextStyle(
-                                                    color: _sageDark,
-                                                    fontSize: 9,
-                                                    fontWeight: FontWeight.w700,
-                                                    letterSpacing: 0.5)),
-                                          ],
-                                        ),
-                                      ),
-                                    ] else if (isInactive) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: _bg,
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text("PAUSED",
-                                            style: TextStyle(
-                                                color: _textSoft,
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w700,
-                                                letterSpacing: 0.5)),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Text(pack['desc'] as String,
-                                    style: TextStyle(
-                                        color: _textSoft,
-                                        fontSize: 12)),
-                                const SizedBox(height: 6),
-                                Text(isActive
-                                    ? "${apps.length} apps \u00b7 Blocking"
-                                    : "${apps.length} apps included",
-                                    style: TextStyle(
-                                        color: isActive
-                                            ? _sage
-                                            : packColor.withValues(alpha: 0.6),
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500)),
-                              ],
-                            ),
-                          ),
-                          Icon(isActive ? Icons.edit_rounded : Icons.arrow_forward_ios,
-                              size: 14, color: _textSoft),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Pack customizer: review apps, pick schedule, create rule ──
-  void _showPackCustomizeSheet(BuildContext context, WidgetRef ref, Map<String, dynamic> pack) {
-    final packApps = (pack['apps'] as List<Map<String, String>>);
-    final packColor = pack['color'] as Color;
-    final packName = pack['name'] as String;
-    final allInstalledApps = ref.read(installedAppsProvider);
-    final installedPkgs = allInstalledApps.map((a) => a.packageName).toSet();
-
-    // Pre-select only apps that are installed on the device
-    Set<String> selectedApps = {};
-    Map<String, String> appLabels = {};
-    for (final app in packApps) {
-      final pkg = app['pkg']!;
-      appLabels[pkg] = app['name']!;
-      if (installedPkgs.contains(pkg)) {
-        selectedApps.add(pkg);
-      }
-    }
-
-    int scheduleMode = 0; // 0=Always, 1=Block Now (duration), 2=Scheduled
-    int durationMinutes = 60;
-    int startH = 9, startM = 0, endH = 17, endM = 0;
-    Set<int> activeDays = {1, 2, 3, 4, 5};
-    int breakDifficulty = 1; // Default Hard for packs
-    final durations = [15, 30, 45, 60, 90, 120];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setBS) => Container(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.88),
-          decoration: BoxDecoration(
-            color: const Color(0xFF111111),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Row(children: [
-                  Icon(pack['icon'] as IconData, color: packColor.withValues(alpha: 0.7), size: 20),
-                  const SizedBox(width: 8),
-                  Text("$packName Pack",
-                      style: TextStyle(
-                          color: _text,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: packColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text("${selectedApps.length} apps",
-                        style: TextStyle(color: packColor, fontSize: 11, fontWeight: FontWeight.w600)),
-                  ),
-                ]),
-                const SizedBox(height: 16),
-
-                // Apps list with toggles
-                Text("Apps to Block",
-                    style: TextStyle(color: _textSoft, fontSize: 13)),
-                const SizedBox(height: 4),
-                Text("Remove any apps you want to keep accessible",
-                    style: TextStyle(color: _textSoft, fontSize: 11)),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: packApps.map((app) {
-                    final pkg = app['pkg']!;
-                    final name = app['name']!;
-                    final isSelected = selectedApps.contains(pkg);
-                    final isInstalled = installedPkgs.contains(pkg);
-                    return GestureDetector(
-                      onTap: isInstalled ? () {
-                        HapticFeedback.selectionClick();
-                        setBS(() {
-                          if (isSelected) {
-                            selectedApps.remove(pkg);
-                          } else {
-                            selectedApps.add(pkg);
-                          }
-                        });
-                      } : null,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: !isInstalled
-                              ? _bg
-                              : isSelected
-                                  ? packColor.withValues(alpha: 0.10)
-                                  : _bg,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: !isInstalled
-                                ? _border
-                                : isSelected
-                                    ? packColor.withValues(alpha: 0.3)
-                                    : _border,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isSelected && isInstalled)
-                              Icon(Icons.check_circle_rounded, size: 15, color: packColor.withValues(alpha: 0.8))
-                            else if (!isInstalled)
-                              Icon(Icons.block_rounded, size: 15, color: _border)
-                            else
-                              Icon(Icons.circle_outlined, size: 15, color: _textSoft),
-                            const SizedBox(width: 6),
-                            Text(name,
-                                style: TextStyle(
-                                    color: !isInstalled
-                                        ? _textSoft
-                                        : isSelected
-                                            ? _text
-                                            : _textSoft,
-                                    fontSize: 12,
-                                    fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400)),
-                            if (!isInstalled) ...[
-                              const SizedBox(width: 4),
-                              Text("not installed",
-                                  style: TextStyle(color: _textSoft, fontSize: 9)),
-                            ],
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Schedule mode selector
-                Text("Schedule",
-                    style: TextStyle(color: _textSoft, fontSize: 13)),
-                const SizedBox(height: 8),
-                Row(children: [
-                  _buildScheduleChip("Always On", 0, scheduleMode, packColor, (v) => setBS(() => scheduleMode = v)),
-                  const SizedBox(width: 8),
-                  _buildScheduleChip("Duration", 1, scheduleMode, packColor, (v) => setBS(() => scheduleMode = v)),
-                  const SizedBox(width: 8),
-                  _buildScheduleChip("Time Window", 2, scheduleMode, packColor, (v) => setBS(() => scheduleMode = v)),
-                ]),
-
-                // Duration picker (mode 1)
-                if (scheduleMode == 1) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: durations.map((d) {
-                      final isSelected = durationMinutes == d;
-                      final label = d >= 60 ? '${d ~/ 60}h${d % 60 > 0 ? " ${d % 60}m" : ""}' : '${d}m';
-                      return GestureDetector(
-                        onTap: () => setBS(() => durationMinutes = d),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? packColor.withValues(alpha: 0.10)
-                                : _bg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: isSelected
-                                    ? packColor.withValues(alpha: 0.4)
-                                    : _border),
-                          ),
-                          child: Text(label,
-                              style: TextStyle(
-                                  color: isSelected
-                                      ? packColor
-                                      : _textSoft,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500)),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-
-                // Time window picker (mode 2)
-                if (scheduleMode == 2) ...[
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          final time = await showTimePicker(
-                              context: ctx, initialTime: TimeOfDay(hour: startH, minute: startM));
-                          if (time != null) setBS(() { startH = time.hour; startM = time.minute; });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _bg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _border),
-                          ),
-                          child: Text("Start: ${_formatHour(startH, startM)}",
-                              style: TextStyle(color: _text, fontSize: 13),
-                              textAlign: TextAlign.center),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          final time = await showTimePicker(
-                              context: ctx, initialTime: TimeOfDay(hour: endH, minute: endM));
-                          if (time != null) setBS(() { endH = time.hour; endM = time.minute; });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _bg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _border),
-                          ),
-                          child: Text("End: ${_formatHour(endH, endM)}",
-                              style: TextStyle(color: _text, fontSize: 13),
-                              textAlign: TextAlign.center),
-                        ),
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: List.generate(7, (i) {
-                      final day = i + 1;
-                      final labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-                      final active = activeDays.contains(day);
-                      return GestureDetector(
-                        onTap: () => setBS(() {
-                          if (active) {
-                            activeDays.remove(day);
-                          } else {
-                            activeDays.add(day);
-                          }
-                        }),
-                        child: Container(
-                          width: 36, height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: active
-                                ? packColor.withValues(alpha: 0.15)
-                                : _bg,
-                          ),
-                          child: Center(
-                            child: Text(labels[i],
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: active ? packColor : _textSoft)),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ],
-
-                const SizedBox(height: 16),
-                // Break difficulty
-                _buildBreakDifficultySelector(ref, breakDifficulty, (v) => setBS(() => breakDifficulty = v), ctx),
-
-                const SizedBox(height: 20),
-                // Create button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      if (selectedApps.isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                          content: const Text("Select at least one app to block"),
-                          backgroundColor: Colors.red.withValues(alpha: 0.8),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ));
-                        return;
-                      }
-
-                      int sH = 0, sM = 0, eH = 23, eM = 59;
-                      List<int> days = List.generate(7, (i) => i + 1);
-                      bool isTimeBased = true;
-                      DateTime? expiresAt;
-
-                      if (scheduleMode == 1) {
-                        // Duration-based: start now, end after X minutes
-                        final now = DateTime.now();
-                        final end = now.add(Duration(minutes: durationMinutes));
-                        sH = now.hour; sM = now.minute;
-                        eH = end.hour; eM = end.minute;
-                        days = [now.weekday];
-                        expiresAt = end; // Exact expiry time for duration-based blocks
-                      } else if (scheduleMode == 2) {
-                        // Scheduled time window
-                        sH = startH; sM = startM;
-                        eH = endH; eM = endM;
-                        days = activeDays.toList();
-                      } else {
-                        // Always on = not time-based
-                        isTimeBased = false;
-                      }
-
-                      final newRule = await ref.read(appBlockRuleProvider.notifier).addRule(
-                        name: "$packName Block",
-                        blockedPackages: selectedApps.toList(),
-                        isTimeBased: isTimeBased,
-                        startHour: sH,
-                        startMinute: sM,
-                        endHour: eH,
-                        endMinute: eM,
-                        activeDays: days,
-                        isHardBlock: breakDifficulty == 1,
-                        allowBreaks: breakDifficulty == 0,
-                        expiresAt: expiresAt,
-                      );
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx);
-                      HapticFeedback.lightImpact();
-                      if (context.mounted) {
-                        _showRuleInfoSheet(context, ref, newRule);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: packColor.withValues(alpha: 0.2),
-                      foregroundColor: packColor,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text("Activate $packName Block"),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Pack EDIT sheet: edit apps on an existing active smart pack rule ──
-  void _showPackEditSheet(BuildContext context, WidgetRef ref, Map<String, dynamic> pack, AppBlockRule existingRule) {
-    final packApps = (pack['apps'] as List<Map<String, String>>);
-    final packColor = pack['color'] as Color;
-    final packName = pack['name'] as String;
-    final allInstalledApps = ref.read(installedAppsProvider);
-    final installedPkgs = allInstalledApps.map((a) => a.packageName).toSet();
-
-    // These are LOCKED — already blocked, cannot be removed
-    final lockedApps = Set<String>.from(existingRule.blockedPackages);
-
-    // Selected starts with locked apps; user can only ADD more
-    Set<String> selectedApps = Set<String>.from(lockedApps);
-    Map<String, String> appLabels = {};
-    for (final app in packApps) {
-      appLabels[app['pkg']!] = app['name']!;
-    }
-    // Also add labels for any apps in rule that aren't in pack definition
-    for (final pkg in existingRule.blockedPackages) {
-      if (!appLabels.containsKey(pkg)) {
-        final appName = allInstalledApps
-            .where((a) => a.packageName == pkg)
-            .map((a) => a.appName)
-            .firstOrNull ?? pkg.split('.').last;
-        appLabels[pkg] = appName;
-      }
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setBS) => Container(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.75),
-          decoration: BoxDecoration(
-            color: const Color(0xFF111111),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Row(children: [
-                  Icon(pack['icon'] as IconData, color: packColor.withValues(alpha: 0.7), size: 20),
-                  const SizedBox(width: 8),
-                  Text("Edit $packName",
-                      style: TextStyle(
-                          color: _text,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _sage.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.shield_rounded, size: 10, color: _sage),
-                        const SizedBox(width: 4),
-                        Text("${selectedApps.length} blocked",
-                            style: TextStyle(color: _sageDark, fontSize: 11, fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 16),
-
-                Text("🔒 Existing apps are locked · Tap to add new apps",
-                    style: TextStyle(color: _textSoft, fontSize: 12)),
-                const SizedBox(height: 12),
-
-                // Pack apps with toggle
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: packApps.map((app) {
-                    final pkg = app['pkg']!;
-                    final name = app['name']!;
-                    final isSelected = selectedApps.contains(pkg);
-                    final isInstalled = installedPkgs.contains(pkg);
-                    final isLocked = lockedApps.contains(pkg);
-                    return GestureDetector(
-                      onTap: (isInstalled && !isLocked) ? () {
-                        HapticFeedback.selectionClick();
-                        setBS(() {
-                          if (isSelected) {
-                            selectedApps.remove(pkg);
-                          } else {
-                            selectedApps.add(pkg);
-                          }
-                        });
-                      } : isLocked ? () {
-                        HapticFeedback.heavyImpact();
-                        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                          content: const Text("🔒 Active blocked apps can't be removed"),
-                          backgroundColor: _textSoft,
-                          behavior: SnackBarBehavior.floating,
-                          duration: const Duration(seconds: 1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ));
-                      } : null,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: !isInstalled
-                              ? _bg
-                              : isLocked
-                                  ? packColor.withValues(alpha: 0.12)
-                                  : isSelected
-                                      ? packColor.withValues(alpha: 0.10)
-                                      : _bg,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: !isInstalled
-                                ? _border
-                                : isLocked
-                                    ? packColor.withValues(alpha: 0.5)
-                                    : isSelected
-                                        ? packColor.withValues(alpha: 0.3)
-                                        : _border,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isLocked)
-                              Icon(Icons.lock_rounded, size: 15, color: packColor.withValues(alpha: 0.9))
-                            else if (isSelected && isInstalled)
-                              Icon(Icons.check_circle_rounded, size: 15, color: packColor.withValues(alpha: 0.8))
-                            else if (!isInstalled)
-                              Icon(Icons.block_rounded, size: 15, color: _border)
-                            else
-                              Icon(Icons.circle_outlined, size: 15, color: _textSoft),
-                            const SizedBox(width: 6),
-                            Text(name,
-                                style: TextStyle(
-                                    color: !isInstalled
-                                        ? _textSoft
-                                        : isLocked
-                                            ? _text
-                                            : isSelected
-                                                ? _text
-                                                : _textSoft,
-                                    fontSize: 12,
-                                    fontWeight: isLocked ? FontWeight.w600 : isSelected ? FontWeight.w500 : FontWeight.w400)),
-                            if (isLocked) ...[
-                              const SizedBox(width: 4),
-                              Text("locked",
-                                  style: TextStyle(color: packColor.withValues(alpha: 0.6), fontSize: 9, fontWeight: FontWeight.w600)),
-                            ],
-                            if (!isInstalled) ...[
-                              const SizedBox(width: 4),
-                              Text("not installed",
-                                  style: TextStyle(color: _textSoft, fontSize: 9)),
-                            ],
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Save button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      if (selectedApps.isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                          content: const Text("At least 1 app must be blocked"),
-                          backgroundColor: Colors.red.withValues(alpha: 0.8),
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ));
-                        return;
-                      }
-                      ref.read(appBlockRuleProvider.notifier).updateRule(
-                        existingRule.id,
-                        blockedPackages: selectedApps.toList(),
-                      );
-                      Navigator.pop(ctx);
-                      HapticFeedback.lightImpact();
-                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                        content: Text('$packName updated · ${selectedApps.length} apps blocked'),
-                        backgroundColor: _sage,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ));
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: packColor.withValues(alpha: 0.2),
-                      foregroundColor: packColor,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: const Text("Save Changes"),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildScheduleChip(String label, int value, int selected, Color color, ValueChanged<int> onTap) {
-    final isActive = selected == value;
-    return GestureDetector(
-      onTap: () { HapticFeedback.selectionClick(); onTap(value); },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: isActive ? color.withValues(alpha: 0.10) : _bg,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isActive ? color.withValues(alpha: 0.3) : _border,
-          ),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                color: isActive ? color : _textSoft,
-                fontSize: 12,
-                fontWeight: FontWeight.w500)),
-      ),
-    );
-  }
-
-  // ── Shared: "Add Apps" button + selected chips ──
-  Widget _buildAddAppsButton(
-      BuildContext ctx, WidgetRef ref, Set<String> selectedApps, StateSetter setBS) {
-    final allApps = ref.read(installedAppsProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [
-          Text('Apps to Block',
-              style: TextStyle(
-                  color: _textSoft, fontSize: 13)),
-          const Spacer(),
-          if (selectedApps.isNotEmpty)
-            Text('${selectedApps.length} selected',
-                style: TextStyle(
-                    color: _sage, fontSize: 11)),
-        ]),
-        const SizedBox(height: 8),
-        // Selected app chips
-        if (selectedApps.isNotEmpty) ...[
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: selectedApps.map((pkg) {
-              final appName = allApps
-                  .where((a) => a.packageName == pkg)
-                  .map((a) => a.appName)
-                  .firstOrNull ?? pkg.split('.').last;
-              return Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _sage.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: _sage.withValues(alpha: 0.15)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(appName,
-                        style: TextStyle(
-                            color: _text,
-                            fontSize: 12)),
-                    const SizedBox(width: 4),
-                    GestureDetector(
-                      onTap: () => setBS(() => selectedApps.remove(pkg)),
-                      child: Icon(Icons.close,
-                          size: 14,
-                          color: _textSoft),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 10),
-        ],
-        // "Add Apps" button
-        GestureDetector(
-          onTap: () async {
-            final result = await Navigator.of(ctx, rootNavigator: true).push<Set<String>>(
-              PageRouteBuilder(
-                fullscreenDialog: true,
-                transitionDuration: const Duration(milliseconds: 300),
-                reverseTransitionDuration: const Duration(milliseconds: 200),
-                pageBuilder: (c, anim, _) => _AppSelectionScreen(
-                  allApps: allApps,
-                  preSelected: selectedApps,
-                ),
-                transitionsBuilder: (c, anim, _, child) =>
-                    SlideTransition(
-                      position: Tween<Offset>(
-                              begin: const Offset(0, 0.3), end: Offset.zero)
-                          .animate(CurvedAnimation(
-                              parent: anim, curve: Curves.easeOutCubic)),
-                      child: child,
-                    ),
-              ),
-            );
-            if (result != null) {
-              setBS(() {
-                selectedApps.clear();
-                selectedApps.addAll(result);
-              });
-            }
-          },
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: _bg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _border),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.add_rounded,
-                    color: _sage, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  selectedApps.isEmpty ? 'Add Apps' : 'Change Apps',
-                  style: TextStyle(
-                      color: _sageDark,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Hard Mode Info Page ──
-  void _showHardModeInfo(BuildContext ctx, VoidCallback onConfirm) {
-    showModalBottomSheet(
-      context: ctx,
-      backgroundColor: _card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      isScrollControlled: true,
-      builder: (bsCtx) => Padding(
-        padding: EdgeInsets.only(
-          left: 24, right: 24, top: 28,
-          bottom: MediaQuery.of(bsCtx).viewInsets.bottom + 28,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Red lock icon
-            Container(
-              width: 56, height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFD93025).withValues(alpha: 0.06),
-                border: Border.all(color: const Color(0xFFD93025).withValues(alpha: 0.15)),
-              ),
-              child: Icon(Icons.lock_rounded, color: const Color(0xFFD93025).withValues(alpha: 0.7), size: 26),
-            ),
-            const SizedBox(height: 18),
-            Text('Hard Mode',
-              style: TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text('This cannot be undone easily',
-              style: TextStyle(color: _textSoft, fontSize: 13)),
-            const SizedBox(height: 24),
-            // Rules
-            _hardModeRule(Icons.block_rounded, "Can't disable or delete this rule"),
-            const SizedBox(height: 12),
-            _hardModeRule(Icons.pause_circle_outline_rounded, "Can't pause or take breaks"),
-            const SizedBox(height: 12),
-            _hardModeRule(Icons.delete_forever_rounded, "Can't uninstall blocked apps"),
-            const SizedBox(height: 12),
-            _hardModeRule(Icons.timer_off_rounded, "Only expires when the timer ends"),
-            const SizedBox(height: 28),
-            // Confirm
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.heavyImpact();
-                Navigator.pop(bsCtx);
-                onConfirm();
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD93025).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFD93025).withValues(alpha: 0.25)),
-                ),
-                child: const Center(
-                  child: Text('I understand, enable Hard Mode',
-                    style: TextStyle(color: Color(0xFFD93025), fontSize: 14, fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: () => Navigator.pop(bsCtx),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                child: Center(
-                  child: Text('Cancel',
-                    style: TextStyle(color: _textSoft, fontSize: 14)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _hardModeRule(IconData icon, String text) {
-    return Row(
-      children: [
-        Container(
-          width: 36, height: 36,
-          decoration: BoxDecoration(
-            color: _bg,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: _textSoft, size: 18),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(text,
-            style: TextStyle(color: _text, fontSize: 14)),
-        ),
-      ],
-    );
-  }
-
-  // ── Shared: Break Difficulty Selector ──
-  Widget _buildBreakDifficultySelector(
-      WidgetRef ref, int difficulty, ValueChanged<int> onChanged, BuildContext ctx) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Break Difficulty',
-            style: TextStyle(
-                color: _textSoft, fontSize: 13)),
-        const SizedBox(height: 8),
-        Row(children: [
-          // Easy
-          Expanded(
-            child: GestureDetector(
-              onTap: () { HapticFeedback.selectionClick(); onChanged(0); },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: difficulty == 0
-                      ? _sage.withValues(alpha: 0.08)
-                      : _bg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: difficulty == 0
-                        ? _sage.withValues(alpha: 0.3)
-                        : _border,
-                  ),
-                ),
-                child: Column(children: [
-                  Icon(Icons.lock_open_rounded,
-                      size: 22,
-                      color: difficulty == 0
-                          ? _sage
-                          : _textSoft),
-                  const SizedBox(height: 6),
-                  Text('Easy',
-                      style: TextStyle(
-                          color: difficulty == 0
-                              ? _sageDark
-                              : _textSoft,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  Text('Can take breaks\n& pause anytime',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: _textSoft,
-                          fontSize: 10)),
-                ]),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          // Hard
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                // Show Hard Mode info page first
-                _showHardModeInfo(ctx, () => onChanged(1));
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: difficulty == 1
-                      ? _desertSunset.withValues(alpha: 0.06)
-                      : _bg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: difficulty == 1
-                        ? _desertSunset.withValues(alpha: 0.3)
-                        : _border,
-                  ),
-                ),
-                child: Column(children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.lock_rounded,
-                        size: 22,
-                        color: difficulty == 1
-                            ? _desertSunset
-                            : _textSoft),
-                  ]),
-                  const SizedBox(height: 6),
-                  Text('Hard',
-                      style: TextStyle(
-                          color: difficulty == 1
-                              ? _desertSunset
-                              : _textSoft,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  Text("Can't break, leave\nor uninstall app",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: _textSoft,
-                          fontSize: 10)),
-                ]),
-              ),
-            ),
-          ),
-        ]),
-      ],
-    );
-  }
 }
 
-// ─── 100-Tap Deactivate Confirmation ────────────────────────────────────────
-
-class _DeactivateRuleConfirmScreen extends ConsumerStatefulWidget {
-  final String ruleId;
-  final String ruleName;
-  const _DeactivateRuleConfirmScreen({required this.ruleId, required this.ruleName});
-
-  @override
-  ConsumerState<_DeactivateRuleConfirmScreen> createState() => _DeactivateRuleConfirmScreenState();
-}
-
-class _DeactivateRuleConfirmScreenState extends ConsumerState<_DeactivateRuleConfirmScreen> {
-  // ── Theme-aware colors ──
-  bool get _isLight => ref.watch(themeColorProvider).isLight;
-  Color get _bg => _isLight ? const Color(0xFFF5F5F5) : _ftBg;
-  Color get _card => _isLight ? Colors.black.withValues(alpha: 0.04) : _ftCard;
-  Color get _text => _isLight ? const Color(0xFF0D0D0D) : _ftText;
-  Color get _textSoft => _isLight ? const Color(0xFF6B6B6B) : _ftTextSoft;
-  Color get _border => _isLight ? Colors.black.withValues(alpha: 0.08) : _ftBorder;
-
-  int _tapCount = 0;
-  static const int _requiredTaps = 100;
-
-  void _handleTap() {
-    HapticFeedback.selectionClick();
-    setState(() => _tapCount++);
-    if (_tapCount >= _requiredTaps) {
-      HapticFeedback.heavyImpact();
-      ref.read(appBlockRuleProvider.notifier).toggleRule(widget.ruleId);
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Rule "${widget.ruleName}" deactivated'),
-          backgroundColor: _desertSunset.withValues(alpha: 0.8),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = _tapCount / _requiredTaps;
-    final remaining = _requiredTaps - _tapCount;
-
-    return Scaffold(
-      backgroundColor: _bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: _card,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _border),
-                      ),
-                      child: Icon(Icons.arrow_back_ios_new,
-                          color: _textSoft, size: 16),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text('Deactivate Blocker',
-                        style: TextStyle(
-                            color: _text,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-            ),
-
-            // Content
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Warning icon
-                      Container(
-                        width: 80, height: 80,
-                        decoration: BoxDecoration(
-                          color: _desertSunset.withValues(alpha: 0.06),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.shield_outlined, size: 40,
-                            color: _desertSunset.withValues(alpha: 0.6)),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Stay focused?',
-                        style: TextStyle(
-                          color: _text,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Deactivating "${widget.ruleName}" removes\nyour focus protection.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: _textSoft,
-                          fontSize: 13,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Progress bar
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          minHeight: 8,
-                          backgroundColor: _border,
-                          color: Color.lerp(
-                            _desertSunset.withValues(alpha: 0.3),
-                            _desertSunset.withValues(alpha: 0.8),
-                            progress,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '$remaining taps remaining',
-                        style: TextStyle(
-                          color: _textSoft,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Tap target
-                      GestureDetector(
-                        onTap: _handleTap,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 100),
-                          width: 140,
-                          height: 140,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color.lerp(
-                              _desertSunset.withValues(alpha: 0.04),
-                              _desertSunset.withValues(alpha: 0.18),
-                              progress,
-                            ),
-                            border: Border.all(
-                              color: Color.lerp(
-                                _desertSunset.withValues(alpha: 0.12),
-                                _desertSunset.withValues(alpha: 0.5),
-                                progress,
-                              )!,
-                              width: 2,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '$_tapCount',
-                                style: TextStyle(
-                                  color: _desertSunset.withValues(alpha: 0.5 + progress * 0.4),
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Tap to\ndeactivate',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: _desertSunset.withValues(alpha: 0.35),
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Tap the button $_requiredTaps times to deactivate',
-                        style: TextStyle(
-                          color: _textSoft,
-                          fontSize: 11,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── 100-Tap Delete Confirmation ────────────────────────────────────────────
-
-class _DeleteRuleConfirmScreen extends ConsumerStatefulWidget {
-  final String ruleId;
-  final String ruleName;
-  const _DeleteRuleConfirmScreen({required this.ruleId, required this.ruleName});
-
-  @override
-  ConsumerState<_DeleteRuleConfirmScreen> createState() => _DeleteRuleConfirmScreenState();
-}
-
-class _DeleteRuleConfirmScreenState extends ConsumerState<_DeleteRuleConfirmScreen> {
-  // ── Theme-aware colors ──
-  bool get _isLight => ref.watch(themeColorProvider).isLight;
-  Color get _bg => _isLight ? const Color(0xFFF5F5F5) : _ftBg;
-  Color get _card => _isLight ? Colors.black.withValues(alpha: 0.04) : _ftCard;
-  Color get _text => _isLight ? const Color(0xFF0D0D0D) : _ftText;
-  Color get _textSoft => _isLight ? const Color(0xFF6B6B6B) : _ftTextSoft;
-  Color get _border => _isLight ? Colors.black.withValues(alpha: 0.08) : _ftBorder;
-
-  int _tapCount = 0;
-  static const int _requiredTaps = 100;
-
-  void _handleTap() {
-    HapticFeedback.selectionClick();
-    setState(() => _tapCount++);
-    if (_tapCount >= _requiredTaps) {
-      HapticFeedback.heavyImpact();
-      ref.read(appBlockRuleProvider.notifier).deleteRule(widget.ruleId);
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Rule "${widget.ruleName}" deleted'),
-          backgroundColor: Colors.red.withValues(alpha: 0.8),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = _tapCount / _requiredTaps;
-    final remaining = _requiredTaps - _tapCount;
-
-    return Scaffold(
-      backgroundColor: _bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: _card,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _border),
-                      ),
-                      child: Icon(Icons.arrow_back_ios_new,
-                          color: _textSoft, size: 16),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text('Delete Rule',
-                        style: TextStyle(
-                            color: _text,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-            ),
-
-            // Content
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Warning icon
-                      Container(
-                        width: 80, height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.06),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.warning_amber_rounded, size: 40,
-                            color: Colors.red.withValues(alpha: 0.6)),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Are you absolutely sure?',
-                        style: TextStyle(
-                          color: _text,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Deleting "${widget.ruleName}" means removing\nyour focus protection.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: _textSoft,
-                          fontSize: 13,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Progress bar
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          minHeight: 8,
-                          backgroundColor: _border,
-                          color: Color.lerp(
-                            Colors.red.withValues(alpha: 0.3),
-                            Colors.red.withValues(alpha: 0.8),
-                            progress,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '$remaining taps remaining',
-                        style: TextStyle(
-                          color: _textSoft,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Tap target
-                      GestureDetector(
-                        onTap: _handleTap,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 100),
-                          width: 140,
-                          height: 140,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color.lerp(
-                              Colors.red.withValues(alpha: 0.04),
-                              Colors.red.withValues(alpha: 0.18),
-                              progress,
-                            ),
-                            border: Border.all(
-                              color: Color.lerp(
-                                Colors.red.withValues(alpha: 0.12),
-                                Colors.red.withValues(alpha: 0.5),
-                                progress,
-                              )!,
-                              width: 2,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '$_tapCount',
-                                style: TextStyle(
-                                  color: Colors.red.withValues(alpha: 0.5 + progress * 0.4),
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Tap to\nconfirm',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.red.withValues(alpha: 0.35),
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Tap the button $_requiredTaps times to delete',
-                        style: TextStyle(
-                          color: _textSoft,
-                          fontSize: 11,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Full-Screen App Selection ──────────────────────────────────────────────
+
 
 class _AppSelectionScreen extends ConsumerStatefulWidget {
   final List<InstalledApp> allApps;
@@ -6165,7 +3950,6 @@ class _AppSelectionScreenState extends ConsumerState<_AppSelectionScreen> {
                 ),
                 GestureDetector(
                   onTap: () {
-                    HapticFeedback.lightImpact();
                     Navigator.pop(context, _selected);
                   },
                   child: Container(
@@ -6246,7 +4030,6 @@ class _AppSelectionScreenState extends ConsumerState<_AppSelectionScreen> {
                   return ListTile(
                     dense: true,
                     onTap: () {
-                      HapticFeedback.selectionClick();
                       setState(() {
                         if (isSelected) {
                           _selected.remove(app.packageName);
@@ -6311,7 +4094,6 @@ class _AddButton extends ConsumerWidget {
     final sage = ref.watch(themeColorProvider).color;
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
         onTap();
       },
       child: Container(
@@ -6660,7 +4442,6 @@ class _BlockerPermissionScreenState extends State<_BlockerPermissionScreen>
                     'Required to detect which app is in the foreground.\nThis is how the blocker knows when a blocked app opens.',
                 isGranted: _usageGranted,
                 onGrant: () async {
-                  HapticFeedback.mediumImpact();
                   await NativeAppBlockerService.requestUsageStatsPermission();
                 },
               ),
@@ -6676,7 +4457,6 @@ class _BlockerPermissionScreenState extends State<_BlockerPermissionScreen>
                     'Required to keep the blocker running in the background.\nShows a small "Focus Mode Active" notification.',
                 isGranted: _notifGranted,
                 onGrant: () async {
-                  HapticFeedback.mediumImpact();
                   await NativeAppBlockerService.requestNotificationPermission();
                   // Small delay then re-check (Android dialog is quick)
                   await Future.delayed(const Duration(milliseconds: 800));
@@ -6692,10 +4472,8 @@ class _BlockerPermissionScreenState extends State<_BlockerPermissionScreen>
                 child: GestureDetector(
                   onTap: () {
                     if (_allGranted) {
-                      HapticFeedback.lightImpact();
                       Navigator.pop(context, true);
                     } else {
-                      HapticFeedback.heavyImpact();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: const Text('Please grant all permissions to continue'),

@@ -58,7 +58,6 @@ class _SurahListScreenState extends ConsumerState<SurahListScreen> {
   }
 
   Future<void> _resumeReading(LastReadPosition position, List<Surah> surahs) async {
-    HapticFeedback.mediumImpact();
     
     // Find the surah
     final surah = surahs.firstWhere(
@@ -288,7 +287,6 @@ class _SurahListScreenState extends ConsumerState<SurahListScreen> {
                           size: 14,
                         ),
                         onTap: () {
-                          HapticFeedback.lightImpact();
                           _navigateToSurah(surah);
                         },
                       ),

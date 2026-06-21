@@ -113,7 +113,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
   void _back() => _goTo(_page - 1);
 
   void _setDefaultAndNext() async {
-    HapticFeedback.heavyImpact();
     try {
       const platform = MethodChannel('com.sukoon.launcher/launcher');
       await platform.invokeMethod('openHomeLauncherSettings');
@@ -692,7 +691,7 @@ class _PageFeatures extends StatelessWidget {
               _FeatureCard(
                 icon: Icons.spa_rounded,
                 title: 'Digital Wellness',
-                desc: 'Muraqaba, Pomodoro timer, app time limits, screen time tracking.',
+                desc: 'Kahf Mode, Pomodoro timer, app time limits, app timer tracking.',
               ),
               const SizedBox(height: 10),
               _FeatureCard(
@@ -873,13 +872,13 @@ class _PageProductivity extends StatelessWidget {
               const SizedBox(height: 12),
               _DetailRow(
                 icon: Icons.bar_chart_rounded,
-                title: 'Screen Time Tracking',
+                title: 'App Timer Tracking',
                 subtitle: 'See exactly where your hours go each day',
               ),
               const SizedBox(height: 12),
               _DetailRow(
                 icon: Icons.do_not_disturb_on_rounded,
-                title: 'Muraqaba',
+                title: 'Kahf Mode',
                 subtitle: 'One tap to silence everything — total presence',
               ),
 
@@ -959,7 +958,7 @@ class _PagePersonalise extends StatelessWidget {
               _DetailRow(
                 icon: Icons.wallpaper_rounded,
                 title: 'Wallpapers & Themes',
-                subtitle: 'Curated Islamic wallpapers, AMOLED black mode',
+                subtitle: 'Curated Islamic wallpapers and themes',
               ),
               const SizedBox(height: 12),
               _DetailRow(

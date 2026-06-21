@@ -170,36 +170,48 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
     private fun showAdhanNotification(context: Context, prayerName: String) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+        val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        else PendingIntent.FLAG_UPDATE_CURRENT
+
         // Dismiss PendingIntent — stops sound + cancels notification
         val dismissIntent = Intent(context, AlarmBroadcastReceiver::class.java).apply {
             action = ACTION_DISMISS_ADHAN
             putExtra(EXTRA_PRAYER_NAME, prayerName)
         }
-        val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        else PendingIntent.FLAG_UPDATE_CURRENT
-
         val dismissPi = PendingIntent.getBroadcast(
             context, (prayerNotificationIds[prayerName] ?: 3000) + 200, dismissIntent, piFlags)
+
+        // Full-screen intent — launches SalahAlarmActivity on lock screen / screen-off
+        val fullScreenIntent = Intent(context, SalahAlarmActivity::class.java).apply {
+            putExtra(SalahAlarmActivity.EXTRA_PRAYER_NAME, prayerName)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_HISTORY)
+        }
+        val fullScreenPi = PendingIntent.getActivity(
+            context,
+            (prayerNotificationIds[prayerName] ?: 3000) + 300,
+            fullScreenIntent,
+            piFlags,
+        )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ADHAN)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("🕌 ${prayerName.uppercase()} TIME")
             .setContentText(getPrayerMessage(prayerName))
             .setStyle(NotificationCompat.BigTextStyle().bigText(getPrayerMessage(prayerName)))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_MAX)          // MAX so full-screen fires
+            .setCategory(NotificationCompat.CATEGORY_ALARM)        // ALARM category
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            // Add a Dismiss action so user can stop adhan from the notification shade
+            .setAutoCancel(false)
+            .setOngoing(true)                                       // can't be swiped away
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Adhan", dismissPi)
-            .setContentIntent(dismissPi)
-            .setTimeoutAfter(228_000L)  // auto-cancel after 3m48s (full adhan)
+            .setContentIntent(fullScreenPi)
+            .setFullScreenIntent(fullScreenPi, true)               // ← full-screen intent
+            .setTimeoutAfter(238_000L)
             .build()
 
         nm.notify(prayerNotificationIds[prayerName] ?: 3000, notification)
-        Log.d(TAG, "Adhan notification shown for $prayerName")
+        Log.d(TAG, "Adhan notification shown for $prayerName (fullScreen=true)")
     }
 
     private fun playAdhanSound(context: Context, prayerName: String) {
@@ -210,7 +222,7 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
             val player = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)   // plays at ALARM volume
+                        .setUsage(AudioAttributes.USAGE_ALARM)
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build()
                 )
@@ -232,13 +244,15 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
             adhanPlayer = player
             Log.d(TAG, "Adhan MediaPlayer started for $prayerName (ALARM stream)")
 
-            // ── Volume-key observer (screen on OR off) ─────────────────────
-            // Android routes volume-button presses to AudioManager which changes
-            // Settings.System.VOLUME_ALARM. We watch this URI; any change means
-            // a volume button was pressed → stop adhan immediately.
+            // ── Volume-key observer ────────────────────────────────────────────
+            // Registers AFTER player starts so the initial onChange (if any) is
+            // ignored until we have captured the baseline volume.
             registerVolumeObserver(context, prayerName)
 
-            // Safety auto-stop after 228 seconds in case onCompletion never fires
+            // ── Launch full-screen alarm UI ────────────────────────────────────
+            SalahAlarmActivity.launch(context, prayerName)
+
+            // Safety auto-stop after 238 seconds
             val handler = Handler(Looper.getMainLooper())
             val stopRunnable = Runnable {
                 stopAdhanSound()
@@ -246,7 +260,7 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 nm.cancel(prayerNotificationIds[prayerName] ?: 3000)
             }
-            handler.postDelayed(stopRunnable, 230_000L)
+            handler.postDelayed(stopRunnable, 238_000L)
             adhanStopHandler  = handler
             adhanStopRunnable = stopRunnable
 
@@ -263,30 +277,38 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
      */
     private fun registerVolumeObserver(context: Context, prayerName: String) {
         val handler = Handler(Looper.getMainLooper())
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // Snapshot the alarm volume RIGHT NOW so we can detect any change,
+        // including pressing volume-down when already at the minimum (1→0).
+        val snapshotVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
+
         val observer = object : ContentObserver(handler) {
-            private var initialVolume = -1
+            // Use -1 sentinel so we skip the very first callback that fires
+            // synchronously upon registration on some ROMs.
+            private var callCount = 0
+
             override fun onChange(selfChange: Boolean) {
                 super.onChange(selfChange)
-                val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                val current = am.getStreamVolume(AudioManager.STREAM_ALARM)
-                if (initialVolume < 0) {
-                    initialVolume = current  // first call is registration, not a real change
-                    return
+                callCount++
+                if (callCount == 1) {
+                    // First call fires immediately on some ROMs just because we
+                    // registered — ignore it unless volume already differs.
+                    val current = am.getStreamVolume(AudioManager.STREAM_ALARM)
+                    if (current == snapshotVolume) return
                 }
-                if (current != initialVolume) {
-                    Log.d(TAG, "Volume key detected (alarm vol $initialVolume→$current) — stopping adhan")
-                    stopAdhanSound()
-                    unregisterVolumeObserver(context)
-                    // Also dismiss the notification
-                    val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                    nm.cancel(prayerNotificationIds[prayerName] ?: 3000)
-                }
+                // Any subsequent change (or first-call volume mismatch) means a
+                // button was pressed → stop adhan.
+                Log.d(TAG, "Volume observer change #$callCount → stopping adhan")
+                stopAdhanSound()
+                unregisterVolumeObserver(context)
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.cancel(prayerNotificationIds[prayerName] ?: 3000)
             }
         }
         val volumeUri = Settings.System.getUriFor("volume_alarm")
         context.contentResolver.registerContentObserver(volumeUri, false, observer)
         volumeObserver = observer
-        Log.d(TAG, "Volume observer registered for adhan")
+        Log.d(TAG, "Volume observer registered (baseline alarm vol=$snapshotVolume)")
     }
 
     private fun unregisterVolumeObserver(context: Context) {

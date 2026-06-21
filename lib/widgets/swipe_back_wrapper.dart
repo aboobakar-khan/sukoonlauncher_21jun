@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import '../utils/motion.dart';
 
 /// Reusable bottom swipe-up wrapper for pushed screens.
 ///
@@ -29,6 +30,7 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
   /// no more ~300ms input-blocked overlay that MaterialPageRoute had.
   void _popToHome() {
     if (!Navigator.of(context).canPop()) return;
+    GestureHaptics.swipeCommit();
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
@@ -56,8 +58,7 @@ class _SwipeBackWrapperState extends State<SwipeBackWrapper> {
 
               final velocity = details.primaryVelocity ?? 0;
               // Require strong upward velocity (more negative = faster upswipe)
-              if (velocity < -500) {
-                HapticFeedback.lightImpact();
+              if (velocity < -SwipeTuning.commitVelocity) {
                 _popToHome();
               }
             },

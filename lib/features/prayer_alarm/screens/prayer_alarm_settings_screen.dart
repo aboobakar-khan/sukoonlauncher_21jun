@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../providers/fasting_provider.dart';
+import '../../../providers/display_settings_provider.dart';
 import '../../../widgets/swipe_back_wrapper.dart';
 import '../providers/prayer_alarm_provider.dart';
 import '../models/prayer_alarm_config.dart';
@@ -54,10 +56,17 @@ class _PrayerAlarmSettingsScreenState
   Duration _timeUntilNext = Duration.zero;
   String _nextPrayerName = '';
 
+  // Fasting alarm modes — persisted via SharedPreferences
+  String _suhoorMode = 'off';
+  String _iftarMode  = 'off';
+  static const _kSuhoorModeKey = 'fasting_suhoor_alarm_mode';
+  static const _kIftarModeKey  = 'fasting_iftar_alarm_mode';
+
   @override
   void initState() {
     super.initState();
     _checkPermissions();
+    _loadFastingModes(); // load persisted Suhoor/Iftar alarm modes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final config = ref.read(prayerAlarmProvider).config;
       if (config.locationLabel.isNotEmpty) {
@@ -76,6 +85,39 @@ class _PrayerAlarmSettingsScreenState
         _hasNotifPermission = notif;
         _hasExactAlarmPermission = exact;
       });
+    }
+  }
+
+  // ── FASTING ALARM MODE PERSISTENCE ──
+
+  Future<void> _loadFastingModes() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _suhoorMode = prefs.getString(_kSuhoorModeKey) ?? 'off';
+        _iftarMode  = prefs.getString(_kIftarModeKey)  ?? 'off';
+      });
+    }
+  }
+
+  Future<void> _saveSuhoorMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kSuhoorModeKey, mode);
+    if (mounted) setState(() => _suhoorMode = mode);
+    // Reschedule with updated mode
+    final times = ref.read(fastingProvider).times;
+    if (times != null && mode != 'off') {
+      _scheduleFastingAlarm('Suhoor', times.sahur);
+    }
+  }
+
+  Future<void> _saveIftarMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kIftarModeKey, mode);
+    if (mounted) setState(() => _iftarMode = mode);
+    final times = ref.read(fastingProvider).times;
+    if (times != null && mode != 'off') {
+      _scheduleFastingAlarm('Iftar', times.iftar);
     }
   }
 
@@ -159,7 +201,8 @@ class _PrayerAlarmSettingsScreenState
                     const SizedBox(height: 10),
                     ..._buildPrayerRows(state, s),
                     const SizedBox(height: 16),
-                    _buildFastingFooter(),
+                    _buildWidgetToggle(),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -176,26 +219,40 @@ class _PrayerAlarmSettingsScreenState
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(8, 10, 16, 4),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.arrow_back_ios_new_rounded,
-                size: 17, color: kSwTextPrimary.withAlpha(130)),
+          // Circular back button — larger, clearer tap target.
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: 38, height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withAlpha(8),
+              ),
+              child: Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 15, color: kSwTextPrimary.withAlpha(165)),
+            ),
           ),
-          const SizedBox(width: 2),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Salah Wake', style: TextStyle(
-                fontSize: 18, fontWeight: FontWeight.w700,
-                color: kSwTextPrimary.withAlpha(230), letterSpacing: -0.3,
-              )),
-              Text('Prayer times & alarms', style: TextStyle(
-                fontSize: 11, color: kSwTextMuted.withAlpha(100),
-              )),
-            ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Salah Wake', style: TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w700,
+                  color: kSwTextPrimary.withAlpha(235), letterSpacing: -0.4,
+                )),
+                const SizedBox(height: 1),
+                Text('Prayer times & alarms', style: TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w500,
+                  color: kSwTextSecondary.withAlpha(155),
+                )),
+              ],
+            ),
           ),
         ],
       ),
@@ -241,7 +298,6 @@ class _PrayerAlarmSettingsScreenState
                               size: 12, color: kSwTextMuted.withAlpha(80)),
                         ),
                   onTap: () async {
-                    HapticFeedback.selectionClick();
                     // If device location (GPS) is off, prompt to turn it on
                     final serviceEnabled = await _isLocationServiceEnabled();
                     if (!serviceEnabled) {
@@ -260,7 +316,6 @@ class _PrayerAlarmSettingsScreenState
                   label: calcName,
                   active: _showCalcMethod,
                   onTap: () {
-                    HapticFeedback.selectionClick();
                     setState(() {
                       _showCalcMethod = !_showCalcMethod;
                       if (_showCalcMethod) { _showLocationSearch = false; _showAsrSchool = false; }
@@ -273,7 +328,6 @@ class _PrayerAlarmSettingsScreenState
                   label: asrName,
                   active: _showAsrSchool,
                   onTap: () {
-                    HapticFeedback.selectionClick();
                     setState(() {
                       _showAsrSchool = !_showAsrSchool;
                       if (_showAsrSchool) { _showLocationSearch = false; _showCalcMethod = false; }
@@ -332,7 +386,6 @@ class _PrayerAlarmSettingsScreenState
               NavArrow(
                 icon: Icons.chevron_left_rounded,
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   _loadViewDate(_viewDate.subtract(const Duration(days: 1)));
                 },
               ),
@@ -356,7 +409,6 @@ class _PrayerAlarmSettingsScreenState
               NavArrow(
                 icon: Icons.chevron_right_rounded,
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   _loadViewDate(_viewDate.add(const Duration(days: 1)));
                 },
               ),
@@ -451,7 +503,7 @@ class _PrayerAlarmSettingsScreenState
 
       final mode = s.notifTypeFor(prayer);
       final adj = s.adjustmentFor(prayer);
-      final effectiveTime = state.effectiveTimeFor(prayer) ?? apiTime;
+      final effectiveTime = state.effectiveTimeFor(prayer, _viewDate) ?? apiTime;
       final timeState = _prayerTimeState(prayer, times);
 
       return PrayerRow(
@@ -617,70 +669,7 @@ class _PrayerAlarmSettingsScreenState
   //  FASTING FOOTER
   // ══════════════════════════════════════════════════════
 
-  Widget _buildFastingFooter() {
-    final fastingState = ref.watch(fastingProvider);
-    final isLoaded = fastingState.isLoaded;
-    final times = fastingState.times;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 6),
-          child: Row(
-            children: [
-              Icon(Icons.nightlight_round, size: 12, color: kSwActive.withAlpha(80)),
-              const SizedBox(width: 5),
-              Text('SUHOOR & IFTAR', style: TextStyle(
-                fontSize: 9, fontWeight: FontWeight.w700,
-                letterSpacing: 1.2, color: kSwTextMuted,
-              )),
-              const Spacer(),
-              if (fastingState.status == FastingStatus.loading)
-                SizedBox(width: 10, height: 10,
-                  child: CircularProgressIndicator(strokeWidth: 1.5, color: kSwActive))
-              else
-                GestureDetector(
-                  onTap: () => ref.read(fastingProvider.notifier).fetch(),
-                  child: Icon(Icons.refresh_rounded, size: 13, color: kSwTextMuted.withAlpha(80)),
-                ),
-            ],
-          ),
-        ),
-        if (!isLoaded)
-          Center(child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              fastingState.status == FastingStatus.loading
-                  ? 'Loading times…'
-                  : 'Set location to load fasting times',
-              style: TextStyle(fontSize: 12, color: kSwTextMuted),
-            ),
-          ))
-        else ...[
-          FastingRow(
-            icon: Icons.wb_twilight_rounded,
-            label: 'SUHOOR',
-            time: fmt12h(times!.sahur),
-            mode: 'off', // TODO: persist fasting alarm mode
-            onModeChanged: (mode) {
-              _scheduleFastingAlarm('Suhoor', times.sahur);
-            },
-          ),
-          const SizedBox(height: 4),
-          FastingRow(
-            icon: Icons.nights_stay_rounded,
-            label: 'IFTAR',
-            time: fmt12h(times.iftar),
-            mode: 'off', // TODO: persist fasting alarm mode
-            onModeChanged: (mode) {
-              _scheduleFastingAlarm('Iftar', times.iftar);
-            },
-          ),
-        ],
-      ],
-    );
-  }
 
   // ══════════════════════════════════════════════════════
   //  LOCATION EXPANDED PANEL
@@ -804,8 +793,11 @@ class _PrayerAlarmSettingsScreenState
   // ══════════════════════════════════════════════════════
 
   Widget _buildCalcMethodPanel(PrayerAlarmState state) {
+    final selectedId = state.config.calculationMethod;
+    final methods = AladhanApiService.calculationMethods;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: kSwCard,
         borderRadius: BorderRadius.circular(12),
@@ -814,33 +806,65 @@ class _PrayerAlarmSettingsScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Calculation Method', style: TextStyle(
-            fontSize: 10, fontWeight: FontWeight.w600,
-            letterSpacing: 0.6, color: kSwTextMuted)),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<int>(
-            initialValue: state.config.calculationMethod,
-            items: AladhanApiService.calculationMethods
-                .map((m) => DropdownMenuItem<int>(
-                      value: m['id'] as int,
-                      child: Text(m['name'] as String,
-                          style: const TextStyle(fontSize: 11),
-                          overflow: TextOverflow.ellipsis),
-                    ))
-                .toList(),
-            onChanged: (val) {
-              if (val != null) ref.read(prayerAlarmProvider.notifier).setCalculationMethod(val);
-            },
-            isExpanded: true,
-            dropdownColor: const Color(0xFF141418),
-            style: TextStyle(color: kSwTextPrimary.withAlpha(170), fontSize: 12),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: Colors.white.withAlpha(5),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              isDense: true,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Text('CALCULATION METHOD', style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.w700,
+              letterSpacing: 1.0, color: kSwTextMuted)),
+          ),
+          // On-theme scrollable selection list — replaces the stock
+          // DropdownButtonFormField (whose Material popup clashed with the
+          // card design). Selected method is highlighted in the accent color.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 244),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              physics: const ClampingScrollPhysics(),
+              itemCount: methods.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 4),
+              itemBuilder: (_, i) {
+                final m = methods[i];
+                final id = m['id'] as int;
+                final name = m['name'] as String;
+                final sel = id == selectedId;
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    ref.read(prayerAlarmProvider.notifier).setCalculationMethod(id);
+                    setState(() => _showCalcMethod = false);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      color: sel ? kSwActive.withAlpha(18) : Colors.white.withAlpha(4),
+                      border: Border.all(
+                        color: sel ? kSwActive.withAlpha(50) : Colors.white.withAlpha(8)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          sel ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                          size: 15, color: sel ? kSwActive : kSwTextMuted),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(name,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+                              color: sel ? kSwTextPrimary : kSwTextSecondary,
+                            )),
+                        ),
+                        if (sel)
+                          Icon(Icons.check_rounded, size: 14, color: kSwActive),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -870,11 +894,17 @@ class _PrayerAlarmSettingsScreenState
           Row(children: [
             AsrOption(label: "Shafi'i", sublabel: 'Standard',
               selected: state.config.asrCalculationSchool == 0,
-              onTap: () => ref.read(prayerAlarmProvider.notifier).setAsrCalculationSchool(0)),
+              onTap: () {
+                ref.read(prayerAlarmProvider.notifier).setAsrCalculationSchool(0);
+                setState(() => _showAsrSchool = false);
+              }),
             const SizedBox(width: 8),
             AsrOption(label: 'Hanafi', sublabel: 'Indo-Pak',
               selected: state.config.asrCalculationSchool == 1,
-              onTap: () => ref.read(prayerAlarmProvider.notifier).setAsrCalculationSchool(1)),
+              onTap: () {
+                ref.read(prayerAlarmProvider.notifier).setAsrCalculationSchool(1);
+                setState(() => _showAsrSchool = false);
+              }),
           ]),
         ],
       ),
@@ -1065,7 +1095,6 @@ class _PrayerAlarmSettingsScreenState
           label: label, alarmTime: target, alarmId: alarmId);
 
       if (mounted) {
-        HapticFeedback.heavyImpact();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('$label alarm set for $displayTime'),
           backgroundColor: kSwCard,
@@ -1082,4 +1111,118 @@ class _PrayerAlarmSettingsScreenState
       }
     }
   }
+  // ══════════════════════════════════════════════════════
+  //  HOME WIDGET TOGGLE
+  // ══════════════════════════════════════════════════════
+
+  Widget _buildWidgetToggle() {
+    final displaySettings = ref.watch(displaySettingsProvider);
+    final isEnabled = displaySettings.showPrayerWidget;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: kSwCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withAlpha(10)),
+      ),
+      child: Column(
+        children: [
+          // Main toggle
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: kSwActive.withAlpha(20),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.widgets_rounded, size: 18, color: kSwActive.withAlpha(200)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Home Screen Widget', style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600, color: kSwTextPrimary.withAlpha(230),
+                      )),
+                      const SizedBox(height: 2),
+                      Text('Display next prayer card on home', style: TextStyle(
+                        fontSize: 11, color: kSwTextMuted.withAlpha(150),
+                      )),
+                    ],
+                  ),
+                ),
+                CupertinoSwitch(
+                  value: isEnabled,
+                  activeTrackColor: kSwActive,
+                  inactiveTrackColor: Colors.white.withAlpha(20),
+                  onChanged: (val) {
+                    ref.read(displaySettingsProvider.notifier).setShowPrayerWidget(val);
+                  },
+                ),
+              ],
+            ),
+          ),
+          
+          // Expanded options
+          AnimatedCrossFade(
+            firstChild: const SizedBox(width: double.infinity, height: 0),
+            secondChild: Column(
+              children: [
+                Divider(height: 1, color: Colors.white.withAlpha(10)),
+                // Style Selector
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 44),
+                      Expanded(
+                        child: Text('Widget Style', style: TextStyle(
+                          fontSize: 13, color: kSwTextPrimary.withAlpha(200),
+                        )),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.only(left: 10, right: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(10),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: displaySettings.homePrayerWidgetType,
+                            icon: Icon(Icons.arrow_drop_down, color: Colors.white.withAlpha(150), size: 16),
+                            isDense: true,
+                            dropdownColor: const Color(0xFF141418),
+                            style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(200)),
+                            items: const [
+                              DropdownMenuItem(value: 'prayer_time', child: Text('Standard')),
+                              DropdownMenuItem(value: 'salah_wake', child: Text('Salah Wake')),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                ref.read(displaySettingsProvider.notifier).setHomePrayerWidgetType(val);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            crossFadeState: isEnabled ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 250),
+            sizeCurve: Curves.easeOutCubic,
+          ),
+        ],
+      ),
+    );
+  }
+
+
+
 }

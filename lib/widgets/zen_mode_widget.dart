@@ -66,7 +66,7 @@ class ZenModeWidget extends ConsumerWidget {
                     ),
                   ),
                   child: Icon(
-                    Icons.spa_rounded,
+                    Icons.nights_stay_rounded,
                     color: activeColor.withValues(alpha: 0.8),
                     size: 24,
                   ),
@@ -79,7 +79,7 @@ class ZenModeWidget extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Muraqaba',
+                        'Kahf Mode',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.9),
                           fontSize: 15,
@@ -91,7 +91,7 @@ class ZenModeWidget extends ConsumerWidget {
                       Text(
                         zen.isActive
                             ? '${zen.remainingFormatted} remaining'
-                            : 'Lock your phone, find peace',
+                            : 'Block everything. Be present.',
                         style: TextStyle(
                           color: zen.isActive
                               ? accent.withValues(alpha: 0.8)

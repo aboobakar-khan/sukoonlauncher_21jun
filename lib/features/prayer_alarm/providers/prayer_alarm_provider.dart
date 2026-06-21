@@ -15,6 +15,7 @@ class PrayerAlarmState {
   final PrayerAlarmConfig config;
   final PrayerReminderSettings reminderSettings;
   final DailyPrayerTimes? todayTimes;
+  final Map<String, DailyPrayerTimes> cachedDays;
   final bool isLoading;
   final String? error;
   final bool isSetupComplete;
@@ -23,6 +24,7 @@ class PrayerAlarmState {
     required this.config,
     required this.reminderSettings,
     this.todayTimes,
+    this.cachedDays = const {},
     this.isLoading = false,
     this.error,
     this.isSetupComplete = false,
@@ -32,6 +34,7 @@ class PrayerAlarmState {
     PrayerAlarmConfig? config,
     PrayerReminderSettings? reminderSettings,
     DailyPrayerTimes? todayTimes,
+    Map<String, DailyPrayerTimes>? cachedDays,
     bool? isLoading,
     String? error,
     bool? isSetupComplete,
@@ -40,6 +43,7 @@ class PrayerAlarmState {
       config: config ?? this.config,
       reminderSettings: reminderSettings ?? this.reminderSettings,
       todayTimes: todayTimes ?? this.todayTimes,
+      cachedDays: cachedDays ?? this.cachedDays,
       isLoading: isLoading ?? this.isLoading,
       error: error,
       isSetupComplete: isSetupComplete ?? this.isSetupComplete,
@@ -47,12 +51,17 @@ class PrayerAlarmState {
   }
 
   /// Get the effective time for a prayer (adjustment > override > API).
-  /// Priority: manual override (if set) → API time + adjustment.
-  String? effectiveTimeFor(String prayer) {
+  /// Priority: manual override (if set) → specific date base time + adjustment.
+  String? effectiveTimeFor(String prayer, [DateTime? date]) {
     final override = reminderSettings.overrideFor(prayer);
     if (override.isNotEmpty) return override;
-    final apiTime = todayTimes?.timeFor(prayer);
+    
+    final targetDate = date ?? DateTime.now();
+    final dateKey = dateKeyFor(targetDate);
+    final baseTimes = cachedDays[dateKey] ?? todayTimes;
+    final apiTime = baseTimes?.timeFor(prayer);
     if (apiTime == null) return null;
+    
     final adj = reminderSettings.adjustmentFor(prayer);
     if (adj == 0) return apiTime;
     return _applyAdjustment(apiTime, adj);
@@ -74,20 +83,26 @@ class PrayerAlarmState {
 
   /// Map of prayer names → enabled status.
   Map<String, bool> get enabledMap => {
-        'Fajr': reminderSettings.fajrEnabled,
-        'Dhuhr': reminderSettings.dhuhrEnabled,
-        'Asr': reminderSettings.asrEnabled,
-        'Maghrib': reminderSettings.maghribEnabled,
-        'Isha': reminderSettings.ishaEnabled,
+        'Fajr': reminderSettings.fajrNotifType != 'off',
+        'Dhuhr': reminderSettings.dhuhrNotifType != 'off',
+        'Asr': reminderSettings.asrNotifType != 'off',
+        'Maghrib': reminderSettings.maghribNotifType != 'off',
+        'Isha': reminderSettings.ishaNotifType != 'off',
       };
 
   /// Map of prayer names → effective times (with adjustments/overrides applied).
   /// Includes Sunrise.
+  /// Includes Sunrise.
   Map<String, String> get effectiveTimesMap {
     if (todayTimes == null) return {};
+    return effectiveTimesMapFor(DateTime.now());
+  }
+
+  /// Map of prayer names → effective times for a specific date.
+  Map<String, String> effectiveTimesMapFor(DateTime date) {
     final result = <String, String>{};
     for (final prayer in ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']) {
-      final t = effectiveTimeFor(prayer);
+      final t = effectiveTimeFor(prayer, date);
       if (t != null) result[prayer] = t;
     }
     return result;
@@ -114,6 +129,19 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
   Box? _configBox;
   Box<DailyPrayerTimes>? _timesBox;
   Box? _settingsBox;
+
+  /// Syncs the _timesBox into state.cachedDays
+  void _updateCachedDays() {
+    if (_timesBox == null) return;
+    final map = <String, DailyPrayerTimes>{};
+    for (final key in _timesBox!.keys) {
+      if (key is String) {
+        final val = _timesBox!.get(key);
+        if (val != null) map[key] = val;
+      }
+    }
+    state = state.copyWith(cachedDays: map);
+  }
 
   Future<void> _init() async {
     try {
@@ -148,6 +176,8 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
         todayTimes: cachedTimes,
         isSetupComplete: isSetup,
       );
+      
+      _updateCachedDays();
 
       // Offline-first: show cached times immediately, then refresh in background
       if (isSetup) {
@@ -211,6 +241,7 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
 
     // Nothing to fetch — cache is complete
     if (missingDates.isEmpty) {
+      _updateCachedDays();
       _updateCacheRange(rangeStart, rangeEnd);
       return;
     }
@@ -237,6 +268,8 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
         );
         await _timesBox!.put(entry.key, dt);
       }
+
+      _updateCachedDays();
 
       // Update today's times in state if we just fetched them
       final todayKey = todayDateKey();
@@ -269,6 +302,7 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
   Future<void> _invalidateCacheAndRefresh() async {
     // Clear all cached base times
     await _timesBox?.clear();
+    _updateCachedDays();
 
     // Clear range tracking
     final cleared = state.config.copyWith(
@@ -351,6 +385,8 @@ class PrayerAlarmNotifier extends StateNotifier<PrayerAlarmState> {
       // Update last fetch date
       final updatedConfig = state.config.copyWith(lastFetchDate: today);
       await _configBox?.put('config', updatedConfig);
+      
+      _updateCachedDays();
 
       state = state.copyWith(
         todayTimes: dailyTimes,

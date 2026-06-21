@@ -9,7 +9,6 @@ import '../providers/font_size_provider.dart';
 import '../providers/clock_style_provider.dart';
 import '../providers/time_format_provider.dart';
 import '../providers/wallpaper_provider.dart';
-import '../providers/amoled_provider.dart';
 import '../providers/page_indicator_provider.dart';
 import '../providers/swipe_gesture_provider.dart';
 import '../providers/double_tap_provider.dart';
@@ -28,7 +27,6 @@ import '../widgets/swipe_back_wrapper.dart';
 import 'screen_time_settings_screen.dart';
 import 'notification_feed_screen.dart';
 import 'app_permissions_screen.dart';
-import 'weekly_spiritual_report_screen.dart';
 import '../providers/notification_filter_provider.dart';
 import '../providers/tasbih_provider.dart';
 import '../providers/prayer_provider.dart';
@@ -42,8 +40,9 @@ import '../providers/zen_mode_provider.dart';
 import '../providers/screen_time_provider.dart';
 import '../providers/fasting_provider.dart';
 import '../services/backup_restore_service.dart';
-import '../features/calm_watch/providers/calm_watch_enabled_provider.dart';
 import '../utils/smooth_page_route.dart';
+import '../services/offline_content_manager.dart';
+import '../features/hadith_dua/models/hadith_dua_models.dart';
 
 /// Settings Screen - Customization options
 class SettingsScreen extends ConsumerWidget {
@@ -57,7 +56,6 @@ class SettingsScreen extends ConsumerWidget {
     final currentClockStyle = ref.watch(clockStyleProvider);
     final currentTimeFormat = ref.watch(timeFormatProvider);
     final currentWallpaper = ref.watch(wallpaperProvider);
-    final isAmoled = ref.watch(amoledProvider);
     final isLight = currentTheme.isLight;
     final bgColor = isLight ? const Color(0xFFF5F5F5) : Colors.black;
     final primaryText = isLight ? const Color(0xFF0D0D0D) : Colors.white;
@@ -180,8 +178,8 @@ class SettingsScreen extends ConsumerWidget {
                       
                         isLight: isLight,
                       ),
-                      _buildAmoledToggle(context, ref, isAmoled),
                       _buildPageIndicatorToggle(context, ref),
+                      _buildStatusBarToggle(context, ref),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -201,30 +199,6 @@ class SettingsScreen extends ConsumerWidget {
                             context,
                             SmoothForwardRoute(
                               child: const FavoritePickerScreen(),
-                            ),
-                          );
-                        },
-                      
-                        isLight: isLight,
-                      ),
-                      _buildCalmWatchToggle(context, ref),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  _buildSettingsSection(
-                    title: 'INSIGHTS',
-                    accentColor: currentTheme.color,
-                    items: [
-                      _buildSettingsItem(
-                        icon: Icons.insights_rounded,
-                        title: 'Weekly Spiritual Report',
-                        subtitle: 'Prayer, dhikr & Ramadan summary',
-                        accentColor: currentTheme.color,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            SmoothForwardRoute(
-                              child: const WeeklySpiritualReportScreen(),
                             ),
                           );
                         },
@@ -335,13 +309,39 @@ class SettingsScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
 
                   _buildSettingsSection(
+                    title: 'HADITH OFFLINE',
+                    accentColor: currentTheme.color,
+                    items: [
+                      _buildSettingsItem(
+                        icon: Icons.cloud_download_rounded,
+                        title: 'Download Books',
+                        subtitle: 'Save complete collections for offline use',
+                        accentColor: currentTheme.color,
+                        onTap: () => _showHadithDownloadDialog(context, ref, currentTheme.color),
+                      
+                        isLight: isLight,
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.delete_sweep_rounded,
+                        title: 'Clear Offline Hadiths',
+                        subtitle: '${ref.watch(offlineContentProvider).hadithsDownloaded} saved offline',
+                        accentColor: Colors.red.shade400,
+                        onTap: () => _confirmClearHadithCache(context, ref),
+                      
+                        isLight: isLight,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  _buildSettingsSection(
                     title: 'ABOUT',
                     accentColor: currentTheme.color,
                     items: [
                       _buildSettingsItem(
                         icon: Icons.info_outline,
                         title: 'Version',
-                        subtitle: '1.1.2',
+                        subtitle: '1.2.3',
                         accentColor: currentTheme.color,
                         onTap: null,
                       
@@ -397,11 +397,29 @@ class SettingsScreen extends ConsumerWidget {
                         subtitle: 'Third-party package licenses',
                         accentColor: currentTheme.color,
                         onTap: () {
-                          showLicensePage(
+                          showAboutDialog(
                             context: context,
                             applicationName: 'Sukoon Launcher',
-                            applicationVersion: '1.1.5',
+                            applicationVersion: '1.2.3',
+                            applicationIcon: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Image.asset(
+                                'assets/app_icon.png',
+                                width: 32,
+                                height: 32,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                             applicationLegalese: '© 2026 Sukoon Launcher. All rights reserved.',
+                            children: [
+                              const SizedBox(height: 12),
+                              Text(
+                                "Sukoon Launcher - AI focus & Minimalist\nCreated by Sukoon Foundation.\n\nThank you for choosing simplicity.",
+                                style: TextStyle(
+                                  color: (!isLight) ? Colors.white70 : Colors.black87,
+                                ),
+                              ),
+                            ],
                           );
                         },
                       
@@ -437,7 +455,7 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          '· v1.1.5',
+                          '· v1.2.3',
                           style: TextStyle(
                             color: primaryText.withValues(alpha: 0.18),
                             fontSize: 12,
@@ -677,7 +695,6 @@ class SettingsScreen extends ConsumerWidget {
       ref.invalidate(clockStyleProvider);
       ref.invalidate(fontProvider);
       ref.invalidate(fontSizeProvider);
-      ref.invalidate(amoledProvider);
       ref.invalidate(timeFormatProvider);
       ref.invalidate(keyboardAutoOpenProvider);
     }
@@ -960,7 +977,6 @@ class SettingsScreen extends ConsumerWidget {
               final selected = action == current;
               return GestureDetector(
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   if (action == SwipeAction.openApp) {
                     Navigator.pop(ctx);
                     _showAppPickerForSwipe(context, ref, onSelect: onSelect);
@@ -1114,7 +1130,6 @@ class SettingsScreen extends ConsumerWidget {
                           final app = filtered[i];
                           return GestureDetector(
                             onTap: () {
-                              HapticFeedback.selectionClick();
                               onSelect(SwipeAction.openApp, appPackage: app.packageName);
                               Navigator.pop(ctx);
                             },
@@ -1200,7 +1215,6 @@ class SettingsScreen extends ConsumerWidget {
               final selected = action == current;
               return GestureDetector(
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   if (action == DoubleTapAction.openApp) {
                     Navigator.pop(ctx);
                     _showAppPickerForDoubleTap(context, ref);
@@ -1348,7 +1362,6 @@ class SettingsScreen extends ConsumerWidget {
                           final app = filtered[i];
                           return GestureDetector(
                             onTap: () {
-                              HapticFeedback.selectionClick();
                               ref.read(doubleTapProvider.notifier).setAction(
                                 DoubleTapAction.openApp,
                                 appPackage: app.packageName,
@@ -1491,96 +1504,6 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAmoledToggle(BuildContext context, WidgetRef ref, bool isEnabled) {
-    final themeColor = ref.watch(themeColorProvider);
-    final accent = themeColor.color;
-    final isLight = themeColor.isLight;
-    final primaryText = isLight ? const Color(0xFF0D0D0D) : Colors.white;
-    final itemBg = isLight
-        ? Colors.black.withValues(alpha: 0.04)
-        : Colors.white.withValues(alpha: 0.03);
-    final toggleTrackOff = isLight
-        ? Colors.black.withValues(alpha: 0.12)
-        : Colors.white.withValues(alpha: 0.1);
-    final toggleThumbOff = isLight ? Colors.black.withValues(alpha: 0.3) : Colors.white38;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: itemBg,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(Icons.brightness_1,
-                color: accent.withValues(alpha: 0.6), size: 18),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'AMOLED Mode',
-                  style: TextStyle(
-                    color: primaryText.withValues(alpha: 0.85),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  isEnabled ? 'Pure black · Saves battery' : 'Disabled',
-                  style: TextStyle(
-                    color: primaryText.withValues(alpha: 0.35),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              ref.read(amoledProvider.notifier).toggle();
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 44,
-              height: 24,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: isEnabled
-                    ? accent.withValues(alpha: 0.3)
-                    : toggleTrackOff,
-              ),
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 200),
-                alignment: isEnabled ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isEnabled ? accent : toggleThumbOff,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPageIndicatorToggle(BuildContext context, WidgetRef ref) {
     final isEnabled = ref.watch(pageIndicatorProvider);
     final themeColor = ref.watch(themeColorProvider);
@@ -1639,7 +1562,6 @@ class SettingsScreen extends ConsumerWidget {
           ),
           GestureDetector(
             onTap: () {
-              HapticFeedback.selectionClick();
               ref.read(pageIndicatorProvider.notifier).toggle();
             },
             child: AnimatedContainer(
@@ -1672,8 +1594,9 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildCalmWatchToggle(BuildContext context, WidgetRef ref) {
-    final isEnabled = ref.watch(calmWatchEnabledProvider);
+  Widget _buildStatusBarToggle(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(displaySettingsProvider);
+    final isEnabled = settings.showStatusBar;
     final themeColor = ref.watch(themeColorProvider);
     final accent = themeColor.color;
     final isLight = themeColor.isLight;
@@ -1701,7 +1624,7 @@ class SettingsScreen extends ConsumerWidget {
               color: accent.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(Icons.play_circle_outline_rounded,
+            child: Icon(Icons.signal_cellular_alt_rounded,
                 color: accent.withValues(alpha: 0.6), size: 18),
           ),
           const SizedBox(width: 14),
@@ -1710,7 +1633,7 @@ class SettingsScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Calm Watch',
+                  'Status Bar',
                   style: TextStyle(
                     color: primaryText.withValues(alpha: 0.85),
                     fontSize: 14,
@@ -1719,7 +1642,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  isEnabled ? 'Swipe-left page visible' : 'Page hidden',
+                  isEnabled ? 'Visible on home screen' : 'Hidden for minimalism',
                   style: TextStyle(
                     color: primaryText.withValues(alpha: 0.35),
                     fontSize: 12,
@@ -1730,8 +1653,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
           GestureDetector(
             onTap: () {
-              HapticFeedback.selectionClick();
-              ref.read(calmWatchEnabledProvider.notifier).toggle();
+              ref.read(displaySettingsProvider.notifier).setShowStatusBar(!isEnabled);
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -1820,7 +1742,6 @@ class SettingsScreen extends ConsumerWidget {
           ),
           GestureDetector(
             onTap: () {
-              HapticFeedback.selectionClick();
               ref.read(keyboardAutoOpenProvider.notifier).toggle();
             },
             child: AnimatedContainer(
@@ -1964,7 +1885,6 @@ class SettingsScreen extends ConsumerWidget {
         : Colors.white.withValues(alpha: 0.02);
     return InkWell(
       onTap: () async {
-        HapticFeedback.lightImpact();
         await requestSukoonReview();
       },
       borderRadius: BorderRadius.circular(14),
@@ -2037,17 +1957,23 @@ class SettingsScreen extends ConsumerWidget {
     final accent = currentTheme.color;
     final isLight = currentTheme.isLight;
     final primaryText = isLight ? const Color(0xFF0D0D0D) : Colors.white;
-
+    final bannerBg = isLight
+        ? Colors.black.withValues(alpha: 0.02)
+        : Colors.white.withValues(alpha: 0.02);
     return InkWell(
-      onTap: () => showDonationScreen(context),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const DonationScreen()),
+        );
+      },
       borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: accent.withValues(alpha: 0.04),
+          color: bannerBg,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: accent.withValues(alpha: 0.12),
+            color: accent.withValues(alpha: 0.15),
             width: 1,
           ),
         ),
@@ -2101,6 +2027,130 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showHadithDownloadDialog(BuildContext context, WidgetRef ref, Color accent) {
+    showDialog(
+      context: context,
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final stats = ref.watch(offlineContentProvider);
+          return AlertDialog(
+            backgroundColor: const Color(0xFF141414),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: accent.withValues(alpha: 0.1)),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.cloud_download_rounded, color: accent, size: 24),
+                const SizedBox(width: 12),
+                const Text('Offline Hadith',
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                   if (stats.isDownloading) ...[
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(
+                      color: accent,
+                      backgroundColor: accent.withValues(alpha: 0.1),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      stats.currentItem ?? 'Downloading...',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 20),
+                  ] else ...[
+                    const Text(
+                      'Select a collection to download for offline reading.',
+                      style: TextStyle(color: Colors.white60, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: HadithCollection.collections.length,
+                        itemBuilder: (context, i) {
+                          final c = HadithCollection.collections[i];
+                          final isDownloaded = stats.downloadedCollections[c.id] ?? false;
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(c.name,
+                                style: const TextStyle(color: Colors.white, fontSize: 14)),
+                            subtitle: Text('${c.totalHadiths} hadiths',
+                                style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                            trailing: isDownloaded 
+                                ? Icon(Icons.check_circle_rounded, color: accent, size: 18)
+                                : Icon(Icons.download_rounded,
+                                    color: accent.withValues(alpha: 0.5), size: 18),
+                            onTap: isDownloaded ? null : () {
+                              ref.read(offlineContentProvider.notifier).downloadBook(c);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(stats.isDownloading ? 'Run in Background' : 'Close',
+                    style: TextStyle(color: accent)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _confirmClearHadithCache(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF141414),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.red, width: 0.5),
+        ),
+        title: const Text('Clear Cache?',
+            style: TextStyle(color: Colors.white, fontSize: 18)),
+        content: const Text(
+          'This will delete all offline hadith data from your device storage.',
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () {
+              ref.read(offlineContentProvider.notifier).clearHadithCache();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Offline hadiths cleared'),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: const Text('Clear All',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
       ),
     );
   }

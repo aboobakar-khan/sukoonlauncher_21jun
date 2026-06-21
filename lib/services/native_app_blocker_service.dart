@@ -139,10 +139,30 @@ class NativeAppBlockerService {
     }
   }
 
+  /// Update the list of timer-managed packages
+  static Future<void> updateTimerPackages(List<String> packages) async {
+    try {
+      await _channel.invokeMethod('updateTimerPackages', {'packages': packages});
+    } catch (_) {}
+  }
+
   /// Check if there's a pending "time's up" event from the native side
   static Future<Map<String, dynamic>?> getPendingTimesUp() async {
     try {
       final result = await _channel.invokeMethod('getPendingTimesUp');
+      if (result is Map) {
+        return Map<String, dynamic>.from(result);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Check if there's a pending "prompt timer" event from the native side
+  static Future<Map<String, dynamic>?> getPendingPromptTimer() async {
+    try {
+      final result = await _channel.invokeMethod('getPendingPromptTimer');
       if (result is Map) {
         return Map<String, dynamic>.from(result);
       }

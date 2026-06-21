@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/motion.dart';
+
 /// Edge Swipe Wrapper - Enables right edge swipe to navigate to dashboard
 /// 
 /// Wraps screens in Islamic Hub (Quran, Hadith, Dua) to enable
@@ -30,9 +32,10 @@ class EdgeSwipeWrapper extends StatelessWidget {
           child: GestureDetector(
             onHorizontalDragEnd: (details) {
               final velocity = details.primaryVelocity ?? 0;
-              if (velocity < -300) {
+              if (velocity < -SwipeTuning.quickVelocity) {
                 // Fast swipe left from right edge
                 if (onSwipeRight != null) {
+                  GestureHaptics.swipeCommit();
                   onSwipeRight!();
                 }
               }

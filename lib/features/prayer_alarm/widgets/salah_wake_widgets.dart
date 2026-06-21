@@ -136,7 +136,10 @@ Future<String?> showModePicker(
             return Padding(
               padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
               child: GestureDetector(
-                onTap: () { HapticFeedback.selectionClick(); Navigator.pop(ctx, m.key); },
+                // ✅ was missing — tapping a mode option now closes the sheet
+                // and returns the selected mode key to the caller
+                onTap: () => Navigator.pop(ctx, m.key),
+                behavior: HitTestBehavior.opaque,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
@@ -151,15 +154,15 @@ Future<String?> showModePicker(
                     children: [
                       // Icon circle
                       Container(
-                        width: 34, height: 34,
+                        width: 32, height: 32,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(16),
                           color: sel ? m.color.withAlpha(25) : Colors.white.withAlpha(6),
                         ),
                         child: Icon(m.icon, size: 16,
                           color: sel ? m.color : kSwTextMuted),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 14),
                       // Label + desc
                       Expanded(child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -240,24 +243,39 @@ class _PrayerRowState extends State<PrayerRow> {
         ? swFmt12h(widget.effectiveTime)
         : swFmt12h(widget.apiTime);
 
-    // Opacity for past prayers — gently dimmed, not invisible
-    final opacity = _isPast ? 0.45 : 1.0;
+    // Opacity for past prayers — readable but still distinct from future
+    final opacity = _isPast ? 0.70 : 1.0;
 
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 300),
       opacity: opacity,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 3),
+        margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
           color: _isCurrent ? kSwCardNext : kSwCard,
-          borderRadius: BorderRadius.circular(kSwRadius),
-          // Left accent bar for current prayer
-          border: _isCurrent ? Border(
-            left: BorderSide(color: kSwActive, width: 3),
-          ) : null,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            if (_isCurrent)
+              BoxShadow(
+                color: kSwActive.withAlpha(15),
+                blurRadius: 16,
+                spreadRadius: -2,
+                offset: const Offset(0, 4),
+              )
+            else
+              BoxShadow(
+                color: Colors.black.withAlpha(20),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+          ],
+          border: Border.all(
+            color: _isCurrent ? kSwActive.withAlpha(40) : Colors.white.withAlpha(6),
+            width: 1,
+          ),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(kSwRadius),
+          borderRadius: BorderRadius.circular(19),
           child: Column(
             children: [
               // ── Main row ──
@@ -272,24 +290,47 @@ class _PrayerRowState extends State<PrayerRow> {
                           ? kSwActive
                           : _isActive
                               ? kSwTextSecondary
-                              : kSwTextMuted),
+                              : const Color(0xFF666666)),
                     const SizedBox(width: 12),
 
                     // Name + Time column
                     Expanded(child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Prayer name row
-                        Text(widget.prayer, style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: _isCurrent ? FontWeight.w700 : FontWeight.w600,
-                          color: _isCurrent
-                              ? kSwTextPrimary
-                              : _isActive
-                                  ? kSwTextPrimary.withAlpha(200)
-                                  : kSwTextMuted,
-                          letterSpacing: -0.3,
-                        )),
+                        // Prayer name row — with a "NEXT" badge on the
+                        // upcoming prayer so the highlighted card ties back
+                        // to the countdown in the date navigator.
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(widget.prayer, style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: _isCurrent ? FontWeight.w700 : FontWeight.w600,
+                                color: _isCurrent
+                                    ? kSwTextPrimary
+                                    : _isActive
+                                        ? kSwTextPrimary.withAlpha(200)
+                                        : const Color(0xFF888888),
+                                letterSpacing: -0.3,
+                              ), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                            if (_isCurrent) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  color: kSwActive.withAlpha(28),
+                                ),
+                                child: const Text('NEXT', style: TextStyle(
+                                  fontSize: 8.5, fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.8, color: kSwActive,
+                                )),
+                              ),
+                            ],
+                          ],
+                        ),
 
                         const SizedBox(height: 2),
 
@@ -308,7 +349,7 @@ class _PrayerRowState extends State<PrayerRow> {
                                     ? kSwActive
                                     : hasOffset
                                         ? kSwActive.withAlpha(180)
-                                        : kSwTextSecondary.withAlpha(150),
+                                        : const Color(0xFF666666),
                               )),
                               if (hasOffset) ...[
                                 const SizedBox(width: 5),
@@ -330,15 +371,15 @@ class _PrayerRowState extends State<PrayerRow> {
                               ],
                               // Tap hint — subtle pencil
                               if (!_isSunrise) ...[
-                                const SizedBox(width: 4),
+                                const SizedBox(width: 6),
                                 Icon(
                                   _showAdjust
                                       ? Icons.keyboard_arrow_up_rounded
                                       : Icons.edit_rounded,
-                                  size: 11,
+                                  size: 13,
                                   color: _showAdjust
-                                      ? kSwActive.withAlpha(150)
-                                      : kSwTextMuted.withAlpha(60),
+                                      ? kSwActive.withAlpha(200)
+                                      : kSwTextMuted.withAlpha(150),
                                 ),
                               ],
                             ],
@@ -398,24 +439,32 @@ class _ModePill extends StatelessWidget {
     final info = _info;
     final isOff = mode == 'off';
     return GestureDetector(
-      onTap: () { HapticFeedback.lightImpact(); onTap(); },
+      onTap: onTap, // ✅ was missing — GestureDetector had no onTap so picker never opened
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          color: isOff ? Colors.white.withAlpha(6) : color.withAlpha(14),
+          borderRadius: BorderRadius.circular(20),
+          color: isOff ? Colors.white.withAlpha(8) : color.withAlpha(15),
+          boxShadow: isOff ? null : [
+            BoxShadow(
+              color: color.withAlpha(15),
+              blurRadius: 8,
+              spreadRadius: 0,
+            ),
+          ],
           border: Border.all(
-            color: isOff ? Colors.white.withAlpha(10) : color.withAlpha(35),
+            color: isOff ? Colors.white.withAlpha(8) : color.withAlpha(40),
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(info.icon, size: 13, color: isOff ? kSwTextMuted : color),
+            Icon(info.icon, size: 12, color: isOff ? kSwTextMuted : color),
             const SizedBox(width: 4),
             Text(info.label, style: TextStyle(
-              fontSize: 10, fontWeight: FontWeight.w600,
+              fontSize: 10, fontWeight: FontWeight.w700,
               color: isOff ? kSwTextMuted : color,
+              letterSpacing: 0.3,
             )),
           ],
         ),
@@ -456,13 +505,11 @@ class _AdjustPanel extends StatelessWidget {
           children: [
             // −5 button
             _AdjBtn(label: '−5', onTap: () {
-              HapticFeedback.selectionClick();
               onChanged(adjustment - 5);
             }),
             const SizedBox(width: 4),
             // −1 button
             _AdjBtn(label: '−1', small: true, onTap: () {
-              HapticFeedback.selectionClick();
               onChanged(adjustment - 1);
             }),
 
@@ -481,7 +528,6 @@ class _AdjustPanel extends StatelessWidget {
                 ),
                 if (hasOffset)
                   GestureDetector(
-                    onTap: () { HapticFeedback.lightImpact(); onChanged(0); },
                     child: Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text('Reset', style: TextStyle(
@@ -496,13 +542,11 @@ class _AdjustPanel extends StatelessWidget {
 
             // +1 button
             _AdjBtn(label: '+1', small: true, onTap: () {
-              HapticFeedback.selectionClick();
               onChanged(adjustment + 1);
             }),
             const SizedBox(width: 4),
             // +5 button
             _AdjBtn(label: '+5', onTap: () {
-              HapticFeedback.selectionClick();
               onChanged(adjustment + 5);
             }),
           ],
@@ -512,7 +556,7 @@ class _AdjustPanel extends StatelessWidget {
   }
 }
 
-class _AdjBtn extends StatelessWidget {
+class _AdjBtn extends StatefulWidget {
   final String label;
   final bool small;
   final VoidCallback? onTap;
@@ -520,22 +564,49 @@ class _AdjBtn extends StatelessWidget {
   const _AdjBtn({required this.label, this.small = false, this.onTap});
 
   @override
+  State<_AdjBtn> createState() => _AdjBtnState();
+}
+
+class _AdjBtnState extends State<_AdjBtn> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 100));
+    _scale = Tween<double>(begin: 1.0, end: 0.9).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final enabled = onTap != null;
+    final enabled = widget.onTap != null;
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: small ? 28 : 34,
-        height: 28,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: enabled ? Colors.white.withAlpha(10) : Colors.transparent,
+      onTapDown: enabled ? (_) => _ctrl.forward() : null,
+      onTapUp: enabled ? (_) { _ctrl.reverse(); widget.onTap!(); } : null,
+      onTapCancel: enabled ? () => _ctrl.reverse() : null,
+      child: ScaleTransition(
+        scale: _scale,
+        child: Container(
+          width: widget.small ? 32 : 38,
+          height: 30,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: enabled ? Colors.white.withAlpha(12) : Colors.transparent,
+            border: Border.all(color: enabled ? Colors.white.withAlpha(8) : Colors.transparent),
+          ),
+          child: Center(child: Text(widget.label, style: TextStyle(
+            fontSize: widget.small ? 11 : 12,
+            fontWeight: FontWeight.w700,
+            color: enabled ? kSwTextPrimary.withAlpha(160) : kSwTextMuted.withAlpha(50),
+          ))),
         ),
-        child: Center(child: Text(label, style: TextStyle(
-          fontSize: small ? 10 : 11,
-          fontWeight: FontWeight.w700,
-          color: enabled ? kSwTextPrimary.withAlpha(160) : kSwTextMuted.withAlpha(50),
-        ))),
       ),
     );
   }
@@ -595,7 +666,6 @@ class FastingRow extends StatelessWidget {
               )),
             ],
           )),
-          // Mode pill
           GestureDetector(
             onTap: () async {
               final picked = await showModePicker(
@@ -605,21 +675,29 @@ class FastingRow extends StatelessWidget {
               }
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: isActive ? modeColor.withAlpha(14) : Colors.white.withAlpha(6),
+                borderRadius: BorderRadius.circular(20),
+                color: isActive ? modeColor.withAlpha(15) : Colors.white.withAlpha(8),
+                boxShadow: isActive ? [
+                  BoxShadow(
+                    color: modeColor.withAlpha(15),
+                    blurRadius: 8,
+                  )
+                ] : null,
                 border: Border.all(
-                  color: isActive ? modeColor.withAlpha(35) : Colors.white.withAlpha(10)),
+                  color: isActive ? modeColor.withAlpha(40) : Colors.white.withAlpha(10),
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(info.icon, size: 13,
+                  Icon(info.icon, size: 12,
                     color: isActive ? modeColor : kSwTextMuted),
                   const SizedBox(width: 4),
                   Text(info.label, style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w600,
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
                     color: isActive ? modeColor : kSwTextMuted,
                   )),
                 ],

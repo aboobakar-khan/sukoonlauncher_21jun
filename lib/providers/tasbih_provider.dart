@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -279,6 +280,13 @@ class Dhikr {
       meaning: 'Use for any dhikr',
       defaultTarget: 100,
     ),
+    // Durood Ibrahim
+    Dhikr(
+      arabic: 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ... إِنَّكَ حَمِيدٌ مَجِيدٌ',
+      transliteration: 'Durood Ibrahim',
+      meaning: 'O Allah, send prayers upon Muhammad ﷺ and his family',
+      defaultTarget: 10,
+    ),
   ];
 }
 
@@ -291,6 +299,13 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
   static const String _boxName = 'tasbih_data';
   static const String _key = 'state';
   Box<String>? _box;
+
+  /// Debounced save — during rapid tapping (dhikr can be 200+ bpm),
+  /// we batch disk writes to at most once every 3 seconds.
+  /// This eliminates ~1000 unnecessary Hive writes/day while keeping
+  /// data safe (saved on every pause/dispose too).
+  Timer? _saveDebounce;
+  bool _hasPendingSave = false;
 
   TasbihNotifier() : super(TasbihState()) {
     _init();
@@ -315,26 +330,33 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
 
   void _checkNewDay() {
     final today = DateTime.now().toIso8601String().split('T')[0];
-    final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().split('T')[0];
-    
+    final yesterday = DateTime.now()
+        .subtract(const Duration(days: 1))
+        .toIso8601String()
+        .split('T')[0];
+
     if (state.lastDate != today) {
-      // Check streak
+      // ── Streak logic ──────────────────────────────────────────────────────
       int newStreak = state.streakDays;
       if (state.lastDate == yesterday && state.todayCount > 0) {
-        // Consecutive day - streak continues
-        newStreak = state.streakDays + 1;
+        newStreak = state.streakDays + 1; // consecutive day
       } else if (state.lastDate != yesterday && state.lastDate.isNotEmpty) {
-        // Streak broken
-        newStreak = 0;
+        newStreak = 0; // streak broken
       }
-      
-      // Check if new month
-      final lastMonth = state.lastDate.isNotEmpty ? state.lastDate.substring(0, 7) : '';
+
+      // ── Monthly reset ─────────────────────────────────────────────────────
+      final lastMonth =
+          state.lastDate.isNotEmpty ? state.lastDate.substring(0, 7) : '';
       final thisMonth = today.substring(0, 7);
       final monthlyTotal = lastMonth != thisMonth ? 0 : state.monthlyTotal;
-      
+
+      // ── New day: reset per-dhikr display counters ─────────────────────────
+      // dhikrCounts → {} so every dhikr starts at 0 on a fresh day.
+      // totalAllTime, dailyHistory, completedTargets, achievements are kept.
       state = state.copyWith(
+        dhikrCounts: {}, // 🔄 reset individual dhikr counters for the new day
         todayCount: 0,
+        completedTargets: 0, // daily target completions also reset per day
         lastDate: today,
         streakDays: newStreak,
         monthlyTotal: monthlyTotal,
@@ -343,9 +365,39 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
     }
   }
 
-  Future<void> _save() async {
+  /// Immediate save — used for deliberate user actions (reset, settings, etc.)
+  Future<void> _saveNow() async {
+    _saveDebounce?.cancel();
+    _hasPendingSave = false;
     _box ??= await HiveBoxManager.get<String>(_boxName);
     await _box?.put(_key, jsonEncode(state.toJson()));
+  }
+
+  /// Debounced save — used during rapid tapping.
+  /// Schedules a disk write 3 seconds after the last call.
+  /// If another call comes in before 3s, the timer resets.
+  void _save() {
+    _hasPendingSave = true;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(seconds: 3), () {
+      _saveNow();
+    });
+  }
+
+  /// Flush any pending save to disk (call on app pause/dispose).
+  Future<void> flushPendingSave() async {
+    if (_hasPendingSave) await _saveNow();
+  }
+
+  @override
+  void dispose() {
+    // Ensure data is not lost on provider disposal
+    _saveDebounce?.cancel();
+    if (_hasPendingSave) {
+      // Sync save — best-effort since dispose can't truly await
+      _box?.put(_key, jsonEncode(state.toJson()));
+    }
+    super.dispose();
   }
 
   void increment() {
@@ -446,17 +498,17 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
     final newCounts = Map<int, int>.from(state.dhikrCounts);
     newCounts[state.selectedDhikrIndex] = 0;
     state = state.copyWith(dhikrCounts: newCounts);
-    _save();
+    _saveNow();
   }
 
   void setTarget(int target) {
     state = state.copyWith(targetCount: target);
-    _save();
+    _saveNow();
   }
   
   void toggleSound() {
     state = state.copyWith(soundEnabled: !state.soundEnabled);
-    _save();
+    _saveNow();
   }
 
   void selectDhikr(int index) {
@@ -468,7 +520,7 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
       selectedDhikrIndex: index,
       targetCount: dhikr.defaultTarget,
     );
-    _save();
+    _saveNow();
   }
 
   void resetAllTime() {
@@ -481,7 +533,7 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
       completedTargets: 0,
       unlockedAchievements: [],
     );
-    _save();
+    _saveNow();
   }
   
   // Get count for a specific dhikr

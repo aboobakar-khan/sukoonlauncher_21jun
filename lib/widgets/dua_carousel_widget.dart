@@ -394,7 +394,6 @@ class _RamadanDuaWidgetState extends State<RamadanDuaWidget> {
                   controller: _pageController,
                   itemCount: _ordered.length,
                   onPageChanged: (_) {
-                    HapticFeedback.selectionClick();
                     _startAutoScroll();
                   },
                   itemBuilder: (_, index) {
@@ -492,7 +491,6 @@ class _DuaPageState extends State<_DuaPage> with SingleTickerProviderStateMixin 
   }
 
   void _flip() {
-    HapticFeedback.lightImpact();
     if (_showingFront) {
       _flipController.forward();
     } else {

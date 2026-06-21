@@ -12,6 +12,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
@@ -54,6 +55,7 @@ class AppBlockerService : Service() {
         const val KEY_TIMED_SESSION_END = "timed_session_end_time"
         const val KEY_TIMED_SESSION_START = "timed_session_start_time"
         const val KEY_TIMED_SESSION_EXTENSIONS = "timed_session_extensions"
+        const val KEY_TIMER_PACKAGES = "timer_managed_packages"
         const val POLL_INTERVAL_MS = 500L
         const val ZEN_POLL_INTERVAL_MS = 200L
         const val IDLE_POLL_INTERVAL_MS = 10000L  // 10s when nothing to monitor — saves battery
@@ -95,6 +97,20 @@ class AppBlockerService : Service() {
         /** Get currently blocked packages */
         fun getBlockedPackages(context: Context): Set<String> {
             return getPrefs(context).getStringSet(KEY_BLOCKED_PACKAGES, emptySet()) ?: emptySet()
+        }
+
+        /** Update the set of timer-managed packages (apps that need a session prompt) */
+        fun updateTimerPackages(context: Context, packages: Set<String>) {
+            getPrefs(context).edit()
+                .putStringSet(KEY_TIMER_PACKAGES, packages)
+                .apply()
+            Log.d(TAG, "Updated timer-managed packages: ${packages.size} apps")
+            _instance?.invalidateCache()
+        }
+
+        /** Get timer-managed packages */
+        fun getTimerPackages(context: Context): Set<String> {
+            return getPrefs(context).getStringSet(KEY_TIMER_PACKAGES, emptySet()) ?: emptySet()
         }
 
         /** Enable/disable Zen Mode lockdown — also controls DND */
@@ -322,6 +338,7 @@ class AppBlockerService : Service() {
     private var isRunning = false
     private var lastBlockedPackage: String? = null
     private var lastBlockTime: Long = 0
+    private var lastSukoonForegroundAt: Long = 0
     private var statusBarOverlay: View? = null
     private var navBarOverlay: View? = null
     
@@ -540,138 +557,149 @@ class AppBlockerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun checkForegroundApp() {
-        val isZen = cachedIsZen
-        val blockedPackages = cachedBlockedPackages
-        val hasTimedSession = getTimedSession(this) != null
-
-        // If not in Zen Mode and no blocked packages AND no timed session, nothing to do.
-        // Auto-stop IMMEDIATELY — no reason to linger and show "Running in background".
-        if (!isZen && blockedPackages.isEmpty() && !hasTimedSession) {
-            Log.d(TAG, "Nothing to monitor — auto-stopping service immediately")
+        // ── SENIOR LOGIC: Launcher Guard ──
+        // Only providing these premium lifestyle features when Sukoon is the default launcher.
+        // This stops battery drain when the user isn't actively using our interface.
+        if (!isSukoonDefaultLauncher()) {
+            Log.d(TAG, "Not default launcher — stopping blocker service to save battery")
             stop(this)
             return
         }
 
-        val foregroundPackage = getForegroundPackage() ?: return
+        val isZen = cachedIsZen
+        val blockedPackages = cachedBlockedPackages
+        val hasTimedSession = getTimedSession(this) != null
+        val timerPackages = getTimerPackages(this)
 
-        // Don't block ourselves
-        if (foregroundPackage == packageName) {
-            lastBlockedPackage = null
-            consecutiveIdlePolls++ // We're on home screen, slow down
+        // If nothing to monitor, stop the service to save battery
+        if (!isZen && blockedPackages.isEmpty() && !hasTimedSession && timerPackages.isEmpty()) {
+            Log.d(TAG, "Nothing to monitor — auto-stopping service")
+            stop(this)
             return
         }
-        
-        // Active app detected — reset idle counter
+
+        val now = System.currentTimeMillis()
+        val foregroundPackage = getForegroundPackage() ?: return
+
+        // 1. Safe zone (Self, etc.)
+        if (foregroundPackage == packageName || 
+            foregroundPackage == "android" || 
+            foregroundPackage == "com.android.systemui") {
+            
+            if (foregroundPackage == packageName) {
+                lastSukoonForegroundAt = now
+            }
+            
+            lastBlockedPackage = null
+            consecutiveIdlePolls++
+            return
+        }
         consecutiveIdlePolls = 0
 
-        // ── TIMED SESSION CHECK — always checked first, regardless of mode ──
+
+        // 2. Timed Session Check (Priority 1)
         val session = getTimedSession(this)
         if (session != null) {
-            val (sessionPkg, endTime, extensions) = session
-            val now = System.currentTimeMillis()
-            if (now >= endTime && foregroundPackage == sessionPkg) {
-                // Skip if this session was recently ended by user (grace period)
-                if (wasRecentlyEnded(this, sessionPkg)) {
-                    return
+            val (pkg, endTime, extensions) = session
+            if (now >= endTime && foregroundPackage == pkg) {
+                // Throttle: avoid intent storms
+                if (foregroundPackage == lastBlockedPackage && (now - lastBlockTime) < 5000) return
+                
+                Log.d(TAG, "TIMED SESSION EXPIRED: $pkg — blocking")
+                lastBlockedPackage = foregroundPackage
+                lastBlockTime = now
+
+                val sessionStart = getPrefs(this).getLong(KEY_TIMED_SESSION_START, endTime - 60000L)
+                val minutesSpent = ((now - sessionStart) / 60000L).toInt().coerceAtLeast(1)
+
+                // End session natively and notify Flutter via MainActivity
+                endTimedSession(this@AppBlockerService, pkg)
+                
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    putExtra("times_up", true)
+                    putExtra("timed_package", pkg)
+                    putExtra("extensions_used", extensions)
+                    putExtra("minutes_spent", minutesSpent)
                 }
-                // Time's up and user is still in the app!
-                // Throttle: don't fire more than once per 5s to avoid intent storm
-                val shouldFire = lastBlockedPackage != foregroundPackage ||
-                                 (now - lastBlockTime) > 5000
-                if (shouldFire) {
-                    Log.d(TAG, "TIMED SESSION EXPIRED: $sessionPkg — launching times-up overlay")
-                    lastBlockedPackage = foregroundPackage
-                    lastBlockTime = now
-
-                    val sessionStart = getPrefs(this).getLong(KEY_TIMED_SESSION_START, endTime - 60000L)
-                    val minutesSpent = ((now - sessionStart) / 60000L).toInt().coerceAtLeast(1)
-
-                    // Clear the session BEFORE launching the overlay so the
-                    // polling loop won't re-fire on subsequent polls.
-                    // If user taps "Extend", Flutter calls startTimedSession()
-                    // which creates a brand-new session.
-                    endTimedSession(this@AppBlockerService, sessionPkg)
-
-                    val launchIntent = Intent(this, MainActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                        putExtra("times_up", true)
-                        putExtra("timed_package", sessionPkg)
-                        putExtra("extensions_used", extensions)
-                        putExtra("minutes_spent", minutesSpent)
-                    }
-                    mainHandler.post { startActivity(launchIntent) }
-                }
+                mainHandler.post { startActivity(intent) }
                 return
             }
         }
 
+        // 3. Zen Mode (Priority 2)
         if (isZen) {
-            // ═══════════════════════════════════════════
-            // ZEN MODE: Block EVERYTHING except allowed apps
-            // ═══════════════════════════════════════════
-            
-            // Ensure status bar overlay is active
-            if (statusBarOverlay == null) {
-                mainHandler.post { addStatusBarOverlay() }
-            }
-
-            // Check if this is an allowed package
+            // Block everything except Phone/Dialer/Camera
             val isAllowed = ZEN_ALLOWED_PACKAGES.contains(foregroundPackage) ||
-                            foregroundPackage.contains("dialer") ||
-                            foregroundPackage.contains("phone") ||
-                            foregroundPackage.contains("camera") ||
-                            foregroundPackage.contains("incallui")
-
+                           foregroundPackage.contains("dialer") ||
+                           foregroundPackage.contains("phone") ||
+                           foregroundPackage.contains("camera")
+                           
             if (!isAllowed) {
-                val now = System.currentTimeMillis()
-                // More aggressive throttle for Zen: 300ms (vs 1s normal)
-                if (foregroundPackage == lastBlockedPackage && (now - lastBlockTime) < 300) {
-                    return
-                }
-
-                Log.d(TAG, "ZEN BLOCK: $foregroundPackage — returning to launcher")
+                if (foregroundPackage == lastBlockedPackage && (now - lastBlockTime) < 500) return
+                Log.d(TAG, "ZEN BLOCK: $foregroundPackage")
                 lastBlockedPackage = foregroundPackage
                 lastBlockTime = now
-
-                // In Zen Mode: go straight back to our app (not to BlockedAppActivity)
-                val launchIntent = Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                // Back to Sukoon
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 }
-                mainHandler.post { startActivity(launchIntent) }
-            }
-        } else {
-            // ═══════════════════════════════════════════
-            // NORMAL MODE: Only block specific packages
-            // ═══════════════════════════════════════════
-
-            if (blockedPackages.contains(foregroundPackage)) {
-                val now = System.currentTimeMillis()
-                if (foregroundPackage == lastBlockedPackage && (now - lastBlockTime) < 1000) {
-                    return
-                }
-                
-                Log.d(TAG, "BLOCKED: $foregroundPackage detected in foreground!")
-                lastBlockedPackage = foregroundPackage
-                lastBlockTime = now
-
-                val blockIntent = Intent(this, BlockedAppActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    putExtra("blocked_package", foregroundPackage)
-                }
-                mainHandler.post { startActivity(blockIntent) }
-            } else {
-                if (lastBlockedPackage != null) {
-                    lastBlockedPackage = null
-                }
+                mainHandler.post { startActivity(intent) }
+                return
             }
         }
+
+        // 4. Blocked Collections (Priority 3)
+        if (blockedPackages.contains(foregroundPackage)) {
+            if (foregroundPackage == lastBlockedPackage && (now - lastBlockTime) < 1000) return
+            Log.d(TAG, "ACCESS DENIED: $foregroundPackage")
+            lastBlockedPackage = foregroundPackage
+            lastBlockTime = now
+            showBlockedOverlay(foregroundPackage)
+            return
+        }
+
+        // 5. Timer-Managed App — opened from recents/notification WITHOUT active session (Priority 4)
+        // When a timer-configured app is detected in the foreground with no active timed session,
+        // redirect the user back to Sukoon so Flutter can show the "How long?" timer prompt.
+        if (timerPackages.contains(foregroundPackage) && !hasTimedSession) {
+            // Guard: Recent switch to Sukoon Home
+            // Some devices report the OLD foreground package in UsageStats for ~500-1000ms 
+            // after the user has already swiped to the Home screen.
+            if (now - lastSukoonForegroundAt < 800) {
+                return
+            }
+            if (foregroundPackage == lastBlockedPackage && (now - lastBlockTime) < 5000) return
+            Log.d(TAG, "TIMER APP WITHOUT SESSION: $foregroundPackage — redirecting for prompt")
+            lastBlockedPackage = foregroundPackage
+            lastBlockTime = now
+
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra("prompt_timer", true)
+                putExtra("timer_package", foregroundPackage)
+            }
+            mainHandler.post { startActivity(intent) }
+        }
+    }
+
+    private fun isSukoonDefaultLauncher(): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) }
+            val resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            resolveInfo?.activityInfo?.packageName == packageName
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun showBlockedOverlay(pkg: String) {
+        val intent = Intent(this, BlockedAppActivity::class.java).apply {
+            putExtra("blocked_package", pkg)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+        }
+        mainHandler.post { startActivity(intent) }
     }
 
     /**

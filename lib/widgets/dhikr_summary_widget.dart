@@ -128,42 +128,48 @@ class DhikrSummaryWidget extends ConsumerWidget {
                   ),
                 ),
 
-                // Progress ring — compact
-                SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      CustomPaint(
-                        size: const Size(56, 56),
-                        painter: _MiniArcPainter(
-                          progress: math.min(progress, 1.0),
-                          bgColor: themeColor.color.withValues(alpha: 0.1),
-                          fgColor: done ? const Color(0xFF4CAF50) : themeColor.color,
-                          stroke: 3,
-                        ),
-                      ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
+                // Progress ring — visual indicator only; the exact count is
+                // shown in the label beneath so no number is restated inside.
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: Stack(
+                        alignment: Alignment.center,
                         children: [
-                          Text(
-                            '${tasbih.currentCount}',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w300,
-                              color: done ? const Color(0xFF4CAF50) : Colors.white.withValues(alpha: 0.9),
-                              fontFeatures: const [FontFeature.tabularFigures()],
+                          CustomPaint(
+                            size: const Size(56, 56),
+                            painter: _MiniArcPainter(
+                              progress: math.min(progress, 1.0),
+                              bgColor: themeColor.color.withValues(alpha: 0.1),
+                              fgColor: done ? const Color(0xFF4CAF50) : themeColor.color,
+                              stroke: 3,
                             ),
                           ),
-                          Text(
-                            '/ ${tasbih.targetCount}',
-                            style: TextStyle(fontSize: 8, color: themeColor.color.withValues(alpha: 0.4)),
-                          ),
+                          if (done)
+                            const Icon(
+                              Icons.check_rounded,
+                              size: 20,
+                              color: Color(0xFF4CAF50),
+                            ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${tasbih.currentCount} / ${tasbih.targetCount}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: done
+                            ? const Color(0xFF4CAF50)
+                            : Colors.white.withValues(alpha: 0.75),
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
                 ),
 
                 // Total all-time

@@ -66,6 +66,14 @@ Map<String, String>? findNextPrayer(PrayerAlarmState state, {bool onlyEnabled = 
     }
   }
 
+  // If all prayers today have passed, return tomorrow's Fajr.
+  if (onlyEnabled && !(enabled['Fajr'] ?? true)) return null;
+  final tomorrow = now.add(const Duration(days: 1));
+  final tomorrowFajr = state.effectiveTimeFor('Fajr', tomorrow);
+  if (tomorrowFajr != null) {
+    return {'name': 'Fajr', 'time': tomorrowFajr};
+  }
+
   return null;
 }
 

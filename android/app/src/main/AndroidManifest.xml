@@ -1,8 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Permission to query installed apps -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
-    
+
     <uses-permission android:name="android.permission.INTERNET"/>
     
     <!-- Location for prayer times (GPS + network) -->
@@ -44,6 +42,9 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     
+    <!-- Prayer Alarm: full-screen intent shown on lock screen (Android 14+) -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <application
         android:label="Sukoon"
         android:name="${applicationName}"
@@ -78,14 +79,6 @@
                 <category android:name="android.intent.category.HOME"/>
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
-
-            <!-- SHARE TARGET: Receive shared text (YouTube links) from other apps -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <data android:mimeType="text/plain"/>
-            </intent-filter>
-
 
         </activity>
         <meta-data
@@ -160,6 +153,19 @@
             android:taskAffinity="com.sukoon.launcher.zen"
             android:launchMode="singleTop" />
 
+        <!-- Prayer Alarm: full-screen lock-screen UI shown when adhan fires -->
+        <!-- FLAG_SHOW_WHEN_LOCKED + FLAG_TURN_SCREEN_ON applied programmatically -->
+        <activity
+            android:name=".SalahAlarmActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:taskAffinity="com.sukoon.launcher.alarm" />
+
         <!-- Prayer Alarm: BroadcastReceiver that shows notification + plays adhan -->
         <receiver
             android:name=".AlarmBroadcastReceiver"
@@ -194,9 +200,28 @@
         </service>
     </application>
     <queries>
+        <!-- Launcher: query all apps with a launcher activity (replaces QUERY_ALL_PACKAGES) -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Quick Actions: auto-detect phone dialer -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <!-- Quick Actions: auto-detect camera -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_GALLERY" />
+        </intent>
+        <!-- Text processing -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Google Pay packages for quick launch -->
+        <package android:name="com.google.android.apps.nbu.paisa.user" />
+        <package android:name="com.google.android.apps.pay" />
+        <package android:name="com.google.android.apps.walletnfchost" />
     </queries>
 </manifest>

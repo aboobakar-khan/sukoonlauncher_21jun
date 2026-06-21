@@ -4,10 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:installed_apps/installed_apps.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
+import '../utils/launcher_physics.dart';
 import '../models/installed_app.dart';
 import '../providers/favorite_apps_provider.dart';
 import '../providers/installed_apps_provider.dart';
@@ -15,10 +17,11 @@ import '../providers/theme_provider.dart';
 import '../providers/recent_apps_provider.dart';
 import '../providers/productivity_provider.dart';
 import '../providers/wallpaper_provider.dart';
-import '../providers/amoled_provider.dart';
 import '../services/app_settings_service.dart';
+import '../services/native_app_blocker_service.dart';
 import '../widgets/blocked_app_screen.dart';
 import '../widgets/app_session_timer_sheet.dart';
+import '../widgets/edge_to_edge.dart';
 import '../providers/screen_time_provider.dart';
 import '../providers/launcher_page_provider.dart';
 import '../providers/keyboard_auto_open_provider.dart';
@@ -56,16 +59,14 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
+  final ListController _listController = ListController();
   String _searchQuery = '';
   bool _hasAutoLaunched = false;
   Timer? _autoLaunchDebounce;
   bool _recentlyInstalledExpanded = true;
 
-  // Pre-computed pixel offset for every letter that exists in the current
-  // filtered list.  Rebuilt in build() whenever the app list changes so the
-  // alphabet sidebar always jumps to exactly the right position — works
-  // correctly regardless of how many apps the user has installed/removed.
-  Map<String, double> _letterOffsets = {};
+  // Search bar visibility — hidden by default, shown on float button tap
+  bool _searchVisible = false;
 
   // Keyboard height tracked independently via didChangeMetrics —
   // this works even when the parent Scaffold has resizeToAvoidBottomInset:false
@@ -135,7 +136,9 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     final page = _pageController?.page;
     if (page == null) return;
 
-    final onAppListPage = (page - 4).abs() < 0.08;
+    // Page layout: [Islamic(0), Widget(1), Home(2), Apps(3), Productivity(4)]
+    const appListIndex = 3;
+    final onAppListPage = (page - appListIndex).abs() < 0.08;
 
     if (onAppListPage && !_wasOnAppListPage) {
       _wasOnAppListPage = true;
@@ -155,8 +158,26 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
         if (!mounted) return;
         if (_searchFocusNode.hasFocus) _searchFocusNode.unfocus();
         if (_searchController.text.isNotEmpty) _searchController.clear();
+        if (_searchVisible) setState(() => _searchVisible = false);
       });
     }
+  }
+
+  void _showSearch() {
+    setState(() => _searchVisible = true);
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (mounted) _searchFocusNode.requestFocus();
+    });
+  }
+
+  void _hideSearch() {
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    setState(() {
+      _searchVisible = false;
+      _searchQuery = '';
+      _hasAutoLaunched = false;
+    });
   }
 
   void _onSearchChanged() {
@@ -281,13 +302,42 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
 
     ref.read(recentAppsProvider.notifier).addRecent(packageName);
 
+    if (timerMinutes != null) {
+      if (!mounted) return;
+      try {
+        if (packageName.contains('paisa') || packageName.contains('googlepay')) {
+          await AppSettingsService.launchGooglePay();
+        } else {
+          await const MethodChannel('com.sukoon.launcher/apps')
+              .invokeMethod('launchApp', {'packageName': packageName});
+        }
+        
+        // Start the session on the native side
+        ref.read(screenTimeProvider.notifier).startSession(
+          packageName,
+          timerAppName ?? packageName,
+          timerMinutes,
+        );
+
+        // Return to home launcher
+        if (_pageController != null && _pageController!.hasClients) {
+          _pageController!.jumpToPage(3);
+        }
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('launcher_last_page_index', 3);
+      } catch (e) {
+        debugPrint('Launch app error: $e');
+      }
+      return;
+    }
+
+    // Default launch logic (non-timed apps)
     try {
       if (packageName.contains('paisa') || packageName.contains('googlepay')) {
         await AppSettingsService.launchGooglePay();
-      } else if (packageName == 'net.one97.paytm') {
-        await InstalledApps.startApp(packageName);
       } else {
-        await InstalledApps.startApp(packageName);
+        await const MethodChannel('com.sukoon.launcher/apps')
+            .invokeMethod('launchApp', {'packageName': packageName});
       }
     } catch (e) {
       if (mounted) {
@@ -301,19 +351,9 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       return;
     }
 
-    if (timerMinutes != null) {
-      ref.read(screenTimeProvider.notifier).startSession(
-        packageName, timerAppName ?? packageName, timerMinutes,
-      );
-    }
-
-    // Navigate to Home immediately after launching an app so that when the
-    // user swipes up / presses back from the launched app they land on the
-    // home page — not on the App List.
-    // We also persist the home-page index so that _restoreLastPage (called on
-    // every screen-off/on cycle) also puts them back on home, not app list.
+    // Return to home launcher
     if (_pageController != null && _pageController!.hasClients) {
-      _pageController!.jumpToPage(3); // 3 = Home page
+      _pageController!.jumpToPage(3);
     }
     SharedPreferences.getInstance().then((prefs) {
       prefs.setInt('launcher_last_page_index', 3);
@@ -329,86 +369,58 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     BlockedAppScreen.showAsDialog(context, appName);
   }
 
-  // ── Compute letter → scroll offset map ──────────────────────────────────
-  // Heights that make up the scroll content above each letter group:
-  //   • Status-bar top padding  (mq.padding.top + 8)  – dynamic, passed in
-  //   • Recently-installed section (header 38 + apps×46 + divider 13)
-  //   • For each letter group: header 36 + apps×46
-  //
-  // Using fixed heights avoids the RenderBox/GlobalKey race that caused the
-  // sidebar to silently do nothing when the layout hadn't settled yet.
-  // This is rebuilt in build() so it always reflects the current app list,
-  // including after installs or uninstalls.
-  static const double _kAppRowHeight    = 46.0; // vertical:11×2 + fontSize:20 line
-  static const double _kLetterHdrHeight = 36.0; // SizedBox height in _buildLetterHeader
-  static const double _kRecentHdrHeight = 38.0; // padding(14+6) + text(~18)
-  static const double _kDividerHeight   = 13.0; // padding(4+8) + container(0.5)
+  // ── Section data for super_sliver_list ─────────────────────────────────
+  // Built from the sorted app list. Each section = { letter, apps[] }.
+  // A flat index map tracks where each letter's first item lives so
+  // ListController.jumpToItem can land precisely.
+  List<({String letter, List<InstalledApp> apps})> _sections = [];
+  Map<String, int> _sectionFlatIndex = {};
 
-  Map<String, double> _computeLetterOffsets(
-    List<InstalledApp> filteredApps,
-    double topPadding,
-  ) {
-    final offsets = <String, double>{};
-    double y = topPadding; // SliverToBoxAdapter(height: mq.padding.top + 8)
-
-    // ── Recently-installed section (only shown when search is empty) ──────
-    if (_searchQuery.isEmpty) {
-      final recentApps =
-          ref.read(installedAppsProvider.notifier).recentlyInstalled;
-      if (recentApps.isNotEmpty) {
-        y += _kRecentHdrHeight; // collapsible header row
-        if (_recentlyInstalledExpanded) {
-          y += recentApps.length * _kAppRowHeight;
-        }
-        y += _kDividerHeight; // hairline divider below section
-      }
+  void _buildSections(List<InstalledApp> apps) {
+    final grouped = <String, List<InstalledApp>>{};
+    for (final app in apps) {
+      final first = app.appName.isEmpty ? '' : app.appName[0].toUpperCase();
+      final letter = RegExp(r'[A-Z]').hasMatch(first) ? first : '#';
+      grouped.putIfAbsent(letter, () => []).add(app);
     }
+    final sortedKeys = grouped.keys.toList()..sort((a, b) {
+      if (a == '#') return 1;
+      if (b == '#') return -1;
+      return a.compareTo(b);
+    });
+    _sections = sortedKeys
+        .map((k) => (letter: k, apps: grouped[k]!))
+        .toList();
 
-    // ── SliverPadding top (left:24, right:40 — no vertical padding) ──────
-    // (no extra y offset needed)
-
-    // ── Letter groups ─────────────────────────────────────────────────────
-    String? lastLetter;
-    for (final app in filteredApps) {
-      final firstChar =
-          app.appName.isEmpty ? '' : app.appName[0].toUpperCase();
-      final letter =
-          RegExp(r'[A-Z]').hasMatch(firstChar) ? firstChar : '#';
-
-      if (letter != lastLetter) {
-        // Record where this letter header starts
-        offsets[letter] = y;
-        y += _kLetterHdrHeight;
-        lastLetter = letter;
-      }
-      y += _kAppRowHeight;
+    // Flat index: header + apps for each section
+    int idx = 0;
+    _sectionFlatIndex = {};
+    for (final sec in _sections) {
+      _sectionFlatIndex[sec.letter] = idx; // header row
+      idx += 1 + sec.apps.length; // 1 header + N apps
     }
-
-    return offsets;
   }
 
-  void _scrollToLetter(String letter, List<InstalledApp> apps) {
-    if (!_scrollController.hasClients) return;
-
-    final offset = _letterOffsets[letter];
-    if (offset == null) return; // letter doesn't exist in current list
-
-    final maxExtent = _scrollController.position.maxScrollExtent;
-    final target = offset.clamp(0.0, maxExtent);
-
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
+  void _scrollToLetter(String letter) {
+    final targetIndex = _sectionFlatIndex[letter];
+    if (targetIndex == null || !_scrollController.hasClients) return;
+    _listController.jumpToItem(
+      index: targetIndex,
+      scrollController: _scrollController,
+      alignment: 0.0,
     );
   }
+
+
 
   Widget _buildAlphabetSidebar(List<InstalledApp> filteredApps, AppThemeColor themeColor) {
     return _AlphabetSidebar(
       apps: filteredApps,
       accent: themeColor.color,
       scrollController: _scrollController,
-      onScrollToLetter: _scrollToLetter,
+      onScrollToLetter: (letter, apps) {
+        _scrollToLetter(letter);
+      },
     );
   }
 
@@ -466,7 +478,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                 await ref.read(installedAppsProvider.notifier).renameApp(app.packageName, '');
                 if (context.mounted) {
                   Navigator.pop(context);
-                  HapticFeedback.lightImpact();
                 }
               },
               child: Text('Reset', style: TextStyle(color: Colors.white.withValues(alpha: 0.45))),
@@ -485,7 +496,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
               }
               if (context.mounted) {
                 Navigator.pop(context);
-                HapticFeedback.lightImpact();
               }
             },
             child: Text('Save', style: TextStyle(color: accent)),
@@ -570,7 +580,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                     ),
                   );
                 } else {
-                  HapticFeedback.lightImpact();
                 }
               },
             ),
@@ -609,38 +618,14 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
   }
 
   Future<void> _confirmUninstall(InstalledApp app) async {
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        insetPadding: EdgeInsets.only(
-          left: 16, right: 16, top: 16,
-          bottom: 16 + MediaQuery.of(context).padding.bottom,
-        ),
-        title: Text('Uninstall ${app.appName}?', style: const TextStyle(color: Colors.white)),
-        content: const Text('This will uninstall the app from your device.',
-            style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.of(context).pop(false);
-              ref.read(installedAppsProvider.notifier).removeApp(app.packageName);
-              await AppSettingsService.uninstallApp(app.packageName);
-              Future.delayed(const Duration(seconds: 2), () {
-                if (mounted) _refreshAppList();
-              });
-            },
-            style: TextButton.styleFrom(foregroundColor: const Color(0xFFEF5350)),
-            child: const Text('Uninstall'),
-          ),
-        ],
-      ),
-    );
+    // Directly trigger system uninstall per user request
+    ref.read(installedAppsProvider.notifier).removeApp(app.packageName);
+    await AppSettingsService.uninstallApp(app.packageName);
+    
+    // Refresh list after a delay to catch state changes
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) _refreshAppList();
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -657,20 +642,10 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     final accent = themeColor.color;
     final mq = MediaQuery.of(context);
 
-    // Recompute letter offsets every build so installs/uninstalls are always
-    // reflected. This is O(n) and very cheap — safe to call here.
-    if (_searchQuery.isEmpty) {
-      _letterOffsets = _computeLetterOffsets(
-        filteredApps,
-        mq.padding.top + 8,
-      );
-    }
-
     // When used as overlay (swipe-up), show the actual wallpaper background
     Widget overlayBg = const SizedBox.shrink();
     if (widget.isOverlay) {
-      final isAmoled = ref.watch(amoledProvider);
-      final wallpaper = isAmoled ? WallpaperType.black : ref.watch(wallpaperProvider);
+      final wallpaper = ref.watch(wallpaperProvider);
       overlayBg = _buildOverlayBackground(wallpaper);
     }
 
@@ -685,11 +660,27 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
           if (widget.isOverlay) overlayBg,
           FadeTransition(
             opacity: _contentFade,
-            child: SafeArea(
+            // top/bottom insets are handled manually inside (the search bar
+            // adds MediaQuery.padding.top; the list adds a top-inset sliver
+            // when the bar is hidden; the float button adds padding.bottom).
+            child: EdgeToEdge(
               top: false,
               bottom: false,
               child: Column(
                 children: [
+                  // ── Top search bar — hidden by default, shown on float tap ──
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: _searchVisible
+                        ? SlideTransition(
+                            position: _searchSlide,
+                            child: _buildTopSearchBar(themeColor, mq),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+
                   // ── App list ──
                   Expanded(
                     child: allApps.isEmpty
@@ -698,78 +689,65 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                             ? _buildEmptyState(accent)
                             : Stack(
                               children: [
-                                CustomScrollView(
-                                  controller: _scrollController,
-                                  physics: const BouncingScrollPhysics(
-                                    parent: AlwaysScrollableScrollPhysics(),
+                                AnimatedPadding(
+                                  duration: const Duration(milliseconds: 200),
+                                  curve: Curves.easeOutCubic,
+                                  padding: EdgeInsets.only(
+                                    bottom: _keyboardHeight > 0 ? _keyboardHeight : 0,
                                   ),
-                                  slivers: [
-                                    // Status bar breathing room (replaces SafeArea top)
-                                    SliverToBoxAdapter(
-                                      child: SizedBox(height: mq.padding.top + 8),
-                                    ),
+                                  child: Builder(
+                                    builder: (_) {
+                                      // Rebuild sections whenever the list changes
+                                      if (_searchQuery.isEmpty) {
+                                        _buildSections(filteredApps);
+                                      }
+                                      return CustomScrollView(
+                                        controller: _scrollController,
+                                        physics: const BouncingScrollPhysics(
+                                          parent: AlwaysScrollableScrollPhysics(),
+                                        ),
+                                        slivers: [
+                                          // Status-bar inset — only when the
+                                          // search bar (which supplies its own
+                                          // top padding) is hidden, so the list
+                                          // never slides under the status bar.
+                                          if (!_searchVisible)
+                                            SliverToBoxAdapter(
+                                              child: SizedBox(height: mq.padding.top),
+                                            ),
 
-                                    // Recently installed
-                                    if (_searchQuery.isEmpty)
-                                      ..._buildRecentlyInstalledSection(themeColor),
+                                          // Recently installed
+                                          if (_searchQuery.isEmpty)
+                                            ..._buildRecentlyInstalledSection(themeColor),
 
-                                    // All apps with sticky letter headers
-                                    SliverPadding(
-                                      padding: const EdgeInsets.only(left: 24, right: 40),
-                                      sliver: _buildAlphaGroupedList(filteredApps, themeColor),
-                                    ),
+                                          // All apps — super_sliver_list powered
+                                          SliverPadding(
+                                            padding: const EdgeInsets.only(left: 24, right: 40),
+                                            sliver: _buildSuperSliverAppList(filteredApps, themeColor),
+                                          ),
 
-                                    // Bottom breathing room so last app isn't
-                                    // hidden under the search bar
-                                    const SliverToBoxAdapter(
-                                      child: SizedBox(height: 80),
-                                    ),
-                                  ],
+                                          // Bottom breathing room
+                                          const SliverToBoxAdapter(
+                                            child: SizedBox(height: 80),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
                                 ),
 
                                 // Alphabet sidebar — right edge only
                                 if (_searchQuery.isEmpty)
                                   _buildAlphabetSidebar(filteredApps, themeColor),
 
-                                // Top fade for clean scroll edge
+                                // ── Floating search button ──────────────────
                                 Positioned(
-                                  top: 0, left: 0, right: 0,
-                                  child: IgnorePointer(
-                                    child: Container(
-                                      height: 20,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                          colors: [
-                                            Colors.black.withValues(alpha: 0.5),
-                                            Colors.black.withValues(alpha: 0.0),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                                  right: 20,
+                                  bottom: 24 + mq.padding.bottom,
+                                  child: _buildFloatingSearchButton(accent),
                                 ),
                               ],
                             ),
-                  ),
-
-                  // ── Minimalist bottom search bar ──
-                  // _keyboardHeight is tracked via didChangeMetrics so it
-                  // updates even when the parent Scaffold has
-                  // resizeToAvoidBottomInset:false (PageView context).
-                  // AnimatedPadding smooths the transition so there is no
-                  // hard jump that causes the PageView to bounce sideways.
-                  AnimatedPadding(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    padding: EdgeInsets.only(
-                      bottom: _keyboardHeight > 0 ? _keyboardHeight : 0,
-                    ),
-                    child: SlideTransition(
-                      position: _searchSlide,
-                      child: _buildBottomSearchBar(themeColor, mq),
-                    ),
                   ),
                 ],
               ),
@@ -830,23 +808,22 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     if (recentApps.isEmpty) return [];
 
     final accent = themeColor.color;
-    const dividerColor = Colors.white;
     return [
       SliverToBoxAdapter(
         child: GestureDetector(
           onTap: () => setState(() => _recentlyInstalledExpanded = !_recentlyInstalledExpanded),
           behavior: HitTestBehavior.opaque,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 14, 22, 6),
+            padding: const EdgeInsets.fromLTRB(24, 10, 22, 4),
             child: Row(
               children: [
                 Text(
                   'Recently installed',
                   style: TextStyle(
-                    color: accent.withValues(alpha: 0.6),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.3,
+                    color: accent.withValues(alpha: 0.45),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.8,
                     decoration: TextDecoration.none,
                   ),
                 ),
@@ -857,8 +834,8 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                   curve: Curves.easeOutCubic,
                   child: Icon(
                     Icons.keyboard_arrow_up_rounded,
-                    color: accent.withValues(alpha: 0.35),
-                    size: 18,
+                    color: accent.withValues(alpha: 0.25),
+                    size: 16,
                   ),
                 ),
               ],
@@ -876,31 +853,18 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
             ),
           ),
         ),
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 4, 40, 8),
-          child: Container(
-            height: 0.5,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  dividerColor.withValues(alpha: 0.0),
-                  dividerColor.withValues(alpha: 0.06),
-                  dividerColor.withValues(alpha: 0.06),
-                  dividerColor.withValues(alpha: 0.0),
-                ],
-                stops: const [0.0, 0.2, 0.8, 1.0],
-              ),
-            ),
-          ),
-        ),
-      ),
+      // Minimal spacing instead of gradient divider
+      const SliverToBoxAdapter(child: SizedBox(height: 8)),
     ];
   }
 
-  Widget _buildAlphaGroupedList(List<InstalledApp> apps, AppThemeColor themeColor) {
+  /// Builds the app list using a single SuperSliverList for pixel-perfect
+  /// alphabet scrolling via ListController.jumpToItem.
+  Widget _buildSuperSliverAppList(List<InstalledApp> apps, AppThemeColor themeColor) {
+    // Search mode: simple flat list, no sections
     if (_searchQuery.isNotEmpty) {
-      return SliverList(
+      return SuperSliverList(
+        listController: _listController,
         delegate: SliverChildBuilderDelegate(
           (context, index) => _buildAppItem(apps[index], themeColor),
           childCount: apps.length,
@@ -908,48 +872,52 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       );
     }
 
-    final rows = <({bool isHeader, String? letter, InstalledApp? app})>[];
-    String? lastLetter;
-    for (final app in apps) {
-      final firstChar = app.appName.isEmpty ? '' : app.appName[0].toUpperCase();
-      final letter = RegExp(r'[A-Z]').hasMatch(firstChar) ? firstChar : '#';
-      if (letter != lastLetter) {
-        rows.add((isHeader: true, letter: letter, app: null));
-        lastLetter = letter;
+    // Normal mode: flat list with letter headers interleaved.
+    // Build a flat list: [HeaderA, AppA1, AppA2, HeaderB, AppB1, ...]
+    final flat = <_FlatItem>[];
+    for (final sec in _sections) {
+      flat.add(_FlatItem.header(sec.letter));
+      for (final app in sec.apps) {
+        flat.add(_FlatItem.app(app));
       }
-      rows.add((isHeader: false, letter: null, app: app));
     }
 
-    return SliverList(
+    // Update flat index to point to the HEADER row for each letter
+    // so jumpToItem scrolls the header to the top.
+    int idx = 0;
+    _sectionFlatIndex = {};
+    for (final sec in _sections) {
+      _sectionFlatIndex[sec.letter] = idx; // index of header
+      idx += 1 + sec.apps.length; // header + apps
+    }
+
+    return SuperSliverList(
+      listController: _listController,
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          final row = rows[index];
-          if (row.isHeader) return _buildLetterHeader(row.letter!, themeColor);
-          return _buildAppItem(row.app!, themeColor);
+          final item = flat[index];
+          if (item.isHeader) {
+            return _buildLetterHeader(item.letter!, themeColor);
+          }
+          return _buildAppItem(item.app!, themeColor);
         },
-        childCount: rows.length,
+        childCount: flat.length,
       ),
     );
   }
 
   Widget _buildLetterHeader(String letter, AppThemeColor themeColor) {
-    final letterColor = themeColor.color.withValues(alpha: 0.3);
-    return SizedBox(
-      height: _kLetterHdrHeight,
-      child: Align(
-        alignment: Alignment.bottomLeft,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: Text(
-            letter,
-            style: TextStyle(
-              color: letterColor,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-              decoration: TextDecoration.none,
-            ),
-          ),
+    final accent = themeColor.color;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(2, 18, 0, 6),
+      child: Text(
+        letter,
+        style: TextStyle(
+          color: accent.withValues(alpha: 0.40),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+          decoration: TextDecoration.none,
         ),
       ),
     );
@@ -1000,7 +968,38 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     }
   }
 
-  Widget _buildBottomSearchBar(AppThemeColor themeColor, MediaQueryData mq) {
+  Widget _buildFloatingSearchButton(Color accent) {
+    return AnimatedOpacity(
+      opacity: _searchVisible ? 0.0 : 1.0,
+      duration: const Duration(milliseconds: 180),
+      child: IgnorePointer(
+        ignoring: _searchVisible,
+        child: GestureDetector(
+          onTap: _showSearch,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            width: 53,
+            height: 53,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.07),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.10),
+                width: 0.8,
+              ),
+            ),
+            child: Icon(
+              Icons.search_rounded,
+              size: 24,
+              color: Colors.white.withValues(alpha: 0.50),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopSearchBar(AppThemeColor themeColor, MediaQueryData mq) {
     final accent = themeColor.color;
     return ListenableBuilder(
       listenable: _searchFocusNode,
@@ -1008,54 +1007,52 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
         final isFocused = _searchFocusNode.hasFocus;
         final hasText = _searchController.text.isNotEmpty;
 
-        // ── Background: gradient that dissolves upward into the list ──────
-        // No hard edge — the bar feels like it grows out of the wallpaper.
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              stops: const [0.0, 0.28, 1.0],
-              colors: [
-                Colors.transparent,
-                Colors.black.withValues(alpha: 0.55),
-                Colors.black.withValues(alpha: 0.82),
-              ],
-            ),
-          ),
+        return GestureDetector(
+          onTap: () {
+            if (!_searchFocusNode.hasFocus) {
+              _searchFocusNode.requestFocus();
+            }
+          },
+          behavior: HitTestBehavior.translucent,
           child: Padding(
-            // Extra top space so the gradient feather is visible
-            padding: EdgeInsets.fromLTRB(16, 22, 14, 16 + mq.padding.bottom),
+            padding: EdgeInsets.fromLTRB(20, mq.padding.top + 16, 20, 0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // ── Text field ────────────────────────────────────────
+                    // ── Search icon ──
+                    Icon(
+                      Icons.search_rounded,
+                      size: 22,
+                      color: Colors.white.withValues(alpha: 0.45),
+                    ),
+                    const SizedBox(width: 12),
+                    // ── Text field ──
                     Expanded(
                       child: TextField(
                         controller: _searchController,
                         focusNode: _searchFocusNode,
                         style: TextStyle(
-                          color: accent.withValues(alpha: 0.90),
+                          color: Colors.white.withValues(alpha: 0.90),
                           fontSize: 17,
                           fontWeight: FontWeight.w300,
-                          letterSpacing: 0.4,
+                          letterSpacing: 0.3,
                           decoration: TextDecoration.none,
                         ),
                         textInputAction: TextInputAction.search,
                         cursorColor: accent.withValues(alpha: 0.65),
                         cursorWidth: 1.2,
                         decoration: InputDecoration(
-                          hintText: 'Search apps',
+                          hintText: 'Search apps...',
                           hintStyle: TextStyle(
-                            color: accent.withValues(
-                              alpha: isFocused ? 0.28 : 0.42,
+                            color: Colors.white.withValues(
+                              alpha: isFocused ? 0.30 : 0.40,
                             ),
                             fontSize: 17,
                             fontWeight: FontWeight.w300,
-                            letterSpacing: 0.4,
+                            letterSpacing: 0.3,
                           ),
                           isDense: true,
                           border: InputBorder.none,
@@ -1067,32 +1064,31 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                                   onTap: () {
                                     _searchController.clear();
                                     _searchFocusNode.unfocus();
+                                    setState(() {
+                                      _searchQuery = '';
+                                      _hasAutoLaunched = false;
+                                    });
                                   },
                                   child: Icon(
                                     Icons.close_rounded,
                                     size: 18,
-                                    color: accent.withValues(alpha: 0.40),
+                                    color: Colors.white.withValues(alpha: 0.40),
                                   ),
                                 )
-                              : null,
+                              : GestureDetector(
+                                  onTap: _hideSearch,
+                                  child: Icon(
+                                    Icons.keyboard_arrow_up_rounded,
+                                    size: 18,
+                                    color: Colors.white.withValues(alpha: 0.30),
+                                  ),
+                                ),
                           suffixIconConstraints:
                               const BoxConstraints(minWidth: 32, minHeight: 32),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    // ── Search icon ───────────────────────────────────────
-                    AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: isFocused ? 0.75 : 0.50,
-                      child: Icon(
-                        Icons.search_rounded,
-                        size: 24,
-                        color: accent,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    // ── Settings gear ─────────────────────────────────────
+                    // ── Settings gear (always visible) ──
                     GestureDetector(
                       onTap: () {
                         Navigator.of(context).push(
@@ -1100,32 +1096,24 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                         );
                       },
                       behavior: HitTestBehavior.opaque,
-                      child: Icon(
-                        Icons.settings_outlined,
-                        size: 22,
-                        color: accent.withValues(alpha: 0.40),
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 12),
+                        child: Icon(
+                          Icons.settings_outlined,
+                          size: 20,
+                          color: Colors.white.withValues(alpha: 0.30),
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                // ── Full-width accent underline ───────────────────────────
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOutCubic,
-                  height: isFocused ? 1.2 : 0.7,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.transparent,
-                        accent.withValues(alpha: isFocused ? 0.65 : 0.30),
-                        accent.withValues(alpha: isFocused ? 0.65 : 0.30),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.15, 0.85, 1.0],
-                    ),
-                  ),
+                const SizedBox(height: 8),
+                // ── Full-width underline ──
+                Container(
+                  height: 1.0,
+                  color: Colors.white.withValues(alpha: isFocused ? 0.35 : 0.20),
                 ),
+                const SizedBox(height: 4),
               ],
             ),
           ),
@@ -1136,24 +1124,25 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
 
   Widget _buildAppItem(InstalledApp app, AppThemeColor themeColor) {
     final isBlocked = ref.read(appBlockRuleProvider.notifier).isAppBlocked(app.packageName);
-    final accent = themeColor.color;
+    final itemColor = isBlocked
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.white.withValues(alpha: 0.88);
 
     return RepaintBoundary(
-      child: GestureDetector(
-        onTap: () => _launchApp(app.packageName),
+      child: _ScaleTapAppItem(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _launchApp(app.packageName);
+        },
         onLongPress: () => _showAppOptions(context, app, ref),
-        behavior: HitTestBehavior.opaque,
         child: Padding(
-          // vertical: 11 → ~22px gap between apps, matching the screenshot
-          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 2),
+          padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 2),
           child: Text(
             app.displayName,
             style: TextStyle(
-              color: isBlocked
-                  ? accent.withValues(alpha: 0.12)
-                  : accent.withValues(alpha: 0.88),
-              fontSize: 20,
-              letterSpacing: 0.2,
+              color: itemColor,
+              fontSize: 16.5,
+              letterSpacing: 0.1,
               fontWeight: FontWeight.w300,
               decoration: TextDecoration.none,
             ),
@@ -1166,9 +1155,80 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  PREMIUM ALPHABET SIDEBAR
-//  Zero-jank, 60fps, isolated repaints, haptic drag
+// ───────────────────────────────────────────────────────────────────
+// _ScaleTapAppItem — Micro-interaction: scale-on-tap for app items
+// ───────────────────────────────────────────────────────────────────
+
+class _ScaleTapAppItem extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  const _ScaleTapAppItem({
+    required this.child,
+    this.onTap,
+    this.onLongPress,
+  });
+
+  @override
+  State<_ScaleTapAppItem> createState() => _ScaleTapAppItemState();
+}
+
+class _ScaleTapAppItemState extends State<_ScaleTapAppItem>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 80),
+      reverseDuration: const Duration(milliseconds: 180),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.97,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+      reverseCurve: LauncherEasing.emphasizedDecelerate,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) {
+        _controller.reverse();
+        widget.onTap?.call();
+      },
+      onTapCancel: () => _controller.reverse(),
+      onLongPress: () {
+        _controller.reverse();
+        widget.onLongPress?.call();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+
+//  Gaussian wave push: selected letter + neighbours push LEFT with
+//  a smooth bell-curve. Dynamic vertical repositioning follows
+//  finger if dragged outside boundaries. Circle indicator.
 // ═══════════════════════════════════════════════════════════════════
 
 class _AlphabetSidebar extends StatefulWidget {
@@ -1189,35 +1249,34 @@ class _AlphabetSidebar extends StatefulWidget {
 }
 
 class _AlphabetSidebarState extends State<_AlphabetSidebar>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
+  static const _kLetterHeight = 20.0;
+  static const _kStripWidth = 42.0;
+
   static const _allLetters = [
-    '#',
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
     'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-    'U', 'V', 'W', 'X', 'Y', 'Z',
+    'U', 'V', 'W', 'X', 'Y', 'Z', '#',
   ];
 
-  final ValueNotifier<String?> _activeLetter = ValueNotifier(null);
-  final ValueNotifier<bool> _isDragging = ValueNotifier(false);
-  final ValueNotifier<double?> _dragY = ValueNotifier(null);
-  // Smoothly spring-animated drag Y — drives the snake curve
-  final ValueNotifier<double?> _animatedDragY = ValueNotifier(null);
-  final GlobalKey _columnKey = GlobalKey();
+  late AnimationController _controller;
   late Set<String> _availableLetters;
-  late AnimationController _bubbleAnim;
 
-  // Spring release: custom ticker drives fade-to-rest
-  Ticker? _springTicker;
-  double _springPos = 0.0;
-  double _springTarget = 0.0;
+  final GlobalKey _columnKey = GlobalKey();
+
+  String _selectedLetter = '';
+  bool _isDragging = false;
+  Offset _dragPosition = Offset.zero;
+  int _selectedIndex = -1;
+
 
   @override
   void initState() {
     super.initState();
     _buildAvailableLetters();
-    _bubbleAnim = AnimationController(
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 50),
       vsync: this,
-      duration: const Duration(milliseconds: 200),
     );
   }
 
@@ -1229,237 +1288,239 @@ class _AlphabetSidebarState extends State<_AlphabetSidebar>
 
   void _buildAvailableLetters() {
     final set = <String>{};
-    bool hasNonAlpha = false;
     for (final app in widget.apps) {
       if (app.appName.isEmpty) continue;
       final first = app.appName[0].toUpperCase();
       if (RegExp(r'[A-Z]').hasMatch(first)) {
         set.add(first);
-      } else {
-        hasNonAlpha = true;
       }
     }
-    if (hasNonAlpha) set.add('#');
     _availableLetters = set;
   }
 
+
   @override
   void dispose() {
-    _activeLetter.dispose();
-    _isDragging.dispose();
-    _dragY.dispose();
-    _animatedDragY.dispose();
-    _bubbleAnim.dispose();
-    _springTicker?.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  // ── Spring release ──────────────────────────────────────────────
-  // Simple easeOut fade: the wave dissolves away cleanly on release,
-  // no bounce, no overshoot — just a smooth melt back to flat.
-  void _startSpringRelease(double fromY) {
-    _springTicker?.stop();
-    _springTicker?.dispose();
-    // Drive animatedDragY toward null over ~350ms with easeOutCubic feel.
-    // We do this by incrementally blending fromY → centerY each tick.
-    final rb = _columnKey.currentContext?.findRenderObject() as RenderBox?;
-    final centerY = rb != null ? rb.size.height / 2.0 : fromY;
-    _springPos = fromY;
-    _springTarget = centerY;
-    final startTime = DateTime.now();
-    const durationMs = 320;
-
-    _springTicker = createTicker((_) {
-      final elapsed = DateTime.now().difference(startTime).inMilliseconds;
-      final raw = (elapsed / durationMs).clamp(0.0, 1.0);
-      // easeOutCubic: fast start, gentle finish — no overshoot
-      final t = 1.0 - math.pow(1.0 - raw, 3).toDouble();
-      if (raw >= 1.0) {
-        _animatedDragY.value = null;
-        _springTicker?.stop();
-      } else {
-        _animatedDragY.value = _springPos + (_springTarget - _springPos) * t;
+  // ── Resolve to nearest available letter (data-driven) ──
+  // Finds the closest letter that actually has apps, walking outward
+  // from the selected position in both directions.
+  String _resolveNearest(String letter) {
+    if (_availableLetters.contains(letter)) return letter;
+    if (_availableLetters.isEmpty) return letter;
+    final idx = _allLetters.indexOf(letter);
+    // Walk outward from idx: check idx-1, idx+1, idx-2, idx+2, ...
+    for (int delta = 1; delta < _allLetters.length; delta++) {
+      final before = idx - delta;
+      final after = idx + delta;
+      if (before >= 0 && _availableLetters.contains(_allLetters[before])) {
+        return _allLetters[before];
       }
-    })
-      ..start();
+      if (after < _allLetters.length && _availableLetters.contains(_allLetters[after])) {
+        return _allLetters[after];
+      }
+    }
+    return letter;
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────
-  String? _letterFromDy(double localY) {
-    final rb = _columnKey.currentContext?.findRenderObject() as RenderBox?;
-    if (rb == null) return null;
-    final height = rb.size.height;
-    if (height <= 0) return null;
-    final fraction = (localY / height).clamp(0.0, 0.999);
-    final index = (fraction * _allLetters.length).floor();
-    return _allLetters[index];
+  // ── Drag handlers ──
+  void _onDragStart(DragStartDetails details) {
+    setState(() {
+      _isDragging = true;
+      _updateSelectionFromPosition(details.globalPosition);
+    });
+    HapticFeedback.selectionClick();
   }
 
-  // ── Drag handlers ────────────────────────────────────────────────
-  void _onDragStart(DragStartDetails d) {
-    _springTicker?.stop();
-    _isDragging.value = true;
-    _dragY.value = d.localPosition.dy;
-    _animatedDragY.value = d.localPosition.dy;
-    _bubbleAnim.forward();
-    _handleDrag(d.localPosition.dy);
-  }
-
-  void _onDragUpdate(DragUpdateDetails d) {
-    // Only the vertical component moves the snake — ignore any horizontal drift
-    // (user's finger may wander left, we only care about Y within the strip)
-    final y = d.localPosition.dy;
-    _dragY.value = y;
-    _animatedDragY.value = y;
-    _handleDrag(y);
+  void _onDragUpdate(DragUpdateDetails details) {
+    _updateSelectionFromPosition(details.globalPosition);
   }
 
   void _onDragEnd(DragEndDetails details) {
-    final lastY = _dragY.value;
-
-    // Bubble fades after a short hold so user can see the last letter
-    Future.delayed(const Duration(milliseconds: 80), () {
-      if (mounted) _bubbleAnim.reverse();
+    setState(() {
+      _isDragging = false;
+      _selectedIndex = -1;
+      _selectedLetter = '';
     });
-
-    // Clear active letter after bubble is gone
-    Future.delayed(const Duration(milliseconds: 380), () {
-      if (mounted) {
-        _isDragging.value = false;
-        _activeLetter.value = null;
-        _dragY.value = null;
-      }
-    });
-
-    // Kick off spring release — this drives _animatedDragY back to center
-    if (lastY != null) _startSpringRelease(lastY);
+    _controller.forward(from: 0.0);
   }
 
-  void _handleDrag(double localY) {
-    final letter = _letterFromDy(localY);
-    if (letter == null) return;
+  void _updateSelectionFromPosition(Offset globalPosition) {
+    final RenderBox? box =
+        _columnKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
 
-    String finalLetter = letter;
-    if (!_availableLetters.contains(letter)) {
-      final idx = _allLetters.indexOf(letter);
-      int closestDist = 999;
-      String closest = letter;
-      for (final l in _availableLetters) {
-        final availIdx = _allLetters.indexOf(l);
-        final dist = (availIdx - idx).abs();
-        if (dist < closestDist) {
-          closestDist = dist;
-          closest = l;
-        }
-      }
-      finalLetter = closest;
-    }
+    final localPos = box.globalToLocal(globalPosition);
+    final totalHeight = _kLetterHeight * _allLetters.length;
+    final startY = (box.size.height - totalHeight) / 2;
 
-    if (finalLetter == _activeLetter.value) return;
-    _activeLetter.value = finalLetter;
-    HapticFeedback.selectionClick();
-    widget.onScrollToLetter(finalLetter, widget.apps);
-  }
+    // Compute which letter index the finger is on — from local position
+    int index = ((localPos.dy - startY) / _kLetterHeight).floor();
+    index = index.clamp(0, _allLetters.length - 1);
 
-  void _onTapLetter(String letter) {
-    HapticFeedback.selectionClick();
+    // Map index → letter, then resolve to nearest letter that has apps
+    final rawLetter = _allLetters[index];
+    final resolved = _resolveNearest(rawLetter);
+    final prevLetter = _selectedLetter;
 
-    // Resolve to nearest available letter if this one has no apps —
-    // consistent with drag behaviour so every tap does something useful.
-    String target = letter;
-    if (!_availableLetters.contains(letter) && _availableLetters.isNotEmpty) {
-      final idx = _allLetters.indexOf(letter);
-      int closestDist = 999;
-      for (final l in _availableLetters) {
-        final dist = (_allLetters.indexOf(l) - idx).abs();
-        if (dist < closestDist) {
-          closestDist = dist;
-          target = l;
-        }
-      }
-    }
-
-    _activeLetter.value = target;
-    _bubbleAnim.forward();
-    if (_availableLetters.contains(target)) {
-      widget.onScrollToLetter(target, widget.apps);
-    }
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        _bubbleAnim.reverse();
-        _activeLetter.value = null;
-      }
+    setState(() {
+      _dragPosition = globalPosition;
+      _selectedLetter = resolved;
+      _selectedIndex = _allLetters.indexOf(resolved);
     });
+
+    // Only fire scroll + haptic when letter actually changes
+    if (resolved != prevLetter) {
+      HapticFeedback.selectionClick();
+      widget.onScrollToLetter(resolved, widget.apps);
+    }
   }
 
-  static const double _stripWidth = 36.0;
+  // ── Gaussian bell-curve offset ──
+  double _calculateOffset(int index) {
+    if (!_isDragging || _selectedIndex == -1) return 0.0;
+
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final distance = (index - _selectedIndex).abs();
+
+    // Right-aligned: letters push LEFT (negative offset)
+    final maxOffset = (screenWidth - _dragPosition.dx + 60).clamp(
+      0.0,
+      screenWidth - 100,
+    );
+
+    // Gaussian bell: divisor controls curve width
+    final divisor = ((screenWidth - _dragPosition.dx) / 4.0) + 12.0;
+    final gaussian = math.exp(-(math.pow(distance, 2) / divisor));
+    final offset = maxOffset * gaussian;
+
+    return -offset; // Negative = push LEFT from right edge
+  }
 
   @override
   Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final screenH = mq.size.height;
+
     return Positioned(
       right: 0,
       top: 0,
       bottom: 0,
-      width: _stripWidth,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onVerticalDragStart: _onDragStart,
         onVerticalDragUpdate: _onDragUpdate,
         onVerticalDragEnd: _onDragEnd,
-        child: Align(
-          alignment: Alignment.centerRight,
-          child: RepaintBoundary(
-            child: SizedBox(
-              width: _stripWidth,
-              child: Stack(
-                alignment: Alignment.centerRight,
-                clipBehavior: Clip.none,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: Column(
-                      key: _columnKey,
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: _allLetters.map((letter) {
-                        final hasApps = _availableLetters.contains(letter);
-                        return _LetterTile(
-                          letter: letter,
-                          hasApps: hasApps,
-                          accent: widget.accent,
-                          activeLetter: _activeLetter,
-                          dragY: _animatedDragY,
-                          columnKey: _columnKey,
-                          totalLetters: _allLetters.length,
-                          index: _allLetters.indexOf(letter),
-                          // All letters respond to tap; sidebar scrolls to nearest
-                          // available letter automatically via _handleDrag logic.
-                          onTap: () => _onTapLetter(letter),
-                        );
-                      }).toList(),
+        child: Container(
+          width: _kStripWidth,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.transparent),
+          ),
+          child: Stack(
+            alignment: Alignment.centerRight,
+            clipBehavior: Clip.none,
+            children: [
+              // Letter column — AnimatedPositioned for dynamic vertical shift
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 50),
+                right: 0,
+                top: 0,
+                bottom: 0,
+                child: Column(
+                  key: _columnKey,
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(_allLetters.length, (index) {
+                    final letter = _allLetters[index];
+                    final isSelected = letter == _selectedLetter && _isDragging;
+                    final hasApps = _availableLetters.contains(letter);
+
+                    // Opacity: selected = bright, nearby = moderate, far = dim
+                    double alpha;
+                    if (isSelected) {
+                      alpha = 1.0;
+                    } else if (_isDragging) {
+                      final dist = (_selectedIndex - index).abs();
+                      alpha = (0.15 + 0.40 * math.exp(-dist * 0.4)).clamp(0.0, 1.0);
+                    } else {
+                      alpha = hasApps ? 0.45 : 0.18;
+                    }
+
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 50),
+                      width: _kStripWidth,
+                      height: _kLetterHeight,
+                      padding: const EdgeInsets.only(right: 10),
+                      transform: Matrix4.translationValues(
+                        _calculateOffset(index),
+                        0,
+                        0,
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          letter,
+                          style: TextStyle(
+                            fontSize: isSelected ? 18 : 11,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            color: isSelected
+                                ? widget.accent
+                                : Colors.white.withValues(alpha: alpha),
+                            height: 1.0,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+
+              // ── Floating circle indicator ──
+              if (_isDragging && _selectedIndex != -1)
+                Positioned(
+                  right: 30 + _calculateOffset(_selectedIndex).abs(),
+                  top: (_dragPosition.dy - 25 - mq.padding.top - 70)
+                      .clamp(0.0, screenH - 100),
+                  child: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: widget.accent.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: widget.accent.withValues(alpha: 0.50),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: widget.accent.withValues(alpha: 0.10),
+                          blurRadius: 14,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        _selectedLetter,
+                        style: TextStyle(
+                          color: widget.accent,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          height: 1.0,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
                     ),
                   ),
-
-                  ValueListenableBuilder<String?>(
-                    valueListenable: _activeLetter,
-                    builder: (_, active, _) {
-                      if (active == null) return const SizedBox.shrink();
-                      final idx = _allLetters.indexOf(active);
-                      if (idx < 0) return const SizedBox.shrink();
-                      return _BubbleIndicator(
-                        letter: active,
-                        index: idx,
-                        totalLetters: _allLetters.length,
-                        accent: widget.accent,
-                        animation: _bubbleAnim,
-                        columnKey: _columnKey,
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
+                ),
+            ],
           ),
         ),
       ),
@@ -1467,209 +1528,20 @@ class _AlphabetSidebarState extends State<_AlphabetSidebar>
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  LETTER TILE — isolated repaint per letter
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// _FlatItem — tagged union for letter headers vs app items
+// ═══════════════════════════════════════════════════════════════════════
 
-class _LetterTile extends StatelessWidget {
-  final String letter;
-  final bool hasApps;
-  final Color accent;
-  final ValueNotifier<String?> activeLetter;
-  final ValueNotifier<double?> dragY;
-  final GlobalKey columnKey;
-  final int totalLetters;
-  final int index;
-  final VoidCallback? onTap;
+class _FlatItem {
+  final bool isHeader;
+  final String? letter;
+  final InstalledApp? app;
 
-  const _LetterTile({
-    required this.letter,
-    required this.hasApps,
-    required this.accent,
-    required this.activeLetter,
-    required this.dragY,
-    required this.columnKey,
-    required this.totalLetters,
-    required this.index,
-    this.onTap,
-  });
+  const _FlatItem._({required this.isHeader, this.letter, this.app});
 
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<double?>(
-      valueListenable: dragY,
-      builder: (_, currentDragY, _) {
-        return ValueListenableBuilder<String?>(
-          valueListenable: activeLetter,
-          builder: (_, active, _) {
-            final isActive = active == letter;
+  factory _FlatItem.header(String letter) =>
+      _FlatItem._(isHeader: true, letter: letter);
 
-            // Natural forward-bulge curve:
-            // Letters near the touch point slide LEFT (toward the content area =
-            // "forward" since the sidebar is pinned to the RIGHT edge).
-            // The peak letter moves most, neighbours taper off with cosine falloff.
-            // On release, _animatedDragY snaps back via easeOutQuart → curve
-            // melts back to rest naturally without any snap/pop.
-            double targetXOffset = 0.0;
-            double targetScale = 1.0;
-
-            if (currentDragY != null) {
-              final rb = columnKey.currentContext?.findRenderObject() as RenderBox?;
-              if (rb != null) {
-                final columnHeight = rb.size.height;
-                final letterH = columnHeight / totalLetters;
-                final centerY = (index + 0.5) * letterH;
-                final distance = (currentDragY - centerY).abs();
-
-                // Wide radius: ~8 letters above & below the touch point
-                // feel the pull — gives a long, flowing wave across the column
-                final radius = letterH * 12.0;
-
-                if (distance < radius) {
-                  final normalizedDist = distance / radius;
-                  // Cosine bell: 1.0 at touch point, smoothly → 0 at radius edge
-                  final bell = (math.cos(normalizedDist * math.pi) + 1.0) / 2.0;
-                  // Quintic ease for a sharper peak / softer tail
-                  final t = bell;
-                  final stretch = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-
-                  // Sidebar is on the RIGHT edge, so "forward" = toward the
-                  // content area = negative X (shift left).
-                  // 28 px max keeps the sidebar readable without going off-screen.
-                  targetXOffset = -42.0 * stretch;
-                  // Scale only the nearest ~3 letters subtly
-                  targetScale = 1.0 + (0.28 * stretch);
-                }
-              }
-            }
-
-            return GestureDetector(
-              onTap: onTap,
-              behavior: HitTestBehavior.opaque,
-              child: AnimatedContainer(
-                // Snap-back driver (_animatedDragY) already handles the slow
-                // ease; this duration just smooths per-frame micro-jumps.
-                duration: const Duration(milliseconds: 80),
-                curve: Curves.easeOutCubic,
-                transform: Matrix4.diagonal3Values(targetScale, targetScale, 1.0)
-                  ..setTranslationRaw(targetXOffset, 0.0, 0.0),
-                child: SizedBox(
-                  width: 28,
-                  height: 22,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 120),
-                      curve: Curves.easeOutCubic,
-                      style: TextStyle(
-                        // All letters same contrast — active letter gets accent,
-                        // every other letter uses the same visible alpha
-                        // regardless of whether apps exist under that letter.
-                        color: isActive
-                            ? accent
-                            : Colors.white.withValues(alpha: 0.55),
-                        fontSize: isActive ? 13 : 10,
-                        fontWeight: isActive
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        height: 1.0,
-                        decoration: TextDecoration.none,
-                      ),
-                      child: Text(letter),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  BUBBLE INDICATOR — floating letter during sidebar drag
-// ═══════════════════════════════════════════════════════════════════
-
-class _BubbleIndicator extends StatelessWidget {
-  final String letter;
-  final int index;
-  final int totalLetters;
-  final Color accent;
-  final Animation<double> animation;
-  final GlobalKey columnKey;
-
-  const _BubbleIndicator({
-    required this.letter,
-    required this.index,
-    required this.totalLetters,
-    required this.accent,
-    required this.animation,
-    required this.columnKey,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final rb = columnKey.currentContext?.findRenderObject() as RenderBox?;
-    if (rb == null) return const SizedBox.shrink();
-    final columnHeight = rb.size.height;
-    final letterH = columnHeight / totalLetters;
-    final centerY = (index + 0.5) * letterH;
-    final halfColumn = columnHeight / 2;
-    final offsetFromCenter = centerY - halfColumn;
-
-    // Fixed X offset — bubble sits cleanly to the left of the sidebar strip
-    const double xOffset = -62.0;
-
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (_, _) {
-        final opacity = animation.value;
-        if (opacity < 0.01) return const SizedBox.shrink();
-        final scaleCurve = Curves.easeOutBack.transform(animation.value);
-
-        return Transform.translate(
-          offset: Offset(xOffset, offsetFromCenter),
-          child: Opacity(
-            opacity: opacity,
-            child: Transform.scale(
-              scale: scaleCurve,
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: accent.withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: accent.withValues(alpha: 0.4),
-                    width: 1.0,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.08),
-                      blurRadius: 10,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    letter,
-                    style: TextStyle(
-                      color: accent.withValues(alpha: 0.95),
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      height: 1.0,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  factory _FlatItem.app(InstalledApp app) =>
+      _FlatItem._(isHeader: false, app: app);
 }

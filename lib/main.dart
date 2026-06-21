@@ -3,23 +3,23 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'models/note.dart';
 import 'models/favorite_app.dart';
 import 'models/installed_app.dart';
 import 'models/prayer_record.dart';
+import 'models/qadha_record.dart';
 import 'models/productivity_models.dart';
 import 'features/prayer_alarm/models/prayer_alarm_config.dart';
 import 'features/prayer_alarm/services/prayer_alarm_service.dart';
-import 'features/calm_watch/models/calm_watch_item.dart';
-import 'features/calm_watch/services/share_intent_service.dart';
 import 'screens/launcher_shell.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/notification_feed_screen.dart';
 import 'providers/font_provider.dart';
 import 'providers/font_size_provider.dart';
-import 'providers/amoled_provider.dart';
 import 'utils/hive_box_manager.dart';
 import 'utils/smooth_page_route.dart';
+import 'widgets/edge_to_edge.dart';
 
 /// Global navigator key so notification taps can push routes from anywhere
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -44,6 +44,7 @@ void main() async {
   Hive.registerAdapter(FavoriteAppAdapter());
   Hive.registerAdapter(InstalledAppAdapter());
   Hive.registerAdapter(PrayerRecordAdapter()); // Prayer tracking
+  Hive.registerAdapter(QadhaRecordAdapter()); // Qadha prayer tracking
 
   // Prayer Alarm adapters
   Hive.registerAdapter(PrayerAlarmConfigAdapter());
@@ -57,24 +58,22 @@ void main() async {
   Hive.registerAdapter(ProductivityEventAdapter());
   Hive.registerAdapter(AppBlockRuleAdapter());
   Hive.registerAdapter(PomodoroSettingsAdapter());
-  Hive.registerAdapter(CalmWatchItemAdapter()); // Calm Watch
 
-  // Set system UI overlay style for immersive experience
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Colors.black,
-      systemNavigationBarIconBrightness: Brightness.light,
-    ),
-  );
-  
-  // Enable edge-to-edge mode - this helps reduce system gesture interference
+  // ── Modern edge-to-edge system UI ──
+  // Transparent status + navigation bars so the dark background draws fully
+  // behind them; content respects the insets via the shared [EdgeToEdge]
+  // wrapper. Light icons sit on the dark surface.
+  SystemChrome.setSystemUIOverlayStyle(edgeToEdgeOverlayStyle());
+  final prefs = await SharedPreferences.getInstance();
+  final showStatusBar = prefs.getBool('display_show_status_bar') ?? false;
+
+  // Draw content behind the system bars (edge-to-edge). When the user opts to
+  // hide the status bar, immersiveSticky keeps the same edge-to-edge canvas
+  // while hiding the bars until swiped.
   SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode.edgeToEdge,
-    overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
+    showStatusBar ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
   );
-  // Lock entire app to portrait; only CalmWatchPlayerScreen overrides this
+  // Lock entire app to portrait.
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   // Pre-open ALL frequently used Hive boxes in parallel (avoids repeated I/O)
   // This eliminates ~40+ redundant Hive.openBox() calls during first render
@@ -94,10 +93,11 @@ void main() async {
     HiveBoxManager.get('focus_streak'),
     HiveBoxManager.get<String>('recently_installed_apps'),
     HiveBoxManager.get('prayer_records'),
+    HiveBoxManager.get<QadhaRecord>('qadha_records'),
+    HiveBoxManager.get<String>('qadha_meta'),
     HiveBoxManager.get('prayer_alarm_config'),
     HiveBoxManager.get<DailyPrayerTimes>('prayer_alarm_times'),
     HiveBoxManager.get('prayer_reminder_settings'),
-    HiveBoxManager.get<CalmWatchItem>('calm_watch_items'),
   ]);
 
   // Initialize prayer alarm service (exact alarms + notifications)
@@ -120,9 +120,6 @@ void main() async {
   // is not yet attached to the widget tree at this point. It runs instead in
   // _LauncherEntryPointState.initState() via addPostFrameCallback so the
   // navigator is guaranteed to be ready.
-
-  // ── Initialize Share Intent Service (YouTube share → Calm Watch) ──
-  ShareIntentService.instance.initialize();
 
   runApp(const ProviderScope(child: SukoonLauncherApp()));
 }
@@ -157,8 +154,7 @@ class SukoonLauncherApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appFont = ref.watch(fontProvider);
     final fontSize = ref.watch(fontSizeProvider);
-    final isAmoled = ref.watch(amoledProvider);
-    final bgColor = isAmoled ? Colors.black : Colors.black.withValues(alpha: 0.5);
+    final bgColor = Colors.black.withValues(alpha: 0.5);
 
     return MaterialApp(
       navigatorKey: navigatorKey,

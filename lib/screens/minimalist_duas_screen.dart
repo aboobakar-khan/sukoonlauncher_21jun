@@ -164,7 +164,6 @@ class _MinimalistDuasScreenState extends State<MinimalistDuasScreen> {
     
     return GestureDetector(
       onTap: () {
-        HapticFeedback.selectionClick();
         setState(() => _expandedIndex = isExpanded ? null : index);
       },
       child: AnimatedContainer(
@@ -266,7 +265,6 @@ class _MinimalistDuasScreenState extends State<MinimalistDuasScreen> {
                   onTap: () {
                     Clipboard.setData(ClipboardData(
                       text: '${dua['arabic']}\n\n${dua['transliteration']}\n\n${dua['translation']}'));
-                    HapticFeedback.lightImpact();
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content: const Text('Dua copied', style: TextStyle(color: Colors.white)),
                       backgroundColor: _goldAccent,

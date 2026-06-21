@@ -160,7 +160,6 @@ class _AppSessionPromptState extends ConsumerState<AppSessionPrompt> {
                     : min == 60 ? '1h' : '1h 30m';
                 return GestureDetector(
                   onTap: () {
-                    HapticFeedback.mediumImpact();
                     widget.onStart(min);
                   },
                   child: Container(
@@ -256,7 +255,6 @@ class TimesUpOverlay extends ConsumerStatefulWidget {
     required VoidCallback onExit,
     required void Function(int) onExtend,
   }) {
-    HapticFeedback.heavyImpact();
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
@@ -380,7 +378,7 @@ class _TimesUpOverlayState extends ConsumerState<TimesUpOverlay> {
               // ── Primary CTA: TAKE ME OUT OF HERE ──
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.heavyImpact();
+                  ref.read(screenTimeProvider.notifier).endSession();
                   widget.onExit();
                 },
                 child: Container(
@@ -417,13 +415,22 @@ class _TimesUpOverlayState extends ConsumerState<TimesUpOverlay> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _ExtendChip(label: '1 min', onTap: () { HapticFeedback.lightImpact(); widget.onExtend(1); }),
+                  _ExtendChip(label: '+1m', onTap: () {
+                    ref.read(screenTimeProvider.notifier).extendSession(1);
+                    widget.onExtend(1);
+                  }),
                   const SizedBox(width: 10),
                   if (!showReflection) ...[
-                    _ExtendChip(label: '15 min', onTap: () { HapticFeedback.lightImpact(); widget.onExtend(15); }),
+                    _ExtendChip(label: '+5m', onTap: () {
+                      ref.read(screenTimeProvider.notifier).extendSession(5);
+                      widget.onExtend(5);
+                    }),
                     const SizedBox(width: 10),
+                    _ExtendChip(label: '+10m', onTap: () {
+                      ref.read(screenTimeProvider.notifier).extendSession(10);
+                      widget.onExtend(10);
+                    }),
                   ],
-                  _ExtendChip(label: '5 min', onTap: () { HapticFeedback.lightImpact(); widget.onExtend(5); }),
                 ],
               ),
 
@@ -491,28 +498,32 @@ class _StatCol extends StatelessWidget {
 class _ExtendChip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+
   const _ExtendChip({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(20),
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(50),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.1),
+            color: Colors.white.withValues(alpha: 0.09),
             width: 0.5,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.35),
+            color: Colors.white.withValues(alpha: 0.5),
           ),
         ),
       ),

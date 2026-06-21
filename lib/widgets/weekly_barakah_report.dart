@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import '../providers/tasbih_provider.dart';
@@ -122,7 +121,6 @@ class _WeeklyBarakahReportState extends ConsumerState<WeeklyBarakahReport> {
   }
 
   Future<void> _shareReport() async {
-    HapticFeedback.mediumImpact();
     
     final shareText = '''
 📿 My Weekly Barakah Report

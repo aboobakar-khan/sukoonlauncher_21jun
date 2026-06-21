@@ -1,40 +1,82 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/wallpaper_provider.dart';
 import '../providers/theme_provider.dart';
-import '../providers/amoled_provider.dart';
 import '../providers/islamic_theme_provider.dart';
 import '../providers/screen_time_provider.dart';
 import '../providers/installed_apps_provider.dart';
 import '../services/native_app_blocker_service.dart';
 import '../services/offline_content_manager.dart';
+import '../services/wisdom_service.dart';
+import '../utils/motion.dart';
 import '../widgets/app_session_timer_sheet.dart';
 import '../widgets/year_dots_wallpaper.dart';
-import 'package:installed_apps/installed_apps.dart';
 import 'home_clock_screen.dart';
 import 'widget_dashboard_screen.dart';
 import 'app_list_screen.dart';
 import 'productivity_hub_screen.dart';
 import '../features/quran/screens/surah_list_screen.dart';
-import '../features/quran/screens/surah_reader_screen.dart';
-import '../features/quran/providers/quran_provider.dart';
 import '../features/hadith_dua/screens/minimalist_hadith_screen.dart';
 import '../features/hadith_dua/screens/minimalist_dua_screen.dart';
-import '../features/hadith_dua/providers/hadith_dua_provider.dart';
+import '../features/islamic_library/screens/book_home_screen.dart';
+
 import '../providers/zen_mode_provider.dart';
 import '../providers/launcher_page_provider.dart';
 import 'zen_mode_active_screen.dart';
 import '../services/app_update_service.dart';
-import '../features/calm_watch/screens/calm_watch_screen.dart';
-import '../features/calm_watch/services/share_intent_service.dart';
-import '../features/calm_watch/providers/calm_watch_provider.dart';
-import '../features/calm_watch/providers/calm_watch_enabled_provider.dart';
 import '../providers/page_indicator_provider.dart';
+import '../providers/display_settings_provider.dart';
+import '../providers/tasbih_provider.dart';
+import '../providers/app_update_provider.dart';
+import '../utils/hive_box_manager.dart';
+import '../utils/launcher_physics.dart';
+
+/// ─────────────────────────────────────────────────────────────────────────
+///  GESTURE-ARENA DISAMBIGUATION  (horizontal page  vs.  vertical content)
+/// ─────────────────────────────────────────────────────────────────────────
+///
+/// The launcher is a horizontal [PageView] whose pages each hold a vertically
+/// scrolling feed. The PageView's [HorizontalDragGestureRecognizer] and the
+/// inner [VerticalDragGestureRecognizer] compete in the SAME gesture arena —
+/// whichever axis travels its touch-slop distance FIRST wins and sweeps the
+/// loser out.
+///
+/// With framework defaults both recognizers share one touch slop
+/// (kTouchSlop = 18px), so the win boundary sits at exactly 45°. A drag only
+/// slightly more horizontal than vertical — or a curved diagonal drag — lets
+/// the horizontal recognizer win, and the page drifts sideways while the user
+/// is really trying to scroll vertically.
+///
+/// FIX — give the two axes ASYMMETRIC touch slop:
+///   • The PageView is wrapped in a [MediaQuery] whose
+///     [DeviceGestureSettings.touchSlop] is raised to `base × [_kPageSlopMultiplier]`,
+///     so a page change needs a longer, clearly-horizontal drag.
+///   • Each page's content is re-wrapped in a [MediaQuery] that restores the
+///     base [_kInnerTouchSlop], keeping vertical scrolling responsive.
+///
+/// Net effect: the dominant axis wins decisively. A vertical drag reaches its
+/// (smaller) slop long before the horizontal recognizer reaches its (larger)
+/// one, so the page does NOT move at all; only a drag within ≈30° of
+/// horizontal changes pages.
+const double _kInnerTouchSlop = kTouchSlop; // 18px — vertical content scroll
+const double _kPageSlopMultiplier = 1.7; // horizontal page slop = base × this
+
+/// Crisp, drift-free snap spring for page settling.
+///
+/// Slightly overdamped (ratio 1.1 → no overshoot/bounce) and stiffer than the
+/// framework default (stiffness 100), so the page lands quickly and decisively
+/// instead of coasting with a long, loose tail.
+final SpringDescription _kPageSnapSpring = SpringDescription.withDampingRatio(
+  mass: 0.5,
+  stiffness: 170.0,
+  ratio: 1.1,
+);
 
 /// Launcher page physics — any horizontal swipe from a non-home page
 /// navigates directly to the Home page (index 2). This gives the user
@@ -42,7 +84,8 @@ import '../providers/page_indicator_provider.dart';
 /// swipe away, regardless of which page they are on.
 ///
 /// Uses [ClampingScrollPhysics] boundary (no overscroll bounce) and
-/// Flutter's built-in [PageScrollPhysics] for snapping.
+/// Flutter's built-in [PageScrollPhysics] for snapping, tightened with a
+/// crisp snap spring and a higher fling threshold (see below).
 class _LauncherPagePhysics extends PageScrollPhysics {
   const _LauncherPagePhysics({super.parent});
 
@@ -50,6 +93,16 @@ class _LauncherPagePhysics extends PageScrollPhysics {
   _LauncherPagePhysics applyTo(ScrollPhysics? ancestor) {
     return _LauncherPagePhysics(parent: buildParent(ancestor));
   }
+
+  // Crisp snap: stiffer, non-overshooting spring (see [_kPageSnapSpring]).
+  @override
+  SpringDescription get spring => _kPageSnapSpring;
+
+  // Require a more intentional flick before a low-momentum release commits to
+  // the next page. Below this velocity the page snaps to the nearest page by
+  // position instead of coasting — this kills the "loose / drifty" feel.
+  @override
+  double get minFlingVelocity => 80.0;
 
   // ── Boundary: hard clamp (zero overscroll at first/last page) ──
   @override
@@ -78,20 +131,20 @@ class _LauncherPagePhysics extends PageScrollPhysics {
 }
 
 /// A [ScrollBehavior] applied to every vertical [Scrollable] inside each
-/// PageView page.
+/// PageView page: plain [ClampingScrollPhysics] — no overscroll bounce or glow.
 ///
-/// Provides:
-/// 1. [ClampingScrollPhysics] — no overscroll bounce on inner scrollables.
-/// 2. Reduced [dragStartDistanceMotionThreshold] (3.5px vs default 18px) —
-///    the inner scrollable responds to vertical drag much sooner after a
-///    horizontal swipe settles, while still giving the gesture arena enough
-///    movement to correctly disambiguate horizontal vs vertical intent.
+/// NOTE: axis disambiguation is NOT handled here. The [Scrollable] gesture
+/// recognizers only honour the touch slop carried by the ambient
+/// [MediaQuery]'s [DeviceGestureSettings] — they ignore
+/// `ScrollPhysics.dragStartDistanceMotionThreshold`. Horizontal-vs-vertical
+/// intent is therefore resolved by the asymmetric touch slop wired up in
+/// [build]; see [_kPageSlopMultiplier].
 class _PageInnerScrollBehavior extends ScrollBehavior {
   const _PageInnerScrollBehavior();
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>
-      const _ImmediateClampingScrollPhysics();
+      const ClampingScrollPhysics();
 
   @override
   Widget buildOverscrollIndicator(
@@ -100,35 +153,6 @@ class _PageInnerScrollBehavior extends ScrollBehavior {
     ScrollableDetails details,
   ) =>
       child;
-}
-
-/// [ClampingScrollPhysics] with reduced (but not zero) drag-start threshold.
-///
-/// The default threshold is null → interpreted as [kTouchSlop] (18 logical
-/// pixels). This means 18px of vertical movement is ignored — perceived as
-/// a dead zone where the screen "shakes" because neither axis has won.
-///
-/// Setting it to 0 causes the opposite problem: the inner scrollable
-/// greedily claims the pointer on the very first pixel of movement, before
-/// the gesture arena can determine if the user intended horizontal or
-/// vertical. This makes horizontal page swipes feel broken.
-///
-/// 3.5px is the sweet spot: small enough that vertical scroll starts
-/// almost instantly after horizontal swipe settles, but large enough that
-/// the arena can still correctly disambiguate horizontal vs vertical intent.
-class _ImmediateClampingScrollPhysics extends ClampingScrollPhysics {
-  const _ImmediateClampingScrollPhysics({super.parent});
-
-  @override
-  _ImmediateClampingScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return _ImmediateClampingScrollPhysics(parent: buildParent(ancestor));
-  }
-
-  /// Reduced threshold: claim vertical drag after just 3.5px of movement
-  /// instead of the default 18px (kTouchSlop). This is enough for the
-  /// gesture arena to determine direction but small enough to feel instant.
-  @override
-  double get dragStartDistanceMotionThreshold => 3.5;
 }
 
 /// Main launcher shell with swipeable pages
@@ -141,9 +165,11 @@ class LauncherShell extends ConsumerStatefulWidget {
 }
 
 class _LauncherShellState extends ConsumerState<LauncherShell>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late PageController _pageController;
   late AnimationController _animController;
+  /// Return-from-app animation: fade+scale when coming back from external app.
+  late AnimationController _returnFromAppController;
   bool _animRunning = false;
   bool _offlineInitialized = false;
   bool _hasShownLauncherPrompt = false; // Only show once per session
@@ -173,20 +199,11 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
   /// Prevents the overlay from appearing in a loop on rapid resume cycles.
   DateTime? _lastTimesUpShown;
 
-  /// Subscription for YouTube share intents → Calm Watch
-  late final StreamSubscription<String> _shareSubscription;
-
   /// SharedPreferences key for persisting the last active page index.
   static const _kLastPageKey = 'launcher_last_page_index';
-  /// SharedPreferences key for the one-time Calm Watch discovery hint.
-  static const _kCalmWatchHintKey = 'calm_watch_hint_seen';
-  /// Whether to show the Calm Watch swipe-left hint (one-time only).
-  bool _showCalmWatchHint = false;
 
-  // Home index shifts when CalmWatch is disabled:
-  //   CalmWatch ON:  [CalmWatch, Islamic, Widget, Home, Apps, Productivity] → Home = 3
-  //   CalmWatch OFF: [Islamic, Widget, Home, Apps, Productivity]             → Home = 2
-  int get _homeIndex => ref.read(calmWatchEnabledProvider) ? 3 : 2;
+  // Page layout: [Islamic(0), Widget(1), Home(2), Apps(3), Productivity(4)]
+  static const int _homeIndex = 2;
 
   static const _launcherChannel = MethodChannel('com.sukoon.launcher/launcher');
 
@@ -208,21 +225,16 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       vsync: this,
     );
 
+    // Return-from-app animation controller
+    _returnFromAppController = AnimationController(
+      duration: LauncherDuration.returnFromApp,
+      vsync: this,
+    )..value = 1.0; // Start fully visible (no animation on first build)
+
     // ── Native → Flutter navigation: home button press from external app ──
     _navChannel.setMethodCallHandler((call) async {
       if (call.method == 'goHome') {
         _goHome(popRoutes: true);
-      }
-    });
-
-    // ── YouTube Share → Calm Watch: listen for incoming share intents ──
-    _shareSubscription = ShareIntentService.instance.sharedUrls.listen(_handleSharedUrl);
-
-    // Also check for a URL that arrived during cold start (before listeners were up)
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final initialUrl = await ShareIntentService.instance.getInitialSharedUrl();
-      if (initialUrl != null && mounted) {
-        _handleSharedUrl(initialUrl);
       }
     });
 
@@ -231,21 +243,6 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
     // This ensures that locking/unlocking the phone never drops the user back
     // to the home page when they were on the Quran, App List, Settings, etc.
     _restoreLastPage();
-
-    // ── CalmWatch toggle: rebuild PageController when page count changes ──
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      ref.listen<bool>(calmWatchEnabledProvider, (prev, next) {
-        if (prev != next && mounted) {
-          // Recreate PageController with the new home index
-          final newHome = next ? 3 : 2;
-          _pageController.dispose();
-          _pageController = PageController(initialPage: newHome, viewportFraction: 1.0);
-          ref.read(launcherPageControllerProvider.notifier).state = _pageController;
-          setState(() {});
-        }
-      });
-    });
 
     // 🧘 ZEN MODE SURVIVAL: Check if Zen Mode is active (survives restart/reboot)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -268,21 +265,21 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       _checkDefaultLauncher();
 
       // ── In-App Update: check silently 3s after launch ──
-      // Delayed so the launcher UI is fully visible before any dialog appears.
+      // Sets _updateAvailable flag — HomeClockScreen reads it to show
+      // a subtle 'Update available' label (no intrusive popup).
       Future.delayed(const Duration(seconds: 3), () {
         if (!mounted) return;
         AppUpdateService().initialize(
           onUpdateReady: () {
-            if (mounted) AppUpdateService().showUpdateReadyDialog(context);
+            // Update downloaded — set provider for inline display
+            if (mounted) {
+              ref.read(appUpdateStateProvider.notifier).state =
+                  ref.read(appUpdateStateProvider).copyWith(updateReady: true);
+            }
           },
         );
         _checkForUpdate();
       });
-      // ── Calm Watch one-time discovery hint ──
-      // NOTE: We no longer auto-show the hint on first launch to avoid
-      // the 3-4s flash of the left-edge indicator.  The hint is only
-      // shown when the user actually swipes to Calm Watch for the first time.
-      // (keeping the bool state so the mark-as-seen logic still works)
     });
   }
 
@@ -309,11 +306,6 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kLastPageKey, pageIndex);
-      // Mark Calm Watch as discovered when user first swipes there.
-      if (pageIndex == 0 && _showCalmWatchHint) {
-        setState(() => _showCalmWatchHint = false);
-        await prefs.setBool(_kCalmWatchHintKey, true);
-      }
     } catch (_) {}
   }
 
@@ -349,6 +341,13 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       // _checkIsScreenOff() is async — it sets _wasScreenOff before
       // the resumed event fires (screen-off/on always takes > 500ms).
       _checkIsScreenOff();
+
+      // ── Flush pending data saves ──
+      // Tasbih uses debounced saves during rapid tapping — flush to disk
+      // before we go away so no dhikr counts are lost.
+      ref.read(tasbihProvider.notifier).flushPendingSave();
+      // Compact all open Hive boxes to reclaim disk space (fire-and-forget)
+      HiveBoxManager.compactAll();
 
       // Do NOT jump to home page here. The paused state fires during:
       //   1. Genuine backgrounding (home button / app switch)
@@ -422,6 +421,16 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             }
           }
         }
+
+        // ── Return-from-app animation (Samsung One UI feel) ──
+        // Brief fade+scale to simulate the external app "shrinking back"
+        // into the home screen. Runs after route changes settle.
+        _returnFromAppController.value = 0.0;
+        _returnFromAppController.animateTo(
+          1.0,
+          duration: LauncherDuration.returnFromApp,
+          curve: LauncherEasing.emphasizedDecelerate,
+        );
       }
       // Else (not screen-off AND not genuine return): user was briefly
       // away (permission dialog, share sheet, etc). Do nothing — keep
@@ -435,8 +444,7 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
         // Refresh year dots wallpaper ONLY if that wallpaper is active.
         // Avoids triggering a full shell rebuild (all 5 pages) on every resume.
         final currentWallpaper = ref.read(wallpaperProvider);
-        final isAmoled = ref.read(amoledProvider);
-        if (!isAmoled && currentWallpaper == WallpaperType.yearDots && mounted) {
+        if (currentWallpaper == WallpaperType.yearDots && mounted) {
           setState(() => _yearDotsKey++);
         }
       });
@@ -448,8 +456,8 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
         Future.microtask(_checkDefaultLauncher);
       }
 
-      // ── Check if native blocker has a "time's up" event pending ──
-      Future.microtask(_checkTimesUp);
+      // ── Check if native blocker has a "time's up" or "prompt timer" event pending ──
+      Future.microtask(_checkNativeTimers);
 
       // ── Zen Mode safety net: auto-end if timer expired while away ──
       // The ZenModeNotifier has its own periodic check, but this catches
@@ -459,10 +467,7 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
         ref.read(zenModeProvider.notifier).endZenMode();
       }
 
-      // ── In-App Update: re-check on resume in case update finished downloading ──
-      // The service's _isCheckingForUpdate guard prevents duplicate checks.
-      // Also handles the case where user downloaded update via Play Store and
-      // switched back — the "ready to install" dialog should appear.
+      // ── In-App Update: re-check silently on resume ──
       if (isGenuineReturn) {
         Future.microtask(_checkForUpdate);
       }
@@ -471,29 +476,51 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
     }
   }
 
-  /// Poll native for pending "time's up" intent and show the overlay.
-  /// Called on every resume — native service sets this when a timed session
-  /// expires while the user is inside the timed app.
-  Future<void> _checkTimesUp() async {
+  /// Poll native for pending timer events (either times_up or prompt_timer).
+  Future<void> _checkNativeTimers() async {
     if (!mounted) return;
 
-    // Guard: if the screen-time feature is OFF, discard any stale native data
-    // and don't show the overlay. This prevents "time's up" after user toggles off.
     final screenTimeState = ref.read(screenTimeProvider);
     if (!screenTimeState.featureEnabled) {
-      // Clean up any orphaned native session data
+      // Clean up orphaned data
       final data = await NativeAppBlockerService.getPendingTimesUp();
       if (data != null) {
         final pkg = data['packageName'] as String? ?? '';
-        if (pkg.isNotEmpty) {
-          NativeAppBlockerService.endTimedSession(pkg);
-        }
+        if (pkg.isNotEmpty) NativeAppBlockerService.endTimedSession(pkg);
       }
       return;
     }
 
-    // Debounce: don't show overlay if we showed one in the last 5 seconds.
-    // This prevents the infinite loop where "Take me out" → resume → overlay → repeat.
+    // Check for "prompt_timer" first (app opened from recents without session)
+    final promptData = await NativeAppBlockerService.getPendingPromptTimer();
+    if (promptData != null && mounted) {
+      final packageName = promptData['packageName'] as String? ?? '';
+      if (packageName.isNotEmpty) {
+        final installedApps = ref.read(installedAppsProvider);
+        final matchingApp = installedApps.where((a) => a.packageName == packageName).toList();
+        final appName = matchingApp.isNotEmpty ? matchingApp.first.appName : _friendlyName(packageName);
+        final config = screenTimeState.appConfigs[packageName];
+
+        if (config != null) {
+          final minutes = await AppSessionPrompt.show(
+            context,
+            packageName: packageName,
+            appName: appName,
+            defaultMinutes: config.defaultMinutes,
+          );
+          if (minutes != null && mounted) {
+            // User chose a time -> start session and launch app
+            ref.read(screenTimeProvider.notifier).startSession(packageName, appName, minutes);
+            try {
+              const MethodChannel('com.sukoon.launcher/apps').invokeMethod('launchApp', {'packageName': packageName});
+            } catch (_) {}
+          }
+        }
+      }
+      return; // Do not check times_up if we handled prompt_timer
+    }
+
+    // Debounce "times up"
     if (_lastTimesUpShown != null &&
         DateTime.now().difference(_lastTimesUpShown!).inSeconds < 5) {
       return;
@@ -509,23 +536,16 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       final extensionsUsed = data['extensionsUsed'] as int? ?? 0;
       final nativeMinutesSpent = data['minutesSpent'] as int? ?? 0;
 
-      // Compute minutes spent from the active session (or use native value)
       final session = ref.read(screenTimeProvider).activeSession;
       final minutesSpent = nativeMinutesSpent > 0
           ? nativeMinutesSpent
           : (session != null ? session.elapsedMinutes : 0);
 
-      // Fetch today + week usage for the overlay
       final todayDuration = ref.read(screenTimeProvider.notifier).getTodayUsage(packageName);
       final weekDuration = ref.read(screenTimeProvider.notifier).getWeekUsage(packageName);
 
-      // Resolve human-readable app name — the active session may already
-      // be cleared (e.g. user tapped "take me out" then re-opened from recents),
-      // so look it up from installed apps as the primary source.
       final installedApps = ref.read(installedAppsProvider);
-      final matchingApp = installedApps
-          .where((a) => a.packageName == packageName)
-          .toList();
+      final matchingApp = installedApps.where((a) => a.packageName == packageName).toList();
       final appName = matchingApp.isNotEmpty
           ? matchingApp.first.appName
           : (session?.appName ?? _friendlyName(packageName));
@@ -533,6 +553,9 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
       _lastTimesUpShown = DateTime.now();
 
       if (!mounted) return;
+
+      if (!mounted) return;
+
       TimesUpOverlay.showAsDialog(
         context,
         appName: appName,
@@ -541,14 +564,15 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
         todayUsage: todayDuration,
         weekUsage: weekDuration,
         onExit: () {
-          // End the session and go home
-          ref.read(screenTimeProvider.notifier).endSession();
+          if (mounted) {
+            // Force the launcher to show the home clock, preventing a trapped state
+            _goHome(popRoutes: true);
+          }
         },
         onExtend: (mins) {
-          // Extend both Flutter and native session
-          ref.read(screenTimeProvider.notifier).extendSession(mins);
-          // Re-launch the app so user returns to it
-          try { InstalledApps.startApp(packageName); } catch (_) {}
+          if (mounted) {
+            try { const MethodChannel('com.sukoon.launcher/apps').invokeMethod('launchApp', {'packageName': packageName}); } catch (_) {}
+          }
         },
       );
     } catch (_) {}
@@ -590,93 +614,6 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
 
     // Then animate the PageView to the home page
     _navigateToHome();
-  }
-
-  // ── Calm Watch page index (first page in the PageView) ──
-  static const int _calmWatchPageIndex = 0; // only valid when CalmWatch is enabled
-
-  /// Handle a YouTube URL received from an Android share intent.
-  ///
-  /// Flow:
-  /// 1. Save the URL to Calm Watch via the provider
-  /// 2. Navigate the PageView to the Calm Watch page
-  /// 3. Show a small confirmation overlay with "Watch now" / "Later"
-  Future<void> _handleSharedUrl(String url) async {
-    if (!mounted) return;
-
-    final notifier = ref.read(calmWatchProvider.notifier);
-    final error = await notifier.addFromUrl(url);
-
-    if (!mounted) return;
-
-    if (error != null) {
-      // Show error — could not save
-      _showShareResultOverlay(
-        message: error.contains('already saved')
-            ? 'Already in Calm Watch'
-            : 'This link cannot be added.',
-        isError: true,
-      );
-      return;
-    }
-
-    // Navigate to Calm Watch page (only if CalmWatch is enabled)
-    final calmWatchOn = ref.read(calmWatchEnabledProvider);
-    if (calmWatchOn && _pageController.hasClients) {
-      // Pop any sub-routes first
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-      _pageController.animateToPage(
-        _calmWatchPageIndex,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-    }
-
-    // Show minimalist confirmation overlay
-    _showShareResultOverlay(
-      message: 'Saved to Calm Watch',
-      isError: false,
-      showActions: true,
-    );
-  }
-
-  /// Display a small, calm confirmation/error overlay at the bottom.
-  ///
-  /// For success: shows "Saved to Calm Watch" with "Watch now" / "Later" buttons.
-  /// For errors: shows the error message, auto-dismisses after 3s.
-  void _showShareResultOverlay({
-    required String message,
-    required bool isError,
-    bool showActions = false,
-  }) {
-    if (!mounted) return;
-
-    final overlay = OverlayEntry(
-      builder: (ctx) => _ShareConfirmationOverlay(
-        message: message,
-        isError: isError,
-        showActions: showActions,
-        onWatchNow: () {
-          // The newest item is at index 0 — get it from the provider
-          final items = ref.read(calmWatchProvider);
-          final saved = items.where((v) => !v.isCompleted).toList();
-          if (saved.isNotEmpty) {
-            // Notify the CalmWatch screen to play the latest item inline
-            CalmWatchScreen.playItemKey.currentState?.playItem(saved.first);
-          }
-        },
-        onDismiss: () {},
-      ),
-    );
-
-    Overlay.of(context).insert(overlay);
-
-    // Auto-dismiss after timeout
-    Future.delayed(Duration(seconds: isError ? 3 : 5), () {
-      if (overlay.mounted) overlay.remove();
-    });
   }
 
   /// Navigate to the Home page (index 2) with instant gesture release.
@@ -880,35 +817,66 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _navChannel.setMethodCallHandler(null);
-    _shareSubscription.cancel();
     _pageController.dispose();
     _animController.dispose();
+    _returnFromAppController.dispose();
     AppUpdateService().dispose();
     super.dispose();
   }
 
-  // ── In-App Update check ──
-  // Checks silently — shows a bottom-sheet style dialog only when an update
-  // is actually available. Re-checked on every app resume (debounced to once
-  // per session by the service's _isCheckingForUpdate guard).
+  // ── In-App Update: sets provider state instead of showing popups ──
+  // HomeClockScreen reads appUpdateStateProvider to show a subtle text label.
   Future<void> _checkForUpdate() async {
     if (!mounted) return;
     final hasUpdate = await AppUpdateService().checkForUpdate(silent: true);
     if (hasUpdate && mounted) {
-      AppUpdateService().showUpdateDialog(context);
+      ref.read(appUpdateStateProvider.notifier).state =
+          ref.read(appUpdateStateProvider).copyWith(updateAvailable: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<DisplaySettings>(displaySettingsProvider, (prev, next) {
+      if (prev?.showStatusBar != next.showStatusBar) {
+        SystemChrome.setEnabledSystemUIMode(
+          next.showStatusBar ? SystemUiMode.edgeToEdge : SystemUiMode.manual,
+          overlays: next.showStatusBar ? SystemUiOverlay.values : [SystemUiOverlay.bottom],
+        );
+      }
+    });
+
     final wallpaper = ref.watch(wallpaperProvider);
-    final isAmoled = ref.watch(amoledProvider);
     
-    // Use effective wallpaper: AMOLED forces pure black
-    final effectiveWallpaper = isAmoled ? WallpaperType.black : wallpaper;
+    // Use the selected wallpaper directly
 
     // Start/stop gradient animation based on wallpaper type (saves GPU when not needed)
-    _syncAnimController(effectiveWallpaper);
+    _syncAnimController(wallpaper);
+
+    // ── Asymmetric touch slop for clean gesture-arena disambiguation ──
+    //
+    // `pageMq` raises the touch slop seen by the PageView's horizontal drag
+    // recognizer so only a clearly-horizontal drag changes pages. Each page's
+    // content is re-wrapped (via [_pageContent]) with the base `mq`, restoring
+    // the smaller inner slop so vertical scrolling stays responsive. See
+    // [_kPageSlopMultiplier] for the full rationale.
+    final MediaQueryData mq = MediaQuery.of(context);
+    final double innerSlop = mq.gestureSettings.touchSlop ?? _kInnerTouchSlop;
+    final MediaQueryData pageMq = mq.copyWith(
+      gestureSettings: DeviceGestureSettings(
+        touchSlop: innerSlop * _kPageSlopMultiplier,
+      ),
+    );
+
+    // Wraps a single PageView page: restores the base (inner) touch slop and
+    // strips overscroll glow/stretch on its vertical scrollables.
+    Widget pageContent(Widget child) => MediaQuery(
+          data: mq,
+          child: ScrollConfiguration(
+            behavior: const _PageInnerScrollBehavior(),
+            child: child,
+          ),
+        );
 
     // Back button: navigate to Home page. If already on Home, do nothing.
     return PopScope(
@@ -921,6 +889,8 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             Navigator.of(context).pop();
           } else {
             // No pushed routes — user is on a raw PageView page.
+            // Task List — Standard preview (showing 3)
+            // ...allTodos.take(3).map((todo) {
             // Navigate the PageView to home.
             final currentPage = _pageController.page?.round() ?? _homeIndex;
             if (currentPage != _homeIndex) {
@@ -939,7 +909,7 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
         body: Stack(
           children: [
             // Background
-            _buildBackground(effectiveWallpaper),
+            _buildBackground(wallpaper),
 
             // ── Ballistic-kill layer ──
             //
@@ -965,96 +935,86 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             //
             // The Listener uses HitTestBehavior.translucent so the pointer
             // event continues down to the PageView and its children normally.
-            Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: _killBallisticIfSettling,
-              child: PageView(
+            // The PageView is wrapped in `pageMq` (raised touch slop) so its
+            // horizontal recognizer only wins on a clearly-horizontal drag;
+            // each page restores the base slop via `pageContent`.
+            MediaQuery(
+              data: pageMq,
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: _killBallisticIfSettling,
+                child: PageView(
                   controller: _pageController,
                   physics: const _LauncherPagePhysics(),
-                  clipBehavior: Clip.none, // Reduces per-frame clipping overhead
-                  allowImplicitScrolling: true, // keeps adjacent pages alive
-                  pageSnapping: true, // ensures crisp page settling
-                  // Persist current page so lock/unlock restores user's position.
-                  // Also implements snap-to-home: when user swipes toward Home
-                  // and lands on an intermediate page, auto-continue to Home.
-                  // IMPORTANT: snap must run BEFORE save, because save updates
-                  // _prevPage which snap needs to read (old value) for direction.
+                  clipBehavior: Clip.none,
+                  allowImplicitScrolling: true,
+                  pageSnapping: true,
                   onPageChanged: (index) {
                     _snapToHomeIfIntermediate(index);
                     _saveCurrentPage(index);
                   },
                   children: [
-                    // ── STABLE KEYS: pages are NEVER destroyed/recreated ──
-                    //
-                    // Using const keys (or no changing keys) ensures
-                    // AutomaticKeepAliveClientMixin works correctly:
-                    // pages stay mounted in memory permanently.
-                    // Their gesture recognizers stay attached.
-                    // NO rebuild on resume = instant input response.
-                    if (ref.watch(calmWatchEnabledProvider))
-                      ScrollConfiguration(
-                        behavior: const _PageInnerScrollBehavior(),
-                        child: RepaintBoundary(
-                          child: CalmWatchScreen(key: CalmWatchScreen.playItemKey),
-                        ),
-                      ),
-                    ScrollConfiguration(
-                      behavior: const _PageInnerScrollBehavior(),
-                      child: RepaintBoundary(
+                    pageContent(
+                      RepaintBoundary(
                         child: IslamicHubScreen(pageController: _pageController),
                       ),
                     ),
-                    ScrollConfiguration(
-                      behavior: const _PageInnerScrollBehavior(),
-                      child: const RepaintBoundary(
+                    pageContent(
+                      const RepaintBoundary(
                         child: WidgetDashboardScreen(),
                       ),
                     ),
-                    ScrollConfiguration(
-                      behavior: const _PageInnerScrollBehavior(),
-                      child: const RepaintBoundary(
+                    pageContent(
+                      const RepaintBoundary(
                         child: HomeClockScreen(),
                       ),
                     ),
-                    ScrollConfiguration(
-                      behavior: const _PageInnerScrollBehavior(),
-                      child: const RepaintBoundary(
+                    pageContent(
+                      const RepaintBoundary(
                         child: AppListScreen(),
                       ),
                     ),
-                    ScrollConfiguration(
-                      behavior: const _PageInnerScrollBehavior(),
-                      child: const RepaintBoundary(
+                    pageContent(
+                      const RepaintBoundary(
                         child: ProductivityHubScreen(),
                       ),
                     ),
                   ],
                 ),
+              ),
             ),
 
-            // ── Swipe-up zone — swipe up from ANYWHERE on screen to go Home ──
+            // ── Swipe-up zone — go Home from non-home pages ────────────
             //
-            // Covers the full screen with translucent hit-testing so the
-            // ── Swipe-up-to-go-home zone ──
-            // Only covers the bottom 56px — a narrow strip that
-            // doesn't interfere with vertical scrolling in pages.
-            // The native home button / gesture bar already handles
-            // go-home via NAVIGATION_CHANNEL, so this is just
-            // a convenience swipe-up in the bottom edge area.
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 56,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onVerticalDragEnd: (d) {
-                  final velocity = d.primaryVelocity ?? 0;
-                  if (velocity < -400) {
-                    _goHome(popRoutes: true);
-                  }
-                },
-              ),
+            // Only covers the bottom 56px of non-home pages. On the home
+            // page this zone is DISABLED so the HomeClockScreen's own
+            // configurable swipe-up gesture (App List, Quick Access, etc.)
+            // can fire without being intercepted.
+            AnimatedBuilder(
+              animation: _pageController,
+              builder: (_, __) {
+                final page = _pageController.hasClients
+                    ? (_pageController.page ?? _homeIndex.toDouble())
+                    : _homeIndex.toDouble();
+                final onHome = (page - _homeIndex).abs() < 0.5;
+                if (onHome) return const SizedBox.shrink();
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 56,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onVerticalDragEnd: (d) {
+                      final velocity = d.primaryVelocity ?? 0;
+                      if (velocity < -SwipeTuning.commitVelocity) {
+                        GestureHaptics.swipeCommit();
+                        _goHome(popRoutes: true);
+                      }
+                    },
+                  ),
+                );
+              },
             ),
 
             // ── 6-dot page indicator ───────────────────────────────────
@@ -1063,9 +1023,8 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             // Fades out when on home page so the clock screen stays pristine.
             if (ref.watch(pageIndicatorProvider))
               Positioned(
-                top: MediaQuery.of(context).padding.top + 10,
-                left: 0,
-                right: 0,
+                top: MediaQuery.of(context).padding.top + 16,
+                right: 20,
                 child: IgnorePointer(
                   child: AnimatedBuilder(
                     animation: _pageController,
@@ -1077,12 +1036,10 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
                       final distFromHome = (page - _homeIndex).abs();
                       final opacity = (distFromHome.clamp(0.0, 1.0));
                       if (opacity < 0.01) return const SizedBox.shrink();
-                      final accent = ref.read(themeColorProvider).color;
                       return Opacity(
                         opacity: opacity,
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                             children: List.generate(6, (i) {
                               // Distance of this dot from current page position
                               final dist = (page - i).abs();
@@ -1098,85 +1055,14 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: isActive
-                                      ? accent.withValues(alpha: dotOpacity)
-                                      : Colors.white.withValues(alpha: dotOpacity),
+                                      ? const Color(0xFF4ADE80) // Fresh green
+                                      : Colors.white.withValues(alpha: dotOpacity * 0.8),
                                 ),
                               );
                             }),
                           ),
-                        ),
-                      );
+                        );
                     },
-                  ),
-                ),
-              ),
-
-            // ── One-time Calm Watch discovery hint ──────────────────────────
-            // A barely-visible "◂ Calm Watch" label on the left edge of the
-            // home screen. Shown only once, auto-dismisses after 4 s, and
-            // permanently disappears once the user swipes to the page.
-            // Deliberately ghost-like: 14% opacity, no border, no shadow —
-            // enough to notice on a dark background, invisible on wallpapers.
-            if (_showCalmWatchHint)
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                child: IgnorePointer(
-                  child: AnimatedOpacity(
-                    opacity: _showCalmWatchHint ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 600),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 14),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.chevron_left_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            const SizedBox(height: 4),
-                            RotatedBox(
-                              quarterTurns: 3,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Calm Watch',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.28),
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w300,
-                                      letterSpacing: 1.2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.10),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                    child: Text(
-                                      'BETA',
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.35),
-                                        fontSize: 7,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   ),
                 ),
               ),
@@ -1437,22 +1323,7 @@ class IslamicHubScreen extends ConsumerStatefulWidget {
 
 class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
 
-  /// Returns an Islamically meaningful phrase based on prayer time context.
-  String _arabicMotto() {
-    final h = DateTime.now().hour;
-    // Fajr window
-    if (h >= 4 && h < 6) return 'وَقُومُوا لِلَّهِ قَانِتِينَ';
-    // Morning dhikr window
-    if (h >= 6 && h < 12) return 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
-    // Afternoon
-    if (h >= 12 && h < 16) return 'وَاسْتَعِينُوا بِالصَّبْرِ وَالصَّلَاةِ';
-    // Asr window
-    if (h >= 16 && h < 18) return 'حَافِظُوا عَلَى الصَّلَوَاتِ';
-    // Maghrib/evening
-    if (h >= 18 && h < 21) return 'اللَّهُمَّ بِكَ أَمْسَيْنَا';
-    // Isha/night
-    return 'اللَّهُمَّ بِكَ أَصْبَحْنَا';
-  }
+
 
   /// Returns an English phrase meaningful for the current prayer time.
   String _prayerContextLabel() {
@@ -1469,9 +1340,7 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tc               = ref.watch(islamicThemeColorsProvider);
-    final dailyHadithAsync = ref.watch(dailyHadithProvider);
-    final dailyDua         = ref.watch(dailyDuaProvider);
+    const green = Color(0xFF4CAF50); // fresh leaf green branding
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1479,206 +1348,115 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
         color: Colors.black.withValues(alpha: 0.22),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
 
-                // ── Header ────────────────────────────────────────────
-                // Arabic is whisper-weight — sets spiritual tone without
-                // competing. English title dominates clearly. Nothing else.
+                // ── Header: time-contextual greeting only ──
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(2, 20, 2, 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_arabicMotto(),
-                          style: TextStyle(
-                              color: tc.accent.withValues(alpha: 0.45),
-                              fontSize: 12,
-                              fontFamily: 'Amiri',
-                              letterSpacing: 0.2)),
-                      const SizedBox(height: 2),
-                      Text(_prayerContextLabel(),
-                          style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.88),
-                              fontSize: 22,
-                              fontWeight: FontWeight.w300,
-                              letterSpacing: -0.5,
-                              height: 1.2)),
-                    ],
-                  ),
-                ),
-
-                // ── Top row: Quran + Dua & Adhkar ──────────────────
-                Expanded(
-                  flex: 52,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-
-                      // ── QURAN — Quick surah links ──
-                      Expanded(child: _HubCard(
-                        onTap: () => Navigator.push(context, _SmoothForwardRoute(
-                            child: const _IslamicSubScreen(
-                                title: 'Quran', child: SurahListScreen()))),
-                        accentColor: tc.green,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Title + arrow
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Quran',
-                                    style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.92),
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: -0.3)),
-                                Icon(Icons.arrow_forward_rounded,
-                                    size: 14,
-                                    color: tc.green.withValues(alpha: 0.5)),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            // Quick surah shortcut chips
-                            Expanded(child: _QuranQuickLinks(tc: tc)),
-                          ],
-                        ),
-                      )),
-
-                      const SizedBox(width: 10),
-
-                      // ── DUA & ADHKAR ──
-                      Expanded(child: _HubCard(
-                        onTap: () => Navigator.push(context, _SmoothForwardRoute(
-                            child: const _IslamicSubScreen(
-                                title: 'Dua & Adhkar', child: MinimalistDuaScreen()))),
-                        accentColor: const Color(0xFF9C7FC0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Title + arrow
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Dua & Dhikr',
-                                    style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.92),
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: -0.3)),
-                                Icon(Icons.arrow_forward_rounded,
-                                    size: 14,
-                                    color: const Color(0xFF9C7FC0).withValues(alpha: 0.5)),
-                              ],
-                            ),
-                            // Content preview — Arabic in accent, translation readable
-                            Expanded(child: Padding(
-                              padding: const EdgeInsets.only(top: 10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                children: [
-                                  Text(dailyDua.arabicText,
-                                      style: TextStyle(
-                                          color: tc.accent.withValues(alpha: 0.60),
-                                          fontSize: 15.5,
-                                          fontFamily: 'Amiri',
-                                          height: 1.8),
-                                      textDirection: TextDirection.rtl,
-                                      textAlign: TextAlign.right,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis),
-                                  const SizedBox(height: 8),
-                                  Expanded(child: Text(dailyDua.translation,
-                                      style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.52),
-                                          fontSize: 11.5,
-                                          height: 1.6),
-                                      overflow: TextOverflow.fade)),
-                                ],
-                              ),
-                            )),
-                          ],
-                        ),
-                      )),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                // ── HADITH — full-width bottom card for daily hadith ──
-                Expanded(
-                  flex: 38,
-                  child: _HubCard(
-                    onTap: () {
-                      ref.read(hadithNavDepthProvider.notifier).state = 0;
-                      Navigator.push(context, _SmoothForwardRoute(
-                          child: _IslamicSubScreen(
-                              title: 'Hadith', child: MinimalistHadithScreen())));
-                    },
-                    accentColor: tc.accent,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Title + arrow
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Hadith',
-                                style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.92),
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: -0.3)),
-                            Icon(Icons.arrow_forward_rounded,
-                                size: 14,
-                                color: tc.accent.withValues(alpha: 0.5)),
-                          ],
-                        ),
-                        // Daily hadith preview — with full space
-                        Expanded(child: Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: dailyHadithAsync.when(
-                            data: (h) => h != null
-                                ? Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      // Source label
-                                      Text(
-                                        'The Prophet (ﷺ) said,',
-                                        style: TextStyle(
-                                          color: tc.accent.withValues(alpha: 0.75),
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w500,
-                                          fontStyle: FontStyle.italic,
-                                          height: 1.4),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      // Hadith text — now has full width
-                                      Expanded(child: Text(
-                                        '"${h.text.length > 250 ? '${h.text.substring(0, 250)}…' : h.text}"',
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.58),
-                                          fontSize: 12,
-                                          height: 1.7),
-                                        overflow: TextOverflow.fade,
-                                      )),
-                                    ],
-                                  )
-                                : const SizedBox.shrink(),
-                            loading: () => const SizedBox.shrink(),
-                            error: (_, __) => const SizedBox.shrink(),
-                          ),
-                        )),
-                      ],
+                  padding: const EdgeInsets.fromLTRB(0, 28, 0, 28),
+                  child: Text(
+                    _prayerContextLabel(),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w300,
+                      letterSpacing: -0.6,
+                      height: 1.2,
                     ),
                   ),
                 ),
 
+                // ── Today's Wisdom — moves to TOP ──
+                _WisdomWidget(accentColor: green),
+
+                const SizedBox(height: 20),
+
+                // ── Section label ──
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Text(
+                        'ISLAMIC LIBRARY',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.28),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 4, height: 4,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: green.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ── Quran hero card ──
+                _QuranHeroCard(
+                  accentColor: green,
+                  onTap: () => Navigator.push(context, _SmoothForwardRoute(
+                      child: const _IslamicSubScreen(
+                          title: 'Quran', child: SurahListScreen()))),
+                ),
+                const SizedBox(height: 8),
+
+                // ── Dua · Hadith · Seerah — equal tiles, one shared accent ──
+                // All three share the section's green accent so the group reads
+                // as one cohesive set; the icon alone distinguishes each item.
+                // stretch keeps every tile the same height even if a sublabel
+                // wraps differently.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _SmallHubCard(
+                        icon: Icons.spa_rounded,
+                        label: 'Dua',
+                        sublabel: 'Adhkar',
+                        accentColor: green,
+                        onTap: () => Navigator.push(context, _SmoothForwardRoute(
+                            child: const _IslamicSubScreen(
+                                title: 'Dua & Adhkar', child: MinimalistDuaScreen()))),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _SmallHubCard(
+                        icon: Icons.brightness_4_rounded,
+                        label: 'Hadith',
+                        sublabel: 'Collections',
+                        accentColor: green,
+                        onTap: () {
+                          ref.read(hadithNavDepthProvider.notifier).state = 0;
+                          Navigator.push(context, _SmoothForwardRoute(
+                              child: _IslamicSubScreen(
+                                  title: 'Hadith', child: MinimalistHadithScreen())));
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _SmallHubCard(
+                        icon: Icons.auto_stories_rounded,
+                        label: 'Seerah',
+                        sublabel: 'Sealed Nectar',
+                        accentColor: green,
+                        onTap: () => Navigator.push(context, _SmoothForwardRoute(
+                            child: const BookHomeScreen())),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const Spacer(),
               ],
             ),
           ),
@@ -1688,147 +1466,451 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
   }
 }
 
-// ── Card ────────────────────────────────────────────────────────────────
 
-class _HubCard extends StatefulWidget {
-  final Widget child;
-  final VoidCallback onTap;
+// ── Wisdom Widget ────────────────────────────────────────────────────
+
+class _WisdomWidget extends StatefulWidget {
   final Color accentColor;
-  final double? height;
-  const _HubCard({required this.child, required this.onTap,
-      required this.accentColor, this.height}); // ignore: unused_element_parameter
+  const _WisdomWidget({required this.accentColor});
 
   @override
-  State<_HubCard> createState() => _HubCardState();
+  State<_WisdomWidget> createState() => _WisdomWidgetState();
 }
 
-class _HubCardState extends State<_HubCard> {
-  bool _down = false;
+class _WisdomWidgetState extends State<_WisdomWidget> {
+  WisdomEntry? _entry;
+
+  @override
+  void initState() {
+    super.initState();
+    WisdomService.todaysWisdom().then((e) {
+      if (mounted) setState(() => _entry = e);
+    });
+  }
+
+  void _showDetail(BuildContext ctx, WisdomEntry e) {
+    final accent = widget.accentColor;
+    showModalBottomSheet(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.72,
+        minChildSize: 0.45,
+        maxChildSize: 0.92,
+        expand: false,
+        builder: (_, ctrl) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF101010),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 8),
+                child: Container(
+                  width: 36, height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: ctrl,
+                  padding: const EdgeInsets.fromLTRB(22, 4, 22, 32),
+                  children: [
+                    // Pills row
+                    Row(
+                      children: [
+                        _pill(e.category, accent),
+                        const SizedBox(width: 6),
+                        _pill(e.sourceType, Colors.white.withValues(alpha: 0.3)),
+                        const Spacer(),
+                        if (e.hadithReference != null)
+                          Text(e.hadithReference!,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.20),
+                                fontSize: 9, letterSpacing: 0.1,
+                              )),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Quote
+                    Text(
+                      '\u201c${e.wisdom}\u201d',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.90),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w400,
+                        height: 1.55,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '\u2014 ${e.attributedTo}',
+                      style: TextStyle(
+                        color: accent.withValues(alpha: 0.65),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                    Text(
+                      e.knownAs,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    _detailSection('Related Ayah', e.detail.relatedAyah, accent, isAyah: true),
+                    _detailSection('Lesson', e.detail.lesson, accent),
+                    _detailSection('Context', e.detail.context, accent),
+                    _detailSection('Deed & Reward', e.detail.deedOrReward, accent),
+                    _detailSection('About', e.detail.biography, accent),
+                    const SizedBox(height: 20),
+                    Center(
+                      child: Text(
+                        'Allah knows best',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pill(String label, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(5),
+          color: color.withValues(alpha: 0.10),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
+        ),
+        child: Text(label, style: TextStyle(
+          color: color.withValues(alpha: 0.80),
+          fontSize: 9, fontWeight: FontWeight.w600, letterSpacing: 0.4,
+        )),
+      );
+
+  Widget _detailSection(String title, String body, Color accent, {bool isAyah = false}) {
+    if (body.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title.toUpperCase(), style: TextStyle(
+            color: accent.withValues(alpha: 0.40),
+            fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.2,
+          )),
+          const SizedBox(height: 6),
+          Text(body, style: TextStyle(
+            color: Colors.white.withValues(alpha: isAyah ? 0.80 : 0.55),
+            fontSize: isAyah ? 15 : 14.5,
+            fontStyle: isAyah ? FontStyle.italic : FontStyle.normal,
+            height: 1.6,
+            letterSpacing: isAyah ? 0.1 : 0,
+          )),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final accent = widget.accentColor;
+    final e = _entry;
+
+    // Skeleton shown while loading
+    if (e == null) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: Colors.white.withValues(alpha: 0.03),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "TODAY'S WISDOM",
+                  style: TextStyle(
+                    color: accent.withValues(alpha: 0.4),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                Icon(Icons.more_horiz_rounded, size: 16, color: Colors.white.withValues(alpha: 0.1)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(height: 8, width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(4))),
+            const SizedBox(height: 6),
+            Container(height: 8, width: 200,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(4))),
+            const SizedBox(height: 10),
+            Container(height: 6, width: 80,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.03),
+                  borderRadius: BorderRadius.circular(3))),
+          ],
+        ),
+      );
+    }
+
+    // Loaded — minimalist: wisdom text big, attribution small below
     return GestureDetector(
-      onTapDown: (_) => setState(() => _down = true),
-      onTapUp: (_) { setState(() => _down = false); widget.onTap(); },
-      onTapCancel: () => setState(() => _down = false),
-      child: AnimatedScale(
-        scale: _down ? 0.975 : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOutCubic,
-        child: Container(
-          width: double.infinity,
-          height: widget.height,
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            // Slightly warm dark surface — not pure black, not glassy white
-            color: Colors.white.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(22),
-            // Hair-line border, barely-there — defines edge without shouting
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.07), width: 0.6),
-          ),
-          child: widget.child,
+      onTap: () => _showDetail(context, e),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: accent.withValues(alpha: 0.03),
+          border: Border.all(color: accent.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.auto_awesome_rounded, size: 12, color: accent.withValues(alpha: 0.7)),
+                    const SizedBox(width: 6),
+                    Text(
+                      "TODAY'S WISDOM",
+                      style: TextStyle(
+                        color: accent.withValues(alpha: 0.7),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+                Icon(Icons.more_horiz_rounded, size: 16, color: Colors.white.withValues(alpha: 0.3)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Wisdom text — prominent
+            Text(
+              e.wisdom,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.88),
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                height: 1.55,
+                letterSpacing: -0.15,
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Attribution — small, muted
+            Text(
+              '\u2014 ${e.attributedTo}',
+              style: TextStyle(
+                color: accent.withValues(alpha: 0.50),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.1,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ── Quick-access surah links for the Quran card ──────────────────────
+// ── Quran Hero Card ──────────────────────────────────────────────────────────
 
-class _QuranQuickLinks extends ConsumerWidget {
-  final IslamicThemeColors tc;
-  const _QuranQuickLinks({required this.tc});
-
-  // Popular surahs — id, transliteration, short motivational description
-  static const _quickSurahs = [
-    (id: 36, name: 'Ya-Sin', label: 'Heart of the Quran'),
-    (id: 18, name: 'Al-Kahf', label: 'Light between two Fridays'),
-    (id: 67, name: 'Al-Mulk', label: 'Shield from punishment'),
-    (id: 56, name: 'Al-Waqiah', label: 'Protection from poverty'),
-  ];
+class _QuranHeroCard extends StatefulWidget {
+  final Color accentColor;
+  final VoidCallback onTap;
+  const _QuranHeroCard({required this.accentColor, required this.onTap});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final surahsAsync = ref.watch(surahsProvider);
+  State<_QuranHeroCard> createState() => _QuranHeroCardState();
+}
 
-    return surahsAsync.when(
-      data: (surahs) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: _quickSurahs.map((qs) {
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              HapticFeedback.selectionClick();
-              final surah = surahs.where((s) => s.id == qs.id).firstOrNull;
-              if (surah != null) {
-                ref.read(selectedSurahProvider.notifier).state = surah;
-                Navigator.push(context, _SmoothForwardRoute(
-                  child: _IslamicSubScreen(
-                    title: surah.transliteration,
-                    child: SurahReaderScreen(surah: surah),
-                  ),
-                ));
-              }
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                children: [
-                  // Surah number dot
-                  Container(
-                    width: 22, height: 22,
-                    decoration: BoxDecoration(
-                      color: tc.green.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text('${qs.id}',
-                      style: TextStyle(
-                        color: tc.green.withValues(alpha: 0.6),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700)),
-                  ),
-                  const SizedBox(width: 8),
-                  // Name + motivational subtitle
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(qs.name,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.2)),
-                      Text(qs.label,
-                        style: TextStyle(
-                          color: tc.green.withValues(alpha: 0.55),
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w400,
-                          height: 1.3)),
-                    ],
-                  )),
-                  // Chevron
-                  Icon(Icons.chevron_right_rounded,
-                    size: 14,
-                    color: Colors.white.withValues(alpha: 0.12)),
-                ],
+class _QuranHeroCardState extends State<_QuranHeroCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accentColor;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) { setState(() => _pressed = false); widget.onTap(); },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedOpacity(
+        opacity: _pressed ? 0.65 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 28, 18, 28),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: accent.withValues(alpha: 0.06),
+            border: Border.all(color: accent.withValues(alpha: 0.14)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Icon
+              Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent.withValues(alpha: 0.12),
+                ),
+                child: Icon(Icons.menu_book_rounded, size: 20,
+                    color: accent.withValues(alpha: 0.85)),
               ),
-            ),
-          );
-        }).toList(),
+              const SizedBox(width: 16),
+              // Text block
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Quran',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.88),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Read · Listen · Reflect · Tafseer',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        fontSize: 11,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Arabic بِسْمِ اللَّهِ
+              Text(
+                'بِسْمِ اللَّهِ',
+                style: TextStyle(
+                  color: accent.withValues(alpha: 0.22),
+                  fontSize: 13,
+                  fontFamily: 'Amiri',
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      loading: () => Center(child: SizedBox(
-        width: 16, height: 16,
-        child: CircularProgressIndicator(
-          strokeWidth: 1.5,
-          color: tc.green.withValues(alpha: 0.3)),
-      )),
-      error: (_, __) => Center(
-        child: Text('📖',
-          style: TextStyle(fontSize: 28, color: Colors.white.withValues(alpha: 0.08))),
+    );
+  }
+}
+
+// ── Small Hub Card (Dua / Hadith) ─────────────────────────────────────────────
+
+class _SmallHubCard extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final String sublabel;
+  final Color accentColor;
+  final VoidCallback onTap;
+  const _SmallHubCard({
+    required this.icon,
+    required this.label,
+    required this.sublabel,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  State<_SmallHubCard> createState() => _SmallHubCardState();
+}
+
+class _SmallHubCardState extends State<_SmallHubCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accentColor;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) { setState(() => _pressed = false); widget.onTap(); },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedOpacity(
+        opacity: _pressed ? 0.65 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 26, 14, 26),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: Colors.white.withValues(alpha: 0.03),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Icon circle
+              Container(
+                width: 34, height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent.withValues(alpha: 0.10),
+                ),
+                child: Icon(widget.icon, size: 15,
+                    color: accent.withValues(alpha: 0.75)),
+              ),
+              const SizedBox(height: 12),
+              Text(widget.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      letterSpacing: -0.2)),
+              const SizedBox(height: 2),
+              Text(widget.sublabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.20),
+                      fontSize: 10,
+                      letterSpacing: 0.1)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1931,199 +2013,6 @@ class _IslamicSubScreen extends ConsumerWidget {
               // Child screen
               Expanded(child: child),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Share Confirmation Overlay — shown after a YouTube share intent is received
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _ShareConfirmationOverlay extends StatefulWidget {
-  final String message;
-  final bool isError;
-  final bool showActions;
-  final VoidCallback onWatchNow;
-  final VoidCallback onDismiss;
-
-  const _ShareConfirmationOverlay({
-    required this.message,
-    required this.isError,
-    required this.showActions,
-    required this.onWatchNow,
-    required this.onDismiss,
-  });
-
-  @override
-  State<_ShareConfirmationOverlay> createState() =>
-      _ShareConfirmationOverlayState();
-}
-
-class _ShareConfirmationOverlayState extends State<_ShareConfirmationOverlay>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _anim;
-  late Animation<double> _fadeAnim;
-  late Animation<Offset> _slideAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _anim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-    _fadeAnim = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic));
-    _anim.forward();
-  }
-
-  @override
-  void dispose() {
-    _anim.dispose();
-    super.dispose();
-  }
-
-  void _dismiss() {
-    _anim.reverse().then((_) {
-      widget.onDismiss();
-      // Remove from overlay
-      final entry = context.findAncestorStateOfType<State>();
-      if (entry != null && context.mounted) {
-        // The parent OverlayEntry handles removal
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-
-    return Positioned(
-      bottom: bottomPad + 24,
-      left: 24,
-      right: 24,
-      child: SlideTransition(
-        position: _slideAnim,
-        child: FadeTransition(
-          opacity: _fadeAnim,
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF141414),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.06),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Message row
-                  Row(
-                    children: [
-                      Icon(
-                        widget.isError
-                            ? Icons.error_outline_rounded
-                            : Icons.check_circle_outline_rounded,
-                        color: widget.isError
-                            ? Colors.redAccent.withValues(alpha: 0.7)
-                            : Colors.white.withValues(alpha: 0.5),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          widget.message,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.75),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _dismiss,
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.close_rounded,
-                            color: Colors.white.withValues(alpha: 0.2),
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // Action buttons (only for successful saves)
-                  if (widget.showActions && !widget.isError) ...[
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              _dismiss();
-                              widget.onWatchNow();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.07),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'Watch now',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.7),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: _dismiss,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.03),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'Later',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.35),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
           ),
         ),
       ),

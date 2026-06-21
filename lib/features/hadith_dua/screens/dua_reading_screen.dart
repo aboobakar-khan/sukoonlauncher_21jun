@@ -67,7 +67,6 @@ class _DuaReadingScreenState extends ConsumerState<DuaReadingScreen> {
                     setState(() {
                       _currentIndex = index;
                     });
-                    HapticFeedback.selectionClick();
                   },
                   itemBuilder: (_, index) => _buildDuaPage(
                     widget.allDuas[index],
@@ -101,7 +100,6 @@ class _DuaReadingScreenState extends ConsumerState<DuaReadingScreen> {
         children: [
           IconButton(
             onPressed: () {
-              HapticFeedback.lightImpact();
               Navigator.pop(context);
             },
             icon: Icon(
@@ -511,7 +509,6 @@ class _DuaReadingScreenState extends ConsumerState<DuaReadingScreen> {
                   isActive: _showTransliteration,
                   onTap: () {
                     setState(() => _showTransliteration = !_showTransliteration);
-                    HapticFeedback.selectionClick();
                   },
                   tc: tc,
                 ),
@@ -523,7 +520,6 @@ class _DuaReadingScreenState extends ConsumerState<DuaReadingScreen> {
                   isActive: _showTranslation,
                   onTap: () {
                     setState(() => _showTranslation = !_showTranslation);
-                    HapticFeedback.selectionClick();
                   },
                   tc: tc,
                 ),
@@ -624,7 +620,6 @@ class _DuaReadingScreenState extends ConsumerState<DuaReadingScreen> {
     return GestureDetector(
       onTap: enabled
           ? () {
-              HapticFeedback.lightImpact();
               onTap();
             }
           : null,
@@ -658,7 +653,6 @@ class _DuaReadingScreenState extends ConsumerState<DuaReadingScreen> {
             '— ${currentDua.source ?? "Islamic Dua"}';
         
         Clipboard.setData(ClipboardData(text: text));
-        HapticFeedback.lightImpact();
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -700,7 +694,6 @@ class _DuaReadingScreenState extends ConsumerState<DuaReadingScreen> {
             '— ${dua.source ?? "Islamic Dua"}';
         
         Share.share(text);
-        HapticFeedback.lightImpact();
       },
       child: Container(
         padding: const EdgeInsets.all(8),

@@ -36,6 +36,7 @@ class _NotificationFeedScreenState extends ConsumerState<NotificationFeedScreen>
     });
     // Refresh notifications immediately when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(notificationFilterProvider.notifier).recheckPermission();
       ref.read(notificationFilterProvider.notifier).refreshNotifications();
     });
   }
@@ -270,7 +271,6 @@ class _FeedTabState extends ConsumerState<_FeedTab> {
         subtitle: 'Grant access so Sukoon can\nhold selected notifications.',
         actionLabel: 'Grant Access',
         onAction: () {
-          HapticFeedback.mediumImpact();
           widget.onRequestAccess();
           NativeAppBlockerService.requestNotificationListenerPermission();
         },
@@ -321,7 +321,6 @@ class _FeedTabState extends ConsumerState<_FeedTab> {
             onTap: _notifs.isEmpty
                 ? null
                 : () async {
-                    HapticFeedback.mediumImpact();
                     final confirmed = await _confirmClearAll();
                     if (confirmed == true && mounted) {
                       ref
@@ -471,7 +470,6 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                 value: state.featureEnabled,
                 activeThumbColor: accent,
                 onChanged: (v) {
-                  HapticFeedback.selectionClick();
                   ref.read(notificationFilterProvider.notifier).setEnabled(v);
                 },
               ),
@@ -533,7 +531,6 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                 const SizedBox(height: 24),
                 GestureDetector(
                   onTap: () {
-                    HapticFeedback.mediumImpact();
                     NativeAppBlockerService.requestNotificationListenerPermission();
                     Future.delayed(const Duration(seconds: 2), () {
                       ref.read(notificationFilterProvider.notifier).recheckPermission();
@@ -693,7 +690,6 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
               allowed: allowed,
               accent: accent,
               onToggle: () {
-                HapticFeedback.selectionClick();
                 ref
                     .read(notificationFilterProvider.notifier)
                     .toggleApp(app.packageName);
@@ -875,7 +871,6 @@ class _NotifTile extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () async {
-            HapticFeedback.selectionClick();
             // Fire the original notification deep-link / app launcher.
             // We intentionally do NOT remove the notification from the feed
             // after opening — the user may want to re-read or re-open it.

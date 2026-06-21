@@ -1,0 +1,198 @@
+{
+  "book": {
+    "id": "ar-raheeq-al-makhtum",
+    "title": "Ar-Raheeq Al-Makhtum",
+    "subtitle": "The Sealed Nectar",
+    "author": "Safiur-Rahman Al-Mubarakpuri",
+    "chapters": [
+      {
+        "id": "ch-1",
+        "number": 1,
+        "title": "Location and nature of Arab Tribes",
+        "arabicTitle": "موقع العرب وطبيعة قبائلهم",
+        "totalTopics": 2,
+        "topics": [
+          {
+            "id": "ch-1-t-1",
+            "number": 1,
+            "title": "Location of the Arabs",
+            "paragraphs": [
+              {
+                "id": "ch-1-t-1-p-1",
+                "text": "Linguistically, the word \"Arab\" means deserts and waste barren land well-nigh waterless and treeless. Ever since the dawn of history, the Arabian Peninsula and its people have been called as such."
+              },
+              {
+                "id": "ch-1-t-1-p-2",
+                "text": "The Arabian Peninsula is enclosed in the west by the Red Sea and Sinai, in the east by the Arabian Gulf, in the south by the Arabian Sea, which is an extension of the Indian Ocean, and in the north by old Syria and part of Iraq. The area is estimated between a million and a million and a quarter square miles."
+              },
+              {
+                "id": "ch-1-t-1-p-3",
+                "text": "Thanks to its geographical position, the peninsula has always maintained great importance. Considering its internal setting, it is mostly deserts and sandy places, which has rendered it inaccessible to foreigners and invaders, and allowed its people complete liberty and independence through the ages, despite the presence of two neighbouring great empires."
+              },
+              {
+                "id": "ch-1-t-1-p-4",
+                "text": "Its external setting, on the other hand, caused it to be the centre of the old world and provided it with sea and land links with most nations at the time. Thanks to this strategic position the Arabian Peninsula had become the centre for trade, culture, religion and art."
+              }
+            ],
+            "topicSummary": "The Arabian Peninsula, linguistically rooted in the word for barren desert, occupied a uniquely strategic position — isolated enough to preserve its people's independence, yet central enough to connect the ancient world's trade, culture, and religion.",
+            "keyPoints": [
+              "The word 'Arab' linguistically means barren, waterless desert land",
+              "The Peninsula is bordered by the Red Sea (west), Arabian Gulf (east), Arabian Sea (south), and Syria/Iraq (north)",
+              "Its area spans between one million and one and a quarter million square miles",
+              "Its internal desert terrain protected it from foreign invasion and conquest",
+              "Its external position made it a global hub for trade, culture, religion and art"
+            ],
+            "quiz": [
+              {
+                "id": "ch-1-t-1-q-1",
+                "question": "What does the word 'Arab' mean linguistically?",
+                "options": [
+                  "A fertile land with rivers",
+                  "Deserts and waste barren land well-nigh waterless and treeless",
+                  "A land of many tribes",
+                  "A land of merchants and traders"
+                ],
+                "answer": "Deserts and waste barren land well-nigh waterless and treeless"
+              },
+              {
+                "id": "ch-1-t-1-q-2",
+                "question": "What bordered the Arabian Peninsula to the south?",
+                "options": [
+                  "The Red Sea",
+                  "The Arabian Gulf",
+                  "The Arabian Sea",
+                  "Old Syria"
+                ],
+                "answer": "The Arabian Sea"
+              },
+              {
+                "id": "ch-1-t-1-q-3",
+                "question": "What made the Arabian Peninsula inaccessible to foreign invaders?",
+                "options": [
+                  "Its powerful armies",
+                  "Its mostly desert and sandy internal terrain",
+                  "Its surrounding seas on all sides",
+                  "Its alliance with neighbouring empires"
+                ],
+                "answer": "Its mostly desert and sandy internal terrain"
+              }
+            ]
+          },
+          {
+            "id": "ch-1-t-2",
+            "number": 2,
+            "title": "Arab Tribes",
+            "paragraphs": [
+              {
+                "id": "ch-1-t-2-p-1",
+                "text": "Arab kinfolks have been divided according to lineage into three groups: Perishing Arabs: The ancient Arabs, of whose history little is known, and of whom were 'Ad, Thamûd, Tasam, Jadis, Emlaq, and others. Pure Arabs: Who originated from the progeny of Ya'rub bin Yashjub bin Qahtan. They were also called Qahtanian Arabs. Arabized Arabs: Who originated from the progeny of Ishmael. They were also called 'Adnanian Arabs."
+              },
+              {
+                "id": "ch-1-t-2-p-2",
+                "text": "The pure Arabs – the people of Qahtan – originally lived in Yemen and comprised many tribes, two of which were very famous: Himyar: The most famous of whose septs were Zaid Al-Jamhur, Quda'a and Sakasic. Kahlan: The most famous of whose septs were Hamdan, Anmar, Tai', Mudhhij, Kinda, Lakhm, Judham, Azd, Aws, Khazraj and the descendants of Jafna — the kings of old Syria."
+              },
+              {
+                "id": "ch-1-t-2-p-3",
+                "text": "Kahlan septs emigrated from Yemen to dwell in the different parts of the Arabian Peninsula prior to the Great Flood (Sail Al-'Arim of Ma'rib Dam), due to the failure of trade under the Roman pressure and domain on both sea and land trade routes following Roman occupation of Egypt and Syria. Naturally enough, the competition between Kahlan and Himyar led to the evacuation of the first and the settlement of the second in Yemen."
+              },
+              {
+                "id": "ch-1-t-2-p-4",
+                "text": "The emigrating septs of Kahlan can be divided into four groups: Azd: Who, under the leadership of 'Imran bin 'Amr Muzaiqbâ', wandered in Yemen, sent pioneers and finally headed northwards."
+              },
+              {
+                "id": "ch-1-t-2-p-5",
+                "text": "Details of their emigration can be summed up as follows: Tha'labah bin 'Amr left his tribe Al-Azd for Hijaz and dwelt between Tha'labiyah and Dhi Qar. When he gained strength, he headed for Madinah where he stayed. Of his seed are Aws and Khazraj, sons of Haritha bin Tha'labah. Haritha bin 'Amr, known as Khuza'a, wandered with his folks in Hijaz until they came to Mar Az-Zahran. Later, they conquered the Haram, and settled in Makkah after having driven away its people, the tribe of Jurhum. 'Imran bin 'Amr and his folks went to 'Oman where they established the tribe of Azd whose children inhabited Tihama and were known as Azd-of-Shanu'a. Jafna bin 'Amr and his family, headed for Syria where he settled and initiated the kingdom of Ghassan who was so named after a spring of water, in Hijaz, where they stopped on their way to Syria."
+              },
+              {
+                "id": "ch-1-t-2-p-6",
+                "text": "Lakhm and Judham: Of whom was Nasr bin Rabi'a, father of Manadhira, Kings of Heerah. Banu Tai': Who also emigrated northwards to settle by the so-called Aja and Salma Mountains which were consequently named as Tai' Mountains. Kinda: Who dwelt in Bahrain but were expelled to Hadramout and Najd where they instituted a powerful government but not for long, for the whole tribe soon faded away."
+              },
+              {
+                "id": "ch-1-t-2-p-7",
+                "text": "Another tribe of Himyar, known as Quda'a, also left Yemen and dwelt in Samawa semi-desert on the borders of Iraq."
+              },
+              {
+                "id": "ch-1-t-2-p-8",
+                "text": "The Arabized Arabs go back in ancestry to their great grandfather Abraham [AWS] from a town called \"Ar\" near Kufa on the west bank of the Euphrates in Iraq. Excavations brought to light great details of the town, Abraham's family, and the prevalent religions and social circumstances. [Tafheem-ul-Qur'an, 1/553]"
+              },
+              {
+                "id": "ch-1-t-2-p-9",
+                "text": "It is known that Abraham [AWS] left Ar for Harran and then for Palestine, which he made headquarters for his Message. He wandered all over the area. When he went to Egypt, the Pharaoh tried to do evil to his wife Sarah, but Allâh saved her and the Pharaoh's wicked scheme recoiled on him. He thus came to realize her strong attachment to Allâh, and, in acknowledgment of her grace, the Pharaoh rendered his daughter Hagar at Sarah's service, but Sarah gave Hagar to Abraham as a wife. [Bukhari 1/474]"
+              },
+              {
+                "id": "ch-1-t-2-p-10",
+                "text": "Abraham returned to Palestine where Hagar gave birth to Ishmael. Sarah became so jealous of Hagar that she forced Abraham to send Hagar and her baby away to a plantless valley on a small hill in Hijaz, by the Sacred House, exposed to the wearing of floods coming right and left. He chose for them a place under a lofty tree above Zamzam near the upper sid[e]."
+              }
+            ],
+            "topicSummary": "Arabs are divided into three lineage groups: the ancient Perishing Arabs, the Pure Arabs (Qahtanians from Yemen), and the Arabized Arabs (descendants of Prophet Ishmael through Abraham). The Qahtanian tribes of Himyar and Kahlan dominated Yemen, with Kahlan eventually migrating across the Peninsula due to Roman trade pressure — scattering to form the tribes of Madinah, Makkah, Oman, Syria, and Iraq. The Arabized Arabs trace back to Abraham (AS), whose son Ishmael was settled near the Sacred House in Hijaz.",
+            "keyPoints": [
+              "Arabs are divided into 3 groups: Perishing Arabs, Pure Arabs (Qahtanian), and Arabized Arabs ('Adnanian)",
+              "Pure Arabs originated from Qahtan and lived in Yemen — their two main tribes were Himyar and Kahlan",
+              "Kahlan emigrated northward before the Great Flood (Ma'rib Dam), due to Roman pressure on trade routes",
+              "Kahlan split into 4 emigrating groups: Azd, Lakhm & Judham, Banu Tai', and Kinda",
+              "Azd sub-tribes founded Madinah (Aws & Khazraj), settled Makkah (Khuza'a), reached Oman, and founded the Ghassan kingdom in Syria",
+              "Arabized Arabs descend from Prophet Ishmael (AS), son of Prophet Abraham (AS), who was settled near the Zamzam well in Hijaz"
+            ],
+            "quiz": [
+              {
+                "id": "ch-1-t-2-q-1",
+                "question": "How many groups are Arab kinfolks divided into according to lineage?",
+                "options": [
+                  "Two",
+                  "Three",
+                  "Four",
+                  "Five"
+                ],
+                "answer": "Three"
+              },
+              {
+                "id": "ch-1-t-2-q-2",
+                "question": "What were the Arabized Arabs also called?",
+                "options": [
+                  "Qahtanian Arabs",
+                  "Himyarian Arabs",
+                  "'Adnanian Arabs",
+                  "Kahlanite Arabs"
+                ],
+                "answer": "'Adnanian Arabs"
+              },
+              {
+                "id": "ch-1-t-2-q-3",
+                "question": "Why did the Kahlan septs emigrate from Yemen?",
+                "options": [
+                  "Due to a drought that destroyed their crops",
+                  "Due to failure of trade under Roman pressure on sea and land routes",
+                  "Due to war with the tribe of Jurhum",
+                  "Due to the conquest of Yemen by Persia"
+                ],
+                "answer": "Due to failure of trade under Roman pressure on sea and land routes"
+              },
+              {
+                "id": "ch-1-t-2-q-4",
+                "question": "Who are Aws and Khazraj descended from?",
+                "options": [
+                  "Jafna bin 'Amr",
+                  "Haritha bin 'Amr (Khuza'a)",
+                  "Tha'labah bin 'Amr",
+                  "'Imran bin 'Amr"
+                ],
+                "answer": "Tha'labah bin 'Amr"
+              },
+              {
+                "id": "ch-1-t-2-q-5",
+                "question": "The Arabized Arabs trace their ancestry to which Prophet?",
+                "options": [
+                  "Prophet Ishmael (AS)",
+                  "Prophet Ibrahim (AS)",
+                  "Prophet Idrees (AS)",
+                  "Prophet Nuh (AS)"
+                ],
+                "answer": "Prophet Ibrahim (AS)"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

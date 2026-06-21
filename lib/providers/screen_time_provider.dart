@@ -244,10 +244,17 @@ class ScreenTimeNotifier extends StateNotifier<ScreenTimeState> {
     _configBox!.put('featureEnabled', state.featureEnabled);
     
     final raw = <String, Map<String, dynamic>>{};
+    final nativePackages = <String>[];
     for (final entry in state.appConfigs.entries) {
       raw[entry.key] = entry.value.toJson();
+      if (entry.value.enabled) {
+        nativePackages.add(entry.key);
+      }
     }
     _configBox!.put('appConfigs', raw);
+    
+    // Sync to native so it can intercept recents
+    NativeAppBlockerService.updateTimerPackages(state.featureEnabled ? nativePackages : []);
   }
 
   // ── Master toggle ──

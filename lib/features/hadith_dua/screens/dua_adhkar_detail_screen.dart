@@ -8,7 +8,7 @@ import '../../../providers/islamic_theme_provider.dart';
 import 'dua_adhkar_category_screen.dart'; // HisnulEntry, providers, DuaTheme
 
 // ═══════════════════════════════════════════════════════════════════
-//  SCREEN 2 — DUA DETAIL LIST
+//  SCREEN 2 — DUA DETAIL LIST  (clean reading view, parchment)
 // ═══════════════════════════════════════════════════════════════════
 
 class DuaAdhkarDetailScreen extends ConsumerStatefulWidget {
@@ -64,7 +64,6 @@ class _DuaAdhkarDetailScreenState
   List<HisnulEntry> _filter_(List<HisnulEntry> allEntries) {
     final bookmarks = ref.read(duaBookmarkIdsProvider);
 
-    // Get base list
     List<HisnulEntry> entries;
     if (widget.isSaved) {
       entries = allEntries
@@ -76,14 +75,12 @@ class _DuaAdhkarDetailScreenState
           .toList();
     }
 
-    // Type filter
     if (_filter == 'adhkar') {
       entries = entries.where((e) => e.type == 'Adhkar').toList();
     } else if (_filter == 'dua') {
       entries = entries.where((e) => e.type == 'Dua').toList();
     }
 
-    // Search
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       entries = entries.where((e) =>
@@ -110,26 +107,28 @@ class _DuaAdhkarDetailScreenState
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: t.textPrimary),
-          onPressed: () => Navigator.pop(context),
+        leading: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.pop(context),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Icon(Icons.arrow_back_ios_new_rounded,
+                size: 16, color: t.textPrimary.withValues(alpha: 0.6)),
+          ),
         ),
         title: Text(
           widget.categoryName,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w700,
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w500,
             fontSize: 15,
             color: t.textPrimary,
+            letterSpacing: -0.2,
           ),
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-              _showSearch ? Icons.close_rounded : Icons.search_rounded,
-              color: t.textPrimary,
-              size: 22,
-            ),
-            onPressed: () {
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
               setState(() {
                 _showSearch = !_showSearch;
                 if (!_showSearch) {
@@ -142,16 +141,25 @@ class _DuaAdhkarDetailScreenState
                     () => _searchFocus.requestFocus());
               }
             },
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 20, 12),
+              child: Icon(
+                _showSearch ? Icons.close_rounded : Icons.search_rounded,
+                color: t.textPrimary.withValues(alpha: 0.5),
+                size: 20,
+              ),
+            ),
           ),
         ],
       ),
       body: dataAsync.when(
         loading: () => Center(
-          child: CircularProgressIndicator(color: t.accent, strokeWidth: 2),
+          child: CircularProgressIndicator(
+              color: t.leafGreen.withValues(alpha: 0.5), strokeWidth: 1.5),
         ),
         error: (e, _) => Center(
           child: Text('Error loading data',
-              style: GoogleFonts.poppins(color: t.textSecondary)),
+              style: GoogleFonts.inter(color: t.textSecondary)),
         ),
         data: (allEntries) {
           final entries = _filter_(allEntries);
@@ -163,66 +171,63 @@ class _DuaAdhkarDetailScreenState
 
           return Column(
             children: [
-              // ── Search bar ──
+              // ── Search bar (slide-down) ──────────────────────
               AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
+                duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                height: _showSearch ? 56 : 0,
+                height: _showSearch ? 52 : 0,
                 clipBehavior: Clip.antiAlias,
                 decoration: const BoxDecoration(),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
                   child: TextField(
                     controller: _searchController,
                     focusNode: _searchFocus,
                     onChanged: (v) => setState(() => _searchQuery = v),
-                    style: GoogleFonts.poppins(fontSize: 14, color: t.textPrimary),
+                    style: GoogleFonts.inter(fontSize: 14, color: t.textPrimary),
                     decoration: InputDecoration(
-                      hintText: 'Search...',
-                      hintStyle: GoogleFonts.poppins(fontSize: 14, color: t.textSecondary),
-                      filled: true,
-                      fillColor: t.card,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                      prefixIcon: Icon(Icons.search, color: t.textSecondary, size: 20),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: Icon(Icons.close, size: 18, color: t.textSecondary),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      hintText: 'Search…',
+                      isDense: true,
+                      hintStyle: GoogleFonts.inter(
+                          fontSize: 14, color: t.textSecondary.withValues(alpha: 0.5)),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      prefixIcon: Icon(Icons.search, color: t.textSecondary, size: 18),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 11),
                     ),
                   ),
                 ),
               ),
 
-              // ── Filter pills ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              // Thin divider under search
+              Container(height: 0.5, color: t.divider),
+
+              // ── Filter pills ─────────────────────────────────
+              Container(
+                color: t.bg,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 child: Row(
                   children: [
                     _FilterPill(
-                      label: 'All (${baseEntries.length})',
+                      label: 'All',
+                      count: baseEntries.length,
                       active: _filter == 'all',
                       onTap: () => setState(() => _filter = 'all'),
                       theme: t,
                     ),
                     const SizedBox(width: 8),
                     _FilterPill(
-                      label: 'Adhkar ($adhkarCount)',
+                      label: 'Adhkar',
+                      count: adhkarCount,
                       active: _filter == 'adhkar',
                       onTap: () => setState(() => _filter = 'adhkar'),
                       theme: t,
                     ),
                     const SizedBox(width: 8),
                     _FilterPill(
-                      label: 'Dua ($duaCount)',
+                      label: 'Dua',
+                      count: duaCount,
                       active: _filter == 'dua',
                       onTap: () => setState(() => _filter = 'dua'),
                       theme: t,
@@ -231,7 +236,9 @@ class _DuaAdhkarDetailScreenState
                 ),
               ),
 
-              // ── Entry list ──
+              Container(height: 0.5, color: t.divider),
+
+              // ── Entry list ───────────────────────────────────
               Expanded(
                 child: entries.isEmpty
                     ? Center(
@@ -242,8 +249,8 @@ class _DuaAdhkarDetailScreenState
                               _searchQuery.isNotEmpty
                                   ? Icons.search_off_rounded
                                   : Icons.bookmark_border_rounded,
-                              color: t.textSecondary.withValues(alpha: 0.3),
-                              size: 40,
+                              color: t.textSecondary.withValues(alpha: 0.2),
+                              size: 36,
                             ),
                             const SizedBox(height: 12),
                             Text(
@@ -252,16 +259,22 @@ class _DuaAdhkarDetailScreenState
                                   : widget.isSaved
                                       ? 'No saved duas yet'
                                       : 'No entries',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14, color: t.textSecondary),
+                              style: GoogleFonts.inter(
+                                  fontSize: 14, color: t.textSecondary),
                             ),
                           ],
                         ),
                       )
-                    : ListView.builder(
+                    : ListView.separated(
                         physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.only(bottom: 80),
+                        padding: EdgeInsets.only(
+                            bottom: MediaQuery.of(context).padding.bottom + 40),
                         itemCount: entries.length,
+                        separatorBuilder: (_, __) => Container(
+                          margin: const EdgeInsets.only(left: 20),
+                          height: 0.5,
+                          color: t.divider,
+                        ),
                         itemBuilder: (context, index) {
                           final e = entries[index];
                           final key = e.id.toString();
@@ -271,7 +284,6 @@ class _DuaAdhkarDetailScreenState
                             isBookmarked: bookmarks.contains(key),
                             countProgress: _countProgress[key] ?? 0,
                             onBookmarkToggle: () {
-                              HapticFeedback.lightImpact();
                               ref.read(duaBookmarkIdsProvider.notifier).toggle(e.id);
                             },
                             onCountChange: (v) {
@@ -293,17 +305,19 @@ class _DuaAdhkarDetailScreenState
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  FILTER PILL
+//  FILTER PILL  — refined, minimal
 // ═══════════════════════════════════════════════════════════════════
 
 class _FilterPill extends StatelessWidget {
   final String label;
+  final int count;
   final bool active;
   final VoidCallback onTap;
   final DuaTheme theme;
 
   const _FilterPill({
     required this.label,
+    required this.count,
     required this.active,
     required this.onTap,
     required this.theme,
@@ -314,23 +328,41 @@ class _FilterPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? theme.accent : Colors.transparent,
+          color: active ? theme.leafGreen : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: active ? theme.accent : theme.textSecondary.withValues(alpha: 0.3),
+            color: active
+                ? theme.leafGreen
+                : theme.textSecondary.withValues(alpha: 0.25),
             width: 1,
           ),
         ),
-        child: Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: active ? Colors.white : theme.textPrimary,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: active ? Colors.white : theme.textPrimary.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '$count',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                color: active
+                    ? Colors.white.withValues(alpha: 0.7)
+                    : theme.textSecondary.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -338,7 +370,7 @@ class _FilterPill extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  DUA ENTRY CARD
+//  DUA ENTRY CARD  — parchment reading view, no heavy white card
 // ═══════════════════════════════════════════════════════════════════
 
 class _DuaEntryCard extends StatefulWidget {
@@ -371,434 +403,231 @@ class _DuaEntryCardState extends State<_DuaEntryCard> {
   bool get _isAdhkar => e.type == 'Adhkar';
   bool get _hasCount => e.count != null;
   bool get _hasReward => e.reward != null && e.reward!.isNotEmpty;
-  bool get _isComplete => _hasCount && widget.countProgress >= e.count!;
+  Color get _typeColor => _isAdhkar ? t.accent : t.leafGreen;
 
-  // Theme-specific badge colors — gold primary for Adhkar, green for Dua
-  Color get _typeBadgeBg => _isAdhkar
-      ? t.accent.withValues(alpha: 0.12)
-      : t.leafGreen.withValues(alpha: 0.10);
-  Color get _typeBadgeText => _isAdhkar ? t.accent : t.leafGreen;
-  Color get _arabicBg => t.bg;
+  void _copyArabic() {
+    Clipboard.setData(ClipboardData(text: e.arabic));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Copied ✓', style: GoogleFonts.inter(fontSize: 13)),
+      backgroundColor: t.leafGreen,
+      duration: const Duration(seconds: 1),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+    ));
+  }
+
+  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(5),
+        child: Icon(icon, size: 19, color: color),
+      ),
+    );
+  }
+
+  /// A quiet, low-chrome expand toggle (no leading icon box, just label + caret).
+  Widget _quietToggle({
+    required String label,
+    required bool expanded,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label,
+                style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: color.withValues(alpha: 0.7),
+                    letterSpacing: 0.1)),
+            const SizedBox(width: 3),
+            AnimatedRotation(
+              turns: expanded ? 0.5 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: Icon(Icons.keyboard_arrow_down_rounded,
+                  size: 16, color: color.withValues(alpha: 0.6)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _expandable(bool expanded, Widget child) {
+    return AnimatedCrossFade(
+      duration: const Duration(milliseconds: 200),
+      crossFadeState:
+          expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+      firstChild: const SizedBox(width: double.infinity),
+      secondChild: Padding(padding: const EdgeInsets.only(top: 8), child: child),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: t.card,
-        borderRadius: BorderRadius.circular(18),
-        border: _isComplete
-            ? Border.all(color: t.accent.withValues(alpha: 0.4), width: 1.5)
-            : null,
-        boxShadow: [BoxShadow(blurRadius: 12, color: t.shadow)],
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── 1. TOP ROW ─────────────────────────────────────
+
+          // ── HEADER: title · copy · bookmark ──────────────────
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Type badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _typeBadgeBg,
-                  borderRadius: BorderRadius.circular(6),
-                ),
+              Expanded(
                 child: Text(
-                  e.type,
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
+                  e.title,
+                  style: GoogleFonts.inter(
                     fontWeight: FontWeight.w600,
-                    color: _typeBadgeText,
+                    fontSize: 15.5,
+                    color: t.textPrimary,
+                    letterSpacing: -0.2,
+                    height: 1.3,
                   ),
                 ),
               ),
-              const Spacer(),
-              // Count badge
-              if (_hasCount)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: t.leafGreen.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '× ${e.count}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: t.leafGreen,
-                    ),
-                  ),
-                ),
               const SizedBox(width: 8),
-              // Bookmark
-              GestureDetector(
-                onTap: widget.onBookmarkToggle,
-                child: Icon(
-                  widget.isBookmarked
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_border_rounded,
-                  color: widget.isBookmarked ? t.accent : t.textSecondary,
-                  size: 22,
-                ),
+              _iconBtn(Icons.copy_rounded,
+                  t.textSecondary.withValues(alpha: 0.4), _copyArabic),
+              _iconBtn(
+                widget.isBookmarked
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_border_rounded,
+                widget.isBookmarked
+                    ? t.accent
+                    : t.textSecondary.withValues(alpha: 0.4),
+                widget.onBookmarkToggle,
               ),
             ],
           ),
 
-          // ── 2. TITLE ───────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text(
-              e.title,
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-                color: t.textPrimary,
+          // ── ARABIC — single type-colored accent bar ──────────
+          Container(
+            margin: const EdgeInsets.only(top: 16),
+            padding: const EdgeInsets.only(left: 16),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                    color: _typeColor.withValues(alpha: 0.45), width: 2.5),
+              ),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                e.arabic,
+                style: GoogleFonts.amiri(
+                  fontSize: 24,
+                  color: t.textPrimary.withValues(alpha: 0.95),
+                  height: 2.0,
+                ),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.right,
+                softWrap: true,
               ),
             ),
           ),
 
-          // ── 3. ARABIC BLOCK ────────────────────────────────
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              color: _arabicBg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border(left: BorderSide(color: t.accent, width: 3)),
-            ),
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Text(
-                      e.arabic,
-                      style: GoogleFonts.amiri(
-                        fontSize: 24,
-                        color: t.textPrimary,
-                        height: 2.0,
-                      ),
-                      textDirection: TextDirection.rtl,
-                      textAlign: TextAlign.right,
-                      softWrap: true,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 8,
-                  left: 8,
-                  child: GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: e.arabic));
-                      HapticFeedback.lightImpact();
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('Arabic text copied ✓',
-                            style: GoogleFonts.poppins(fontSize: 13)),
-                        backgroundColor: t.accent,
-                        duration: const Duration(seconds: 1),
-                        behavior: SnackBarBehavior.floating,
-                      ));
-                    },
-                    child: Icon(Icons.copy_rounded, size: 16,
-                        color: t.textSecondary.withValues(alpha: 0.5)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ── 4. TRANSLITERATION (collapsible) ───────────────
+          // ── TRANSLITERATION (quiet toggle) ───────────────────
           if (e.transliteration.isNotEmpty) ...[
-            GestureDetector(
+            _quietToggle(
+              label: 'Transliteration',
+              expanded: _translitExpanded,
+              color: t.textSecondary,
               onTap: () =>
                   setState(() => _translitExpanded = !_translitExpanded),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  children: [
-                    Icon(Icons.translate_rounded, size: 14, color: t.textSecondary),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Transliteration',
-                      style: GoogleFonts.poppins(
-                          fontSize: 12, color: t.textSecondary),
-                    ),
-                    const SizedBox(width: 4),
-                    AnimatedRotation(
-                      turns: _translitExpanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Icon(Icons.keyboard_arrow_down_rounded,
-                          size: 18, color: t.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
             ),
-            AnimatedCrossFade(
-              duration: const Duration(milliseconds: 250),
-              crossFadeState: _translitExpanded
-                  ? CrossFadeState.showSecond
-                  : CrossFadeState.showFirst,
-              firstChild: const SizedBox.shrink(),
-              secondChild: Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  e.transliteration,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                    color: t.textSecondary,
-                    height: 1.6,
-                  ),
+            _expandable(
+              _translitExpanded,
+              Text(
+                e.transliteration,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  color: t.textSecondary.withValues(alpha: 0.8),
+                  height: 1.6,
                 ),
               ),
             ),
           ],
 
-          // ── 5. TRANSLATION ─────────────────────────────────
-          Container(
-            margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.only(left: 10),
-            decoration: BoxDecoration(
-              border: Border(left: BorderSide(color: t.leafGreen, width: 2)),
-            ),
+          // ── TRANSLATION (always visible, plain) ──────────────
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
             child: Text(
               e.translation,
-              style: GoogleFonts.poppins(
-                fontSize: 13.5,
-                color: t.textPrimary.withValues(alpha: 0.85),
-                height: 1.6,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: t.textPrimary.withValues(alpha: 0.82),
+                height: 1.7,
               ),
             ),
           ),
 
-          // ── 6. REFERENCE ───────────────────────────────────
+          // ── REFERENCE ────────────────────────────────────────
           if (e.reference.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: Row(
-                children: [
-                  Icon(Icons.menu_book_rounded, size: 13, color: t.accent),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      e.reference,
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: t.textSecondary.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ),
-                ],
+              child: Text(
+                e.reference,
+                style: GoogleFonts.inter(
+                  fontSize: 11.5,
+                  color: t.textSecondary.withValues(alpha: 0.5),
+                  letterSpacing: 0.1,
+                ),
               ),
             ),
 
-          // ── 7. REWARD (collapsible) ────────────────────────
+          // ── REWARD (quiet toggle) ────────────────────────────
           if (_hasReward) ...[
-            GestureDetector(
+            _quietToggle(
+              label: 'Reward & virtue',
+              expanded: _rewardExpanded,
+              color: t.accent,
               onTap: () => setState(() => _rewardExpanded = !_rewardExpanded),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                margin: const EdgeInsets.only(top: 12),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: t.accent.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border(
-                    left: BorderSide(color: t.accent, width: 3),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.auto_awesome_rounded,
-                            size: 16, color: t.accent),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Reward & Virtue',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: t.accent,
-                          ),
-                        ),
-                        const Spacer(),
-                        AnimatedRotation(
-                          turns: _rewardExpanded ? 0.5 : 0,
-                          duration: const Duration(milliseconds: 200),
-                          child: Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            size: 18,
-                            color: t.accent,
-                          ),
-                        ),
-                      ],
-                    ),
-                    AnimatedCrossFade(
-                      duration: const Duration(milliseconds: 250),
-                      crossFadeState: _rewardExpanded
-                          ? CrossFadeState.showSecond
-                          : CrossFadeState.showFirst,
-                      firstChild: const SizedBox.shrink(),
-                      secondChild: Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          e.reward!,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12.5,
-                            color: t.textPrimary.withValues(alpha: 0.75),
-                            height: 1.6,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+            ),
+            _expandable(
+              _rewardExpanded,
+              Text(
+                e.reward!,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: t.textPrimary.withValues(alpha: 0.68),
+                  height: 1.65,
                 ),
               ),
             ),
           ],
 
-          // ── 8. COUNT TRACKER (only if count exists) ────────
+          // ── COUNTER — minimal tap-to-count pill ──────────────
           if (_hasCount) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 14),
-              child: Container(height: 1, color: t.divider),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                const Spacer(),
+                _CountPill(
+                  progress: widget.countProgress,
+                  total: e.count!,
+                  accent: t.leafGreen,
+                  theme: t,
+                  onTap: () {
+                    if (widget.countProgress < e.count!) {
+                      widget.onCountChange(widget.countProgress + 1);
+                    }
+                  },
+                  onReset: () => widget.onCountChange(0),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            _isComplete
-                ? Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.check_circle_rounded,
-                          color: t.accent, size: 22),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Complete!',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: t.accent,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          HapticFeedback.mediumImpact();
-                          widget.onCountChange(0);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          child: Text(
-                            'Reset',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: t.textSecondary,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Minus
-                      _CounterBtn(
-                        icon: Icons.remove,
-                        filled: false,
-                        color: t.accent,
-                        onTap: () {
-                          if (widget.countProgress > 0) {
-                            HapticFeedback.lightImpact();
-                            widget.onCountChange(widget.countProgress - 1);
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 16),
-                      // Progress circle
-                      SizedBox(
-                        width: 56,
-                        height: 56,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            CircularProgressIndicator(
-                              value: widget.countProgress / e.count!,
-                              strokeWidth: 3,
-                              backgroundColor: t.divider,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(t.accent),
-                            ),
-                            Text.rich(
-                              TextSpan(children: [
-                                TextSpan(
-                                  text: '${widget.countProgress}\n',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: t.textPrimary,
-                                    height: 1.2,
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: '/${e.count}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    color: t.textSecondary,
-                                    height: 1.0,
-                                  ),
-                                ),
-                              ]),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      // Plus
-                      _CounterBtn(
-                        icon: Icons.add,
-                        filled: true,
-                        color: t.accent,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          final next = widget.countProgress + 1;
-                          widget.onCountChange(next);
-                          if (next >= e.count!) HapticFeedback.heavyImpact();
-                        },
-                      ),
-                      const SizedBox(width: 14),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          HapticFeedback.mediumImpact();
-                          widget.onCountChange(0);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                          child: Text(
-                            'Reset',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: t.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
           ],
         ],
       ),
@@ -807,36 +636,92 @@ class _DuaEntryCardState extends State<_DuaEntryCard> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  COUNTER BUTTON
+//  COUNT PILL — one tap-to-count control (replaces −/ring/+/Reset)
+//
+//  • Not started / counting: outlined "progress / total" pill, tap = +1.
+//  • A subtle ↺ reset appears to its left once counting begins.
+//  • Complete: fills with the accent colour and shows ✓ Done.
 // ═══════════════════════════════════════════════════════════════════
 
-class _CounterBtn extends StatelessWidget {
-  final IconData icon;
-  final bool filled;
-  final Color color;
+class _CountPill extends StatelessWidget {
+  final int progress;
+  final int total;
+  final Color accent;
+  final DuaTheme theme;
   final VoidCallback onTap;
+  final VoidCallback onReset;
 
-  const _CounterBtn({
-    required this.icon,
-    required this.filled,
-    required this.color,
+  const _CountPill({
+    required this.progress,
+    required this.total,
+    required this.accent,
+    required this.theme,
     required this.onTap,
+    required this.onReset,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: filled ? color : Colors.transparent,
-          border: Border.all(color: color, width: 1.5),
+    final complete = progress >= total;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (progress > 0)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onReset,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
+              child: Icon(Icons.refresh_rounded,
+                  size: 18, color: theme.textSecondary.withValues(alpha: 0.45)),
+            ),
+          ),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: complete ? null : onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            decoration: BoxDecoration(
+              color: complete ? accent : accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: complete ? accent : accent.withValues(alpha: 0.30),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: complete
+                  ? [
+                      const Icon(Icons.check_rounded,
+                          size: 17, color: Colors.white),
+                      const SizedBox(width: 6),
+                      Text('Done',
+                          style: GoogleFonts.inter(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
+                    ]
+                  : [
+                      Text('$progress',
+                          style: GoogleFonts.inter(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: accent)),
+                      Text(' / $total',
+                          style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: accent.withValues(alpha: 0.6))),
+                      const SizedBox(width: 8),
+                      Icon(Icons.add_rounded,
+                          size: 16, color: accent.withValues(alpha: 0.85)),
+                    ],
+            ),
+          ),
         ),
-        child: Icon(icon, size: 18, color: filled ? Colors.white : color),
-      ),
+      ],
     );
   }
 }

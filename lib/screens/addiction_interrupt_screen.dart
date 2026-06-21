@@ -159,7 +159,6 @@ class _AddictionInterruptScreenState
   }
 
   void _incrementDhikr() {
-    HapticFeedback.lightImpact();
     setState(() {
       _dhikrCount++;
     });
@@ -170,7 +169,6 @@ class _AddictionInterruptScreenState
   }
 
   Future<void> _onDhikrComplete() async {
-    HapticFeedback.heavyImpact();
     
     // Save dhikr to tasbih counter
     final box = await HiveBoxManager.get('tasbih_data');

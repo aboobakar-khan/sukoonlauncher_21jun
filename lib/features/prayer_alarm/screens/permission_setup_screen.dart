@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../providers/theme_provider.dart';
 import '../services/prayer_alarm_service.dart';
 
 // ─── Minimalist Permission Setup ─────────────────────────────────
-// Sequential flow. One permission at a time. No overwhelm.
-// Auto-advances as each permission is granted.
+// Only the permissions actually needed:
+//   • Notifications — required   (show prayer alerts)
+//   • Exact Alarms  — required   (fire at precise time)
+//   • Battery       — optional   (prevent alarm delays)
+// Display Over Apps is NOT used — removed.
 
 class PermissionSetupScreen extends ConsumerStatefulWidget {
   final VoidCallback onAllGranted;
@@ -27,7 +29,6 @@ class PermissionSetupScreen extends ConsumerStatefulWidget {
 class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   bool _notif = false;
   bool _alarm = false;
-  bool _overlay = false;
   bool _battery = false;
   bool _busy = false;
 
@@ -40,31 +41,33 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   Future<void> _checkAll() async {
     final n = await Permission.notification.isGranted;
     final a = await PrayerAlarmService.canScheduleExactAlarms();
-    final o = await Permission.systemAlertWindow.isGranted;
     final b = await Permission.ignoreBatteryOptimizations.isGranted;
     if (!mounted) return;
-    setState(() { _notif = n; _alarm = a; _overlay = o; _battery = b; });
-    if (n && a && o && b) {
+    setState(() { _notif = n; _alarm = a; _battery = b; });
+    // Auto-complete if both critical permissions are already granted
+    if (n && a) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) widget.onAllGranted();
       });
     }
   }
 
-  int get _granted => [_notif, _alarm, _overlay, _battery].where((v) => v).length;
+  int get _granted => [_notif, _alarm, _battery].where((v) => v).length;
+  bool get _criticalGranted => _notif && _alarm;
 
   Future<void> _request(int step) async {
     if (_busy) return;
     setState(() => _busy = true);
-    HapticFeedback.lightImpact();
 
     switch (step) {
-      case 0:
+      case 0: // Notifications
         final ok = await PrayerAlarmService.requestNotificationPermission();
         if (mounted) setState(() => _notif = ok);
-        if (!ok && mounted) _showHelp('Notification access is needed to alert you at prayer times.');
+        if (!ok && mounted) {
+          _showHelp('Notification access is needed to alert you at prayer times.');
+        }
         break;
-      case 1:
+      case 1: // Exact Alarms
         final ok = await PrayerAlarmService.canScheduleExactAlarms();
         if (!ok) {
           await openAppSettings();
@@ -75,11 +78,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
           if (mounted) setState(() => _alarm = ok);
         }
         break;
-      case 2:
-        final s = await Permission.systemAlertWindow.request();
-        if (mounted) setState(() => _overlay = s.isGranted);
-        break;
-      case 3:
+      case 2: // Battery optimization
         await PrayerAlarmService.openBatterySettings();
         await Future.delayed(const Duration(milliseconds: 800));
         final re = await Permission.ignoreBatteryOptimizations.isGranted;
@@ -89,8 +88,8 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
 
     if (mounted) setState(() => _busy = false);
 
-    // Auto-complete if all granted
-    if (_notif && _alarm && _overlay && _battery) {
+    // Auto-complete if critical permissions are now granted
+    if (_notif && _alarm) {
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) widget.onAllGranted();
     }
@@ -100,13 +99,16 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
     if (_busy) return;
     setState(() => _busy = true);
 
-    // Notification
+    // Notifications
     if (!_notif) {
       final ok = await PrayerAlarmService.requestNotificationPermission();
       if (mounted) setState(() => _notif = ok);
       if (!ok) {
         if (mounted) setState(() => _busy = false);
-        if (mounted) _showHelp('Notification permission is required. Please enable it in Settings.');
+        if (mounted) {
+          _showHelp(
+              'Notification permission is required. Please enable it in Settings.');
+        }
         return;
       }
     }
@@ -128,13 +130,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
       }
     }
 
-    // Overlay
-    if (!_overlay) {
-      final s = await Permission.systemAlertWindow.request();
-      if (mounted) setState(() => _overlay = s.isGranted);
-    }
-
-    // Battery
+    // Battery (optional — don't block flow)
     if (!_battery) {
       await PrayerAlarmService.openBatterySettings();
       await Future.delayed(const Duration(milliseconds: 800));
@@ -175,22 +171,18 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                     size: 22, color: Colors.red.withValues(alpha: 0.7)),
               ),
               const SizedBox(height: 18),
-              Text(
-                'Permission Needed',
+              Text('Permission Needed',
                 style: TextStyle(
                   fontSize: 16, fontWeight: FontWeight.w700,
                   color: Colors.white.withValues(alpha: 0.88),
-                ),
-              ),
+                )),
               const SizedBox(height: 10),
-              Text(
-                message,
+              Text(message,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13, height: 1.5,
                   color: Colors.white.withValues(alpha: 0.45),
-                ),
-              ),
+                )),
               const SizedBox(height: 22),
               GestureDetector(
                 onTap: () { Navigator.pop(ctx); openAppSettings(); },
@@ -207,8 +199,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                       style: TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w600,
                         color: Colors.white.withValues(alpha: 0.85),
-                      ),
-                    ),
+                      )),
                   ),
                 ),
               ),
@@ -217,7 +208,8 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                 onPressed: () { Navigator.pop(ctx); _checkAll(); },
                 child: Text("I've enabled it",
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.35), fontSize: 13)),
+                        color: Colors.white.withValues(alpha: 0.35),
+                        fontSize: 13)),
               ),
             ],
           ),
@@ -229,7 +221,6 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final accent = ref.watch(themeColorProvider).color;
-    final allCritical = _notif && _alarm;
 
     return Scaffold(
       backgroundColor: const Color(0xFF050507),
@@ -241,45 +232,36 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
               const SizedBox(height: 24),
 
               // Header
-              Text(
-                'Setup Permissions',
+              Text('Alarm Permissions',
                 style: TextStyle(
                   fontSize: 20, fontWeight: FontWeight.w700,
                   color: Colors.white.withValues(alpha: 0.9),
                   letterSpacing: -0.3,
-                ),
-              ),
+                )),
               const SizedBox(height: 6),
-              Text(
-                'These ensure your alarms fire reliably.',
+              Text('These ensure your prayer alarms fire reliably.',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.white.withValues(alpha: 0.35),
-                ),
-              ),
+                )),
 
-              // Progress indicator
+              // Progress dots (3 permissions)
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(4, (i) {
-                  final done = [_notif, _alarm, _overlay, _battery][i];
-                  return Container(
-                    width: 32, height: 3,
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(2),
-                      color: done
-                          ? Colors.green.withValues(alpha: 0.6)
-                          : Colors.white.withValues(alpha: 0.06),
-                    ),
-                  );
-                }),
+                children: [
+                  _dot(_notif, accent),
+                  const SizedBox(width: 4),
+                  _dot(_alarm, accent),
+                  const SizedBox(width: 4),
+                  _dot(_battery, accent),
+                ],
               ),
 
               const SizedBox(height: 20),
 
-              // Permission cards — scrollable
+              // Permission cards
               Expanded(
                 child: ListView(
                   physics: const BouncingScrollPhysics(),
@@ -298,7 +280,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                     _PermCard(
                       icon: Icons.alarm_rounded,
                       title: 'Exact Alarms',
-                      desc: 'Fire at precise times',
+                      desc: 'Fire at the precise prayer time',
                       granted: _alarm,
                       required_: true,
                       accent: accent,
@@ -306,23 +288,13 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                     ),
                     const SizedBox(height: 8),
                     _PermCard(
-                      icon: Icons.phone_android_rounded,
-                      title: 'Display Over Apps',
-                      desc: 'Show over lock screen',
-                      granted: _overlay,
-                      required_: false,
-                      accent: accent,
-                      onTap: () => _request(2),
-                    ),
-                    const SizedBox(height: 8),
-                    _PermCard(
                       icon: Icons.battery_saver_rounded,
-                      title: 'Battery',
-                      desc: 'Prevent alarm delays',
+                      title: 'Battery Optimization',
+                      desc: 'Prevent alarms being delayed by power saving',
                       granted: _battery,
                       required_: false,
                       accent: accent,
-                      onTap: () => _request(3),
+                      onTap: () => _request(2),
                     ),
                   ],
                 ),
@@ -341,7 +313,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                     borderRadius: BorderRadius.circular(14),
                     gradient: !_busy
                         ? LinearGradient(colors: [
-                            accent.withValues(alpha: 0.3),
+                            accent.withValues(alpha: 0.30),
                             accent.withValues(alpha: 0.12),
                           ])
                         : null,
@@ -349,7 +321,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                     border: Border.all(
                       color: _busy
                           ? Colors.white.withValues(alpha: 0.05)
-                          : accent.withValues(alpha: 0.3),
+                          : accent.withValues(alpha: 0.30),
                     ),
                   ),
                   child: Center(
@@ -357,38 +329,34 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                         ? SizedBox(
                             width: 18, height: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: accent),
-                          )
+                                strokeWidth: 2, color: accent))
                         : Text(
-                            allCritical
-                                ? 'CONTINUE  ($_granted/5 granted)'
-                                : 'GRANT ALL PERMISSIONS',
+                            _criticalGranted
+                                ? 'CONTINUE  ($_granted/3 granted)'
+                                : 'GRANT PERMISSIONS',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.4,
                               color: Colors.white.withValues(alpha: 0.9),
-                            ),
-                          ),
+                            )),
                   ),
                 ),
               ),
 
               const SizedBox(height: 8),
 
-              // Skip / Continue
-              if (allCritical)
+              // Skip / Continue link
+              if (_criticalGranted)
                 GestureDetector(
                   onTap: widget.onAllGranted,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Continue without optional permissions',
+                    child: Text('Continue without optional',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.white.withValues(alpha: 0.3),
-                      ),
-                    ),
+                      )),
                   ),
                 )
               else
@@ -396,13 +364,11 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                   onTap: widget.onSkipped,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Skip for now',
+                    child: Text('Skip for now',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.white.withValues(alpha: 0.2),
-                      ),
-                    ),
+                      )),
                   ),
                 ),
 
@@ -413,9 +379,21 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
       ),
     );
   }
+
+  Widget _dot(bool granted, Color accent) {
+    return Container(
+      width: 28, height: 3,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(2),
+        color: granted
+            ? accent.withValues(alpha: 0.60)
+            : Colors.white.withValues(alpha: 0.06),
+      ),
+    );
+  }
 }
 
-// ─── Permission Card ─────────────────────────────────────────────
+// ─── Permission Card ─────────────────────────────────────────────────────────
 
 class _PermCard extends StatelessWidget {
   final IconData icon;
@@ -439,7 +417,7 @@ class _PermCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: granted ? null : onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
@@ -455,7 +433,6 @@ class _PermCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Icon
             Container(
               width: 36, height: 36,
               decoration: BoxDecoration(
@@ -470,8 +447,6 @@ class _PermCard extends StatelessWidget {
                     : Colors.white.withValues(alpha: 0.4)),
             ),
             const SizedBox(width: 12),
-
-            // Text
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -482,8 +457,7 @@ class _PermCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14, fontWeight: FontWeight.w600,
                           color: Colors.white.withValues(alpha: 0.85),
-                        ),
-                      ),
+                        )),
                       const SizedBox(width: 8),
                       _StatusChip(granted: granted, required_: required_),
                     ],
@@ -492,14 +466,11 @@ class _PermCard extends StatelessWidget {
                   Text(desc,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.3),
-                    ),
-                  ),
+                      color: Colors.white.withValues(alpha: 0.30),
+                    )),
                 ],
               ),
             ),
-
-            // Action hint
             if (!granted)
               Icon(Icons.arrow_forward_ios_rounded,
                   size: 12, color: Colors.white.withValues(alpha: 0.15))
@@ -548,8 +519,7 @@ class _StatusChip extends StatelessWidget {
         style: TextStyle(
           fontSize: 8, fontWeight: FontWeight.w700,
           letterSpacing: 0.5, color: fg,
-        ),
-      ),
+        )),
     );
   }
 }

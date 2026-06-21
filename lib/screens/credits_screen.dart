@@ -129,7 +129,7 @@ class CreditsScreen extends StatelessWidget {
           title: 'Ambient Sounds',
           description:
               'Waterfall and nature ambient sounds sourced from Chosic.com and other royalty-free sound libraries.\n\n'
-              'Used for Muraqaba and Pomodoro focus sessions.',
+              'Used for Kahf Mode and Pomodoro focus sessions.',
           license: 'Royalty-Free / Creative Commons',
         ),
         const SizedBox(height: 32),
@@ -245,7 +245,7 @@ class CreditsScreen extends StatelessWidget {
             showLicensePage(
               context: context,
               applicationName: 'Sukoon Launcher',
-              applicationVersion: '1.1.2',
+              applicationVersion: '1.2.1',
               applicationLegalese: '© 2026 Sukoon Launcher. All rights reserved.',
             );
           },

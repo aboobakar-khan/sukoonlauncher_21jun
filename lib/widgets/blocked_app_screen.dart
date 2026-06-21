@@ -20,7 +20,6 @@ class BlockedAppScreen extends StatefulWidget {
 
   /// Show as a full-screen dialog (home clock, app list)
   static void showAsDialog(BuildContext context, String appName) {
-    HapticFeedback.heavyImpact();
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -65,6 +64,7 @@ class _BlockedAppScreenState extends State<BlockedAppScreen>
   @override
   void initState() {
     super.initState();
+    HapticFeedback.heavyImpact();
     _motivation = _motivations[DateTime.now().millisecond % _motivations.length];
     _pulseCtrl = AnimationController(
       vsync: this,
@@ -180,7 +180,6 @@ class _BlockedAppScreenState extends State<BlockedAppScreen>
                   // ── Go Back button ──
                   GestureDetector(
                     onTap: () {
-                      HapticFeedback.lightImpact();
                       _close();
                     },
                     child: Container(

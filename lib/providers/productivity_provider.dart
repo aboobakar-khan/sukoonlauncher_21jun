@@ -262,7 +262,9 @@ class PomodoroNotifier extends StateNotifier<PomodoroTimerState> {
     super.dispose();
   }
 
-  /// Start the internal 1-second ticker (wall-clock anchored)
+  /// Start the internal ticker (wall-clock anchored).
+  /// Uses 1-second interval for UI updates. The wall-clock anchor
+  /// ensures accuracy even if ticks are late (e.g. during background).
   void _ensureTickerRunning() {
     _internalTimer?.cancel();
     _timerAnchor = DateTime.now();
@@ -338,11 +340,11 @@ class PomodoroNotifier extends StateNotifier<PomodoroTimerState> {
     _dailyStatsBox ??= await HiveBoxManager.get('pomodoro_daily_stats');
     final box = _dailyStatsBox!;
     final today = DateTime.now().toIso8601String().substring(0, 10);
-    box.put('date', today);
-    box.put('focusMinutes', state.totalFocusMinutesToday);
-    box.put('breakMinutes', state.totalBreakMinutesToday);
-    box.put('sessions', state.completedSessions);
-    box.put('logs', state.todayLogs.map((l) => l.toJson()).toList());
+    await box.put('date', today);
+    await box.put('focusMinutes', state.totalFocusMinutesToday);
+    await box.put('breakMinutes', state.totalBreakMinutesToday);
+    await box.put('sessions', state.completedSessions);
+    await box.put('logs', state.todayLogs.map((l) => l.toJson()).toList());
     // Also save per-date logs for the history date pills
     await _saveLogsForDate(today, state.todayLogs);
   }
@@ -871,7 +873,7 @@ class AppBlockRuleNotifier extends StateNotifier<List<AppBlockRule>> {
   /// lifetime for nothing (battery waste).
   void _scheduleExpiryTimerIfNeeded() {
     final hasExpirableRules = state.any(
-      (r) => r.isEnabled && r.expiresAt != null,
+      (r) => r.isEnabled && (r.expiresAt != null || r.snoozedUntil != null),
     );
 
     if (hasExpirableRules && _expiryTimer == null) {
@@ -895,6 +897,12 @@ class AppBlockRuleNotifier extends StateNotifier<List<AppBlockRule>> {
     for (final rule in _box!.values) {
       if (rule.isEnabled && rule.expiresAt != null && now.isAfter(rule.expiresAt!)) {
         rule.isEnabled = false;
+        await rule.save();
+        changed = true;
+      }
+      // A snooze that has elapsed ("turns back on tomorrow") resumes the rule.
+      if (rule.snoozedUntil != null && !now.isBefore(rule.snoozedUntil!)) {
+        rule.snoozedUntil = null;
         await rule.save();
         changed = true;
       }
@@ -923,6 +931,8 @@ class AppBlockRuleNotifier extends StateNotifier<List<AppBlockRule>> {
   /// Check if a rule is currently active (not expired).
   bool _isRuleActive(AppBlockRule rule) {
     if (!rule.isEnabled) return false;
+    // Temporarily paused ("turns back on tomorrow") — inactive until it resumes.
+    if (rule.isSnoozed) return false;
 
     // Check expiry first — duration-based rules have an absolute deadline
     if (rule.expiresAt != null) {
@@ -1094,7 +1104,50 @@ class AppBlockRuleNotifier extends StateNotifier<List<AppBlockRule>> {
   List<AppBlockRule> get activeRules {
     return state.where(_isRuleActive).toList();
   }
+
+  /// Force-disable a rule, bypassing isHardBlock guard.
+  /// Used by: 10-tap hard block removal screen & expiry timer.
+  Future<void> forceDisableRule(String id) async {
+    final rule = _box?.get(id);
+    if (rule == null) return;
+    rule.isEnabled = false;
+    rule.snoozedUntil = null;
+    await rule.save();
+    state = _box!.values.toList();
+    _syncToNativeBlocker();
+    _scheduleExpiryTimerIfNeeded();
+  }
+
+  /// Turn a rule fully ON — enabled and not snoozed.
+  Future<void> enableRule(String id) async {
+    final rule = _box?.get(id);
+    if (rule == null) return;
+    rule.isEnabled = true;
+    rule.snoozedUntil = null;
+    rule.breaksTaken = 0;
+    await rule.save();
+    state = _box!.values.toList();
+    _syncToNativeBlocker();
+    _scheduleExpiryTimerIfNeeded();
+  }
+
+  /// Pause a rule until the next local midnight ("turns back on tomorrow").
+  /// The rule stays enabled/scheduled — it just won't block until it resumes.
+  Future<void> snoozeRuleUntilTomorrow(String id) async {
+    final rule = _box?.get(id);
+    if (rule == null) return;
+    final now = DateTime.now();
+    final tomorrow =
+        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    rule.isEnabled = true;
+    rule.snoozedUntil = tomorrow;
+    await rule.save();
+    state = _box!.values.toList();
+    _syncToNativeBlocker();
+    _scheduleExpiryTimerIfNeeded();
+  }
 }
+
 
 final appBlockRuleProvider =
     StateNotifierProvider<AppBlockRuleNotifier, List<AppBlockRule>>(

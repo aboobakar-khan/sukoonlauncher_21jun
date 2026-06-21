@@ -31,6 +31,13 @@ class BlockedAppActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // ── SENIOR LOGIC: Launcher Guard ──
+        if (!isSukoonDefaultLauncher()) {
+            Log.d(TAG, "Not default launcher — closing blocking overlay")
+            finish()
+            return
+        }
 
         blockedPackage = intent?.getStringExtra("blocked_package")
         Log.d(TAG, "Blocking overlay shown for: $blockedPackage")
@@ -186,12 +193,23 @@ class BlockedAppActivity : Activity() {
     }
 
     private fun goHome() {
-        // Launch our launcher's main activity
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        // Correct behavior for a premium launcher: 
+        // Always go to the current default home screen (whichever it is).
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         startActivity(intent)
         finish()
+    }
+
+    private fun isSukoonDefaultLauncher(): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) }
+            val resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            resolveInfo?.activityInfo?.packageName == packageName
+        } catch (e: Exception) {
+            false
+        }
     }
 }

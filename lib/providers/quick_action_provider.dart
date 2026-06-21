@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
-import 'package:installed_apps/installed_apps.dart';
+import 'package:flutter/services.dart';
 import '../utils/hive_box_manager.dart';
 
 /// Provider for storing quick action app selections (phone, camera, etc.)
@@ -96,11 +96,12 @@ class QuickActionNotifier extends StateNotifier<QuickActions> {
   /// Auto-detect common phone and camera apps from installed apps
   Future<void> _autoDetectDefaults() async {
     try {
-      final allApps = await InstalledApps.getInstalledApps(
-        excludeSystemApps: false,
-        withIcon: false,
-      );
-      final installedPackages = allApps.map((a) => a.packageName).toSet();
+      final channel = const MethodChannel('com.sukoon.launcher/apps');
+      final raw = await channel.invokeMethod<List<dynamic>>('getLauncherApps');
+      final installedPackages = (raw ?? [])
+          .cast<Map<dynamic, dynamic>>()
+          .map((m) => (m['package'] as String?) ?? '')
+          .toSet();
 
       // Auto-detect phone app
       if (state.phoneApp == null) {
@@ -145,11 +146,12 @@ class QuickActionNotifier extends StateNotifier<QuickActions> {
   Future<void> autoDetectCamera() async {
     if (state.cameraApp != null) return; // already set
     try {
-      final allApps = await InstalledApps.getInstalledApps(
-        excludeSystemApps: false,
-        withIcon: false,
-      );
-      final installed = allApps.map((a) => a.packageName).toSet();
+      final channel = const MethodChannel('com.sukoon.launcher/apps');
+      final raw = await channel.invokeMethod<List<dynamic>>('getLauncherApps');
+      final installed = (raw ?? [])
+          .cast<Map<dynamic, dynamic>>()
+          .map((m) => (m['package'] as String?) ?? '')
+          .toSet();
       for (final camera in _commonCameras) {
         if (installed.contains(camera)) {
           debugPrint('QuickAction: Auto-detected camera app: $camera');

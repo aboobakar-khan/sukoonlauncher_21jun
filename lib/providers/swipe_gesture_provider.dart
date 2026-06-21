@@ -7,7 +7,6 @@ import '../utils/hive_box_manager.dart';
 enum SwipeAction {
   notifications('Notification Panel', 'Pull down system notifications', Icons.notifications_outlined),
   quickAccess('Quick Access', 'Samsung-style search & app grid', Icons.search_rounded),
-  appList('App List', 'Open full app drawer', Icons.apps_rounded),
   openApp('Open App', 'Launch a specific app', Icons.launch_rounded),
   none('Do Nothing', 'Disable this gesture', Icons.do_not_disturb_alt_rounded);
 
@@ -26,7 +25,7 @@ class SwipeGestureState {
 
   const SwipeGestureState({
     this.swipeDown = SwipeAction.notifications,
-    this.swipeUp = SwipeAction.appList,
+    this.swipeUp = SwipeAction.quickAccess,
     this.swipeDownApp,
     this.swipeUpApp,
   });
@@ -62,7 +61,7 @@ class SwipeGestureNotifier extends StateNotifier<SwipeGestureState> {
     try {
       _box = await HiveBoxManager.get(_boxName);
       final downStr = _box?.get(_keyDown, defaultValue: SwipeAction.notifications.name) as String?;
-      final upStr = _box?.get(_keyUp, defaultValue: SwipeAction.appList.name) as String?;
+      final upStr = _box?.get(_keyUp, defaultValue: SwipeAction.quickAccess.name) as String?;
       final downApp = _box?.get(_keyDownApp) as String?;
       final upApp = _box?.get(_keyUpApp) as String?;
       state = SwipeGestureState(
@@ -72,7 +71,7 @@ class SwipeGestureNotifier extends StateNotifier<SwipeGestureState> {
         ),
         swipeUp: SwipeAction.values.firstWhere(
           (a) => a.name == upStr,
-          orElse: () => SwipeAction.appList,
+          orElse: () => SwipeAction.quickAccess,
         ),
         swipeDownApp: downApp,
         swipeUpApp: upApp,

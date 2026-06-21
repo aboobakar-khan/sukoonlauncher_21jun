@@ -134,7 +134,6 @@ class _ZenModeActiveScreenState extends ConsumerState<ZenModeActiveScreen>
       await _audioPlayer.resume();
       if (mounted) setState(() => _isMelodyPlaying = true);
     }
-    HapticFeedback.lightImpact();
   }
   
   Future<void> _changeSound(int index) async {
@@ -142,7 +141,6 @@ class _ZenModeActiveScreenState extends ConsumerState<ZenModeActiveScreen>
     await _audioPlayer.stop();
     await _audioPlayer.play(AssetSource(_sounds[index]['file']!));
     if (mounted) setState(() => _isMelodyPlaying = true);
-    HapticFeedback.lightImpact();
   }
   
   // ─── Native Lockdown ───
@@ -180,6 +178,7 @@ class _ZenModeActiveScreenState extends ConsumerState<ZenModeActiveScreen>
     _timer?.cancel();
     _immersiveEnforcer?.cancel();
     _releaseAudio();
+    HapticFeedback.heavyImpact();
 
     // End Zen Mode — calls setZenMode(false) on native side,
     // which also dismisses ZenLockScreenActivity and restores DND.
@@ -190,7 +189,6 @@ class _ZenModeActiveScreenState extends ConsumerState<ZenModeActiveScreen>
     _disableNativeLockdown().then((_) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       if (mounted) {
-        HapticFeedback.heavyImpact();
         Navigator.of(context).pop();
       }
     });
@@ -445,7 +443,6 @@ class _ZenModeActiveScreenState extends ConsumerState<ZenModeActiveScreen>
   }
 
   Future<void> _openCamera() async {
-    HapticFeedback.lightImpact();
     try {
       // Use native method that handles unpin + camera launch
       await _blockerChannel.invokeMethod('openCamera');

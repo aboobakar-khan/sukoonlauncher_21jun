@@ -282,7 +282,6 @@ class _RamadanDashboardWidgetState
     final prayed = ramadan.isTaraweehTonight;
     return GestureDetector(
       onTap: () {
-        HapticFeedback.mediumImpact();
         ref.read(ramadanProvider.notifier).toggleTaraweeh();
       },
       child: AnimatedContainer(
@@ -347,7 +346,6 @@ class _RamadanDashboardWidgetState
     final fastColor = Color.lerp(accent, Colors.white, 0.25)!;
     return GestureDetector(
       onTap: () {
-        HapticFeedback.mediumImpact();
         ref.read(ramadanProvider.notifier).toggleFasting();
       },
       child: AnimatedContainer(
@@ -828,7 +826,6 @@ class _WeekHistoryPanel extends ConsumerWidget {
                     onTap: isFuture
                         ? null
                         : () {
-                            HapticFeedback.lightImpact();
                             notifier.toggleTaraweehForNight(night);
                           },
                     child: _HistoryCheckChip(
@@ -844,7 +841,6 @@ class _WeekHistoryPanel extends ConsumerWidget {
                     onTap: isFuture
                         ? null
                         : () {
-                            HapticFeedback.lightImpact();
                             notifier.toggleFastingForDay(night);
                           },
                     child: _HistoryCheckChip(

@@ -138,7 +138,6 @@ class _ScreenTimeSettingsScreenState
           // ── Screen Time Analytics card ──────────────────────────
           const SizedBox(height: 12),
           _AnalyticsCard(accent: accent, onTap: () async {
-            HapticFeedback.selectionClick();
             final notifier = ref.read(screenTimeProvider.notifier);
             final alreadyHasData = ref.read(screenTimeProvider).dailyStats.isNotEmpty;
             if (!alreadyHasData) unawaited(notifier.refreshDailyStats());
@@ -161,7 +160,6 @@ class _ScreenTimeSettingsScreenState
               accent: accent,
               value: state.featureEnabled,
               onChanged: (v) {
-                HapticFeedback.selectionClick();
                 ref.read(screenTimeProvider.notifier).setEnabled(v);
                 if (v) _ensureUsagePermission();
               },
@@ -177,7 +175,6 @@ class _ScreenTimeSettingsScreenState
                     granted: granted,
                     accent: accent,
                     onTap: () async {
-                      HapticFeedback.selectionClick();
                       if (!granted) {
                         await _ensureUsagePermission();
                         if (mounted) setState(() {});
@@ -198,7 +195,6 @@ class _ScreenTimeSettingsScreenState
                 Expanded(child: _SectionLabel(label: 'Monitored apps')),
                 GestureDetector(
                   onTap: () {
-                    HapticFeedback.selectionClick();
                     _showAppSearchSheet(context, allApps, state, accent);
                   },
                   child: Container(
@@ -230,7 +226,6 @@ class _ScreenTimeSettingsScreenState
 
             if (configuredApps.isEmpty)
               _EmptyAppsState(accent: accent, onAddTap: () {
-                HapticFeedback.selectionClick();
                 _showAppSearchSheet(context, allApps, state, accent);
               })
             else
@@ -251,14 +246,12 @@ class _ScreenTimeSettingsScreenState
                           enabled: entry.value.enabled,
                           accent: accent,
                           onChanged: (v) {
-                            HapticFeedback.selectionClick();
                             ref.read(screenTimeProvider.notifier).updateAppTimer(
                                   entry.key,
                                   enabled: v,
                                 );
                           },
                           onRemove: () {
-                            HapticFeedback.lightImpact();
                             ref.read(screenTimeProvider.notifier).removeAppTimer(entry.key);
                           },
                         ),
@@ -363,7 +356,6 @@ class _ScreenTimeSettingsScreenState
                             ),
                             dense: true,
                             onTap: () {
-                              HapticFeedback.selectionClick();
                               ref
                                   .read(screenTimeProvider.notifier)
                                   .addAppTimer(
@@ -610,7 +602,7 @@ class _AnalyticsCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Screen Time',
+                    'App Timer',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,

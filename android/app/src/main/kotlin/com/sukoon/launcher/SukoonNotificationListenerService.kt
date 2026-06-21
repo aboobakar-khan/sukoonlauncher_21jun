@@ -74,6 +74,18 @@ class SukoonNotificationListenerService : NotificationListenerService() {
         @Volatile
         private var serviceInstance: SukoonNotificationListenerService? = null
 
+        /** Check if Sukoon is the default home launcher */
+        private fun isSukoonDefaultLauncher(context: Context?): Boolean {
+            val ctx = context ?: return false
+            return try {
+                val intent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) }
+                val resolveInfo = ctx.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                resolveInfo?.activityInfo?.packageName == ctx.packageName
+            } catch (e: Exception) {
+                false
+            }
+        }
+
         /** Update the set of allowed packages and persist + sweep active notifications */
         fun updateAllowedPackages(packages: Set<String>, enabled: Boolean, context: Context? = null) {
             val wasEnabled = filterEnabled
@@ -418,8 +430,17 @@ class SukoonNotificationListenerService : NotificationListenerService() {
         }
     }
 
+    private fun isSukoonDefaultLauncher() = isSukoonDefaultLauncher(applicationContext)
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
+
+        // ── SENIOR LOGIC: Launcher Guard ──
+        // Only provide the notification filtering service if Sukoon is the active home.
+        // If the user has switched launchers, let all notifications pass through normally.
+        if (!isSukoonDefaultLauncher()) {
+            return
+        }
 
         // Skip our own notifications (blocker service, alarms, hint, etc.)
         if (sbn.packageName == packageName) return

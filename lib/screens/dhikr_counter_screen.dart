@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tasbih_provider.dart';
-import '../providers/theme_provider.dart';
+
 import 'dhikr_history_pro_dashboard_redesigned.dart';
 
 /// Full-screen Dhikr Counter — Immersive Islamic counting experience
@@ -21,7 +21,8 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
   static const _darkBg = Color(0xFF121212);
   static const _cardBg = Color(0xFF1E1E1E);
   static const _gold = Color(0xFFC2A366);
-  Color get _green => ref.watch(themeColorProvider).color;
+  static const _green = Color(0xFF8BA883); // Fresh Leaf Sage
+  static const _leafSoft = Color(0xFFE8F1E7);
   static const _textPrimary = Color(0xFFE8E8E8);
   static const _textSecondary = Color(0xFFB0B0B0);
   static const _textTertiary = Color(0xFF808080);
@@ -65,7 +66,7 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
   }
 
   void _incrementCount() {
-    HapticFeedback.lightImpact();
+    HapticFeedback.selectionClick(); // Light tactile feedback for each dhikr
     _tapCtrl.forward().then((_) => _tapCtrl.reverse());
     ref.read(tasbihProvider.notifier).increment();
   }
@@ -102,11 +103,16 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                     const SizedBox(height: 12),
                     _buildDhikrPills(tasbih.selectedDhikrIndex),
 
-                    const Spacer(flex: 2),
+                    const Spacer(flex: 1),
+                    
+                    // 7-Day Streak Section
+                    _buildWeekStreak(tasbih),
+
+                    const SizedBox(height: 12),
 
                     // Arabic text + meaning
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
                         children: [
                           Text(
@@ -115,9 +121,15 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: _textPrimary,
-                              fontSize: 30,
-                              fontWeight: FontWeight.w500,
-                              height: 1.5,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w600,
+                              height: 1.4,
+                              shadows: [
+                                Shadow(
+                                  color: _gold.withAlpha(20),
+                                  blurRadius: 10,
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -125,40 +137,48 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                             dhikr['meaning']!,
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: _textTertiary.withValues(alpha: 0.8),
-                              fontSize: 13,
-                              fontStyle: FontStyle.italic,
+                              color: _textTertiary.withAlpha(220),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.3,
                             ),
                           ),
                         ],
                       ),
                     ),
 
-                    const Spacer(flex: 2),
+                    const Spacer(flex: 1),
 
                     // Giant counter circle — TAP AREA
-                    GestureDetector(
+                      GestureDetector(
                       onTap: _incrementCount,
                       child: ScaleTransition(
                         scale: _scaleAnim,
                         child: Container(
-                          width: 164,
-                          height: 164,
+                          width: 220,
+                          height: 220,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: _cardBg,
+                            color: _cardBg.withValues(alpha: 0.7),
+                            gradient: RadialGradient(
+                              colors: [
+                                Colors.white.withValues(alpha: 0.05),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.4, 1.0],
+                            ),
                             border: Border.all(
                               color: done
                                   ? _green.withValues(alpha: 0.3)
-                                  : _border,
-                              width: 2,
+                                  : Colors.white.withValues(alpha: 0.05),
+                              width: 1.0,
                             ),
                             boxShadow: [
                               BoxShadow(
                                 color: (done ? _green : _gold)
-                                    .withValues(alpha: 0.10),
-                                blurRadius: 30,
-                                spreadRadius: 4,
+                                    .withValues(alpha: 0.1),
+                                blurRadius: 40,
+                                spreadRadius: -5,
                               ),
                             ],
                           ),
@@ -167,20 +187,20 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                             children: [
                               // Progress ring
                               SizedBox(
-                                width: 140,
-                                height: 140,
+                                width: 190,
+                                height: 190,
                                 child: TweenAnimationBuilder<double>(
                                   tween: Tween(begin: 0, end: progress),
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeOutCubic,
                                   builder: (context2, val, child2) {
                                     return CustomPaint(
-                                      size: const Size(140, 140),
+                                      size: const Size(190, 190),
                                       painter: _RingPainter(
                                         progress: val,
                                         bgColor: _border.withValues(alpha: 0.35),
                                         fgColor: done ? _green : _gold,
-                                        stroke: 4.5,
+                                        stroke: 4.0,
                                       ),
                                     );
                                   },
@@ -199,9 +219,9 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                                       key: ValueKey(tasbih.currentCount),
                                       style: TextStyle(
                                         color: done ? _green : _textPrimary,
-                                        fontSize: 42,
+                                        fontSize: 64,
                                         fontWeight: FontWeight.w700,
-                                        letterSpacing: -1.5,
+                                        letterSpacing: -2.0,
                                         fontFeatures: const [FontFeature.tabularFigures()],
                                       ),
                                     ),
@@ -211,7 +231,8 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                                     style: TextStyle(
                                       color: _textSecondary.withValues(alpha: 0.6),
                                       fontSize: 14,
-                                      fontWeight: FontWeight.w500,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 1.0,
                                     ),
                                   ),
                                 ],
@@ -222,49 +243,38 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                       ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 20),
 
                     // Virtue text
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: (done ? _green : _gold).withValues(alpha: 0.15),
+                        color: (done ? _green : _gold).withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: (done ? _green : _gold).withValues(alpha: 0.12),
+                          width: 0.8,
+                        ),
                       ),
                       child: Text(
                         dhikr['virtue']!,
                         style: TextStyle(
                           color: done
-                              ? _green.withValues(alpha: 0.9)
-                              : _gold.withValues(alpha: 0.9),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.2,
+                              ? _green.withValues(alpha: 0.85)
+                              : _gold.withValues(alpha: 0.85),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.3,
                         ),
                       ),
                     ),
 
                     const Spacer(flex: 2),
 
-                    // Action bar
-                    _buildActionBar(tasbih),
-
-                    const Spacer(flex: 1),
-
-                    // Stats row
-                    _buildStatsRow(tasbih),
-
-                    const SizedBox(height: 16),
-
-                    // Bottom hint
-                    Text(
-                      'Tap the circle to count  ·  Scroll pills to change dhikr',
-                      style: TextStyle(
-                        color: _textTertiary.withValues(alpha: 0.5),
-                        fontSize: 10,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
+                    // Consolidated Action & Stats Bar
+                    _buildCompactBottomDock(tasbih),
+                    
+                    const SizedBox(height: 10),
                   ],
                 ),
               ),
@@ -272,6 +282,55 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
           ),
         ),
       ),
+    );
+  }
+
+  // ── Week Streak Section ──
+  Widget _buildWeekStreak(TasbihState state) {
+    final now = DateTime.now();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(7, (index) {
+        final date = now.subtract(Duration(days: 6 - index));
+        final dateKey = date.toIso8601String().split('T')[0];
+        final dayName = ['M', 'T', 'W', 'T', 'F', 'S', 'S'][date.weekday - 1];
+        final isToday = index == 6;
+        final hasCount = (state.dailyHistory[dateKey] ?? 0) > 0;
+        
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(
+            children: [
+              Text(
+                dayName,
+                style: TextStyle(
+                  color: isToday ? _gold : _textTertiary.withValues(alpha: 0.4),
+                  fontSize: 10,
+                  fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: hasCount ? _green.withValues(alpha: 0.2) : _cardBg.withValues(alpha: 0.5),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: hasCount ? _green : (isToday ? _gold.withValues(alpha: 0.3) : _border),
+                    width: isToday ? 1.5 : 1,
+                  ),
+                ),
+                child: Center(
+                  child: hasCount 
+                    ? Icon(Icons.check_rounded, color: _green, size: 12)
+                    : (isToday ? Container(width: 4, height: 4, decoration: const BoxDecoration(color: _gold, shape: BoxShape.circle)) : null),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
     );
   }
 
@@ -286,7 +345,6 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
           // Back
           GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               Navigator.of(context).pop();
             },
             child: Container(
@@ -327,7 +385,6 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
           // History / Dashboard
           GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               Navigator.of(context).push(
                 PageRouteBuilder(
                   pageBuilder: (c1, a1, a2) => const DhikrHistoryProDashboard(),
@@ -348,24 +405,31 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
               );
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: _gold.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _gold.withValues(alpha: 0.3)),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: _gold.withValues(alpha: 0.6), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: _gold.withValues(alpha: 0.15),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.insights_rounded, color: _gold, size: 15),
-                  const SizedBox(width: 5),
+                  Icon(Icons.insights_rounded, color: _gold, size: 16),
+                  const SizedBox(width: 6),
                   Text(
                     'Analytics',
                     style: TextStyle(
                       color: _gold,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.2,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
                     ),
                   ),
                 ],
@@ -393,7 +457,6 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
             padding: const EdgeInsets.only(right: 8),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.selectionClick();
                 ref.read(tasbihProvider.notifier).selectDhikr(i);
               },
               child: AnimatedContainer(
@@ -426,53 +489,71 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
   // ────────────────────────
   // ACTION BAR (reset, target)
   // ────────────────────────
-  Widget _buildActionBar(TasbihState tasbih) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildActionBtn(Icons.refresh_rounded, 'Reset', () {
-          HapticFeedback.mediumImpact();
-          ref.read(tasbihProvider.notifier).reset();
-        }),
-        const SizedBox(width: 12),
-        Container(width: 1, height: 24, color: _border),
-        const SizedBox(width: 12),
-        _buildActionBtn(Icons.flag_rounded, '${tasbih.targetCount}', () {
-          _showTargetPicker(context, tasbih.targetCount);
-        }),
-        const SizedBox(width: 12),
-        Container(width: 1, height: 24, color: _border),
-        const SizedBox(width: 12),
-        _buildActionBtn(Icons.skip_next_rounded, 'Next', () {
-          HapticFeedback.selectionClick();
-          final next = (tasbih.selectedDhikrIndex + 1) % _dhikrList.length;
-          ref.read(tasbihProvider.notifier).selectDhikr(next);
-        }),
-      ],
+  Widget _buildCompactBottomDock(TasbihState tasbih) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _cardBg.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildMiniActionBtn(Icons.refresh_rounded, 'Reset', () {
+                ref.read(tasbihProvider.notifier).reset();
+              }),
+              Container(width: 1, height: 16, color: Colors.white.withValues(alpha: 0.1)),
+              _buildMiniActionBtn(Icons.flag_rounded, 'Target: ${tasbih.targetCount}', () {
+                _showTargetPicker(context, tasbih.targetCount);
+              }, highlight: true),
+              Container(width: 1, height: 16, color: Colors.white.withValues(alpha: 0.1)),
+              _buildMiniActionBtn(Icons.skip_next_rounded, 'Next', () {
+                final next = (tasbih.selectedDhikrIndex + 1) % _dhikrList.length;
+                ref.read(tasbihProvider.notifier).selectDhikr(next);
+              }),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(height: 1, color: Colors.white.withValues(alpha: 0.03)),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildMiniStat('Today', '${tasbih.todayCount}', _gold),
+              _buildMiniStat('Total', _fmtNum(tasbih.totalAllTime), _textSecondary),
+              _buildMiniStat('Goals', '${tasbih.completedTargets}', _textSecondary),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildActionBtn(IconData icon, String label, VoidCallback onTap) {
+  Widget _buildMiniActionBtn(IconData icon, String label, VoidCallback onTap, {bool highlight = false}) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _border),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: highlight ? BoxDecoration(
+          color: _gold.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+        ) : null,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: _textSecondary, size: 16),
+            Icon(icon, color: highlight ? _gold : _textSecondary, size: 14),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                color: _textSecondary,
+                color: highlight ? _gold : _textSecondary,
                 fontSize: 12,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -481,52 +562,25 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
     );
   }
 
-  // ────────────────────────
-  // STATS ROW
-  // ────────────────────────
-  Widget _buildStatsRow(TasbihState tasbih) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _border),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildStatItem('Today', '${tasbih.todayCount}', _gold),
-            Container(width: 1, height: 28, color: _border),
-            _buildStatItem('Total', _fmtNum(tasbih.totalAllTime), _green),
-            Container(width: 1, height: 28, color: _border),
-            _buildStatItem('Targets', '${tasbih.completedTargets}', _textSecondary),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value, Color color) {
+  Widget _buildMiniStat(String label, String value, Color color) {
     return Column(
       children: [
         Text(
           value,
           style: TextStyle(
             color: color,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.5,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 2),
         Text(
           label,
           style: TextStyle(
-            color: _textTertiary.withValues(alpha: 0.7),
+            color: _textTertiary.withValues(alpha: 0.6),
             fontSize: 10,
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
           ),
         ),
       ],
@@ -573,7 +627,6 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                 final sel = t == currentTarget;
                 return GestureDetector(
                   onTap: () {
-                    HapticFeedback.selectionClick();
                     ref.read(tasbihProvider.notifier).setTarget(t);
                     Navigator.pop(ctx);
                   },

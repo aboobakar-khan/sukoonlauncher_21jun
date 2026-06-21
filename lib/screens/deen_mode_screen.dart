@@ -350,7 +350,6 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
   }
 
   void _onDhikrTap() {
-    HapticFeedback.lightImpact();
     ref.read(tasbihProvider.notifier).increment();
     _countAnimCtrl.forward().then((_) => _countAnimCtrl.reverse());
   }
@@ -453,7 +452,6 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
         children: [
           GestureDetector(
             onTap: () async {
-              HapticFeedback.lightImpact();
               final shouldLeave = await _showExitFriction();
               if (shouldLeave && context.mounted) {
                 await _disableDnd();
@@ -500,7 +498,6 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
           // Dark / Light mode toggle
           GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               ref.read(islamicThemeProvider.notifier).toggle();
             },
             child: AnimatedContainer(
@@ -811,7 +808,6 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
               // Dhikr selector — tap to cycle
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   final next = (tasbih.selectedDhikrIndex + 1) % dhikrList.length;
                   ref.read(tasbihProvider.notifier).selectDhikr(next);
                 },
@@ -1036,12 +1032,10 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildSmallAction(Icons.refresh_rounded, 'Reset', () {
-                HapticFeedback.mediumImpact();
                 ref.read(tasbihProvider.notifier).reset();
               }),
               const SizedBox(width: 24),
               _buildSmallAction(Icons.skip_next_rounded, 'Next', () {
-                HapticFeedback.selectionClick();
                 final next = (tasbih.selectedDhikrIndex + 1) % dhikrList.length;
                 ref.read(tasbihProvider.notifier).selectDhikr(next);
               }),
@@ -1125,7 +1119,6 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
                 textColor: textPrimary,
                 subtitleColor: textPrimary.withValues(alpha: 0.45),
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   Navigator.push(context, SmoothForwardRoute(child: const _DeenSubScreen(title: 'Quran', child: SurahListScreen())));
                 },
               ),
@@ -1141,7 +1134,6 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
                 textColor: textPrimary,
                 subtitleColor: textPrimary.withValues(alpha: 0.45),
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   Navigator.push(context, SmoothForwardRoute(child: _DeenSubScreen(title: 'Hadith', child: MinimalistHadithScreen())));
                 },
               ),
@@ -1157,7 +1149,6 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
                 textColor: textPrimary,
                 subtitleColor: textPrimary.withValues(alpha: 0.45),
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   Navigator.push(context, SmoothForwardRoute(child: const _DeenSubScreen(title: 'Dua & Adhkar', child: MinimalistDuaScreen())));
                 },
               ),
@@ -1274,7 +1265,6 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
           ),
           GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               _openDialer();
             },
             child: Container(
@@ -1423,7 +1413,6 @@ class _DeenSubScreen extends ConsumerWidget {
                     // Light / Dark toggle — same as DeenModeScreen header
                     GestureDetector(
                       onTap: () {
-                        HapticFeedback.lightImpact();
                         ref.read(islamicThemeProvider.notifier).toggle();
                       },
                       child: AnimatedContainer(

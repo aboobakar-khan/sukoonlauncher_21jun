@@ -51,7 +51,6 @@ class AmbientSoundWidget extends ConsumerWidget {
             if (soundState.currentSoundId != null) ...[
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   ref.read(ambientSoundProvider.notifier).togglePlayPause();
                 },
                 child: Icon(
@@ -123,7 +122,6 @@ class AmbientSoundWidget extends ConsumerWidget {
                 final isActive = soundState.currentSoundId == sound.id;
                 return GestureDetector(
                   onTap: () {
-                    HapticFeedback.lightImpact();
                     ref
                         .read(ambientSoundProvider.notifier)
                         .selectAndPlay(sound.id);

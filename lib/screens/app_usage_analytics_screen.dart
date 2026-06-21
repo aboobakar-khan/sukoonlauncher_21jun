@@ -100,7 +100,7 @@ class _AppUsageAnalyticsScreenState
         elevation: 0,
         centerTitle: true,
         title: Text(
-          'Screen Time',
+          'App Timer',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -180,14 +180,13 @@ class _AppUsageAnalyticsScreenState
             ),
             const SizedBox(height: 8),
             Text(
-              'Grant "Usage Access" permission so Sukoon can show your screen time data.',
+              'Grant "Usage Access" permission so Sukoon can show your app timer data.',
               style: TextStyle(fontSize: 13, color: _textMed, height: 1.5),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 28),
             GestureDetector(
               onTap: () async {
-                HapticFeedback.mediumImpact();
                 await NativeAppBlockerService.requestUsageStatsPermission();
                 await Future.delayed(const Duration(milliseconds: 800));
                 await _load();
@@ -435,7 +434,6 @@ class _AppUsageAnalyticsScreenState
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
-                      HapticFeedback.selectionClick();
                       setState(() => _selectedDay = originalIndex);
                     },
                     child: Column(
@@ -594,7 +592,6 @@ class _AppUsageAnalyticsScreenState
                     // ── Timer toggle icon ──
                     GestureDetector(
                       onTap: () async {
-                        HapticFeedback.selectionClick();
                         if (hasTimer) {
                           await ref.read(screenTimeProvider.notifier).removeAppTimer(app.packageName);
                         } else {

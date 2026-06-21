@@ -190,7 +190,6 @@ class ThemeColorPickerScreen extends ConsumerWidget {
     final isLight = ref.read(themeColorProvider).isLight;
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
         ref.read(themeColorProvider.notifier).setThemeColor(theme);
         Navigator.of(context).pop();
       },

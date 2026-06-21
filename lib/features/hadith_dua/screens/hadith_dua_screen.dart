@@ -209,11 +209,18 @@ class _HadithDuaScreenState extends ConsumerState<HadithDuaScreen>
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF161B22),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(20),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
         border: Border.all(
           color: isDaily
-              ? const Color(0xFFC2A366).withValues(alpha: 0.3)
-              : Colors.white.withValues(alpha: 0.08),
+              ? const Color(0xFFC2A366).withAlpha(40)
+              : Colors.white.withAlpha(5),
         ),
       ),
       child: Column(
@@ -250,7 +257,6 @@ class _HadithDuaScreenState extends ConsumerState<HadithDuaScreen>
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   ref.read(bookmarksProvider.notifier).toggleDuaBookmark(dua);
                 },
                 child: Icon(
@@ -267,10 +273,18 @@ class _HadithDuaScreenState extends ConsumerState<HadithDuaScreen>
           // Arabic text
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(8),
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFFC2A366).withAlpha(15),
+                  Colors.white.withAlpha(5),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFC2A366).withAlpha(15)),
             ),
             child: Text(
               dua.arabicText,
@@ -331,12 +345,10 @@ class _HadithDuaScreenState extends ConsumerState<HadithDuaScreen>
                 Clipboard.setData(ClipboardData(
                   text: '${dua.arabicText}\n\n${dua.transliteration}\n\n${dua.translation}',
                 ));
-                HapticFeedback.lightImpact();
                 _showSnackBar('Copied to clipboard');
               }),
               const SizedBox(width: 8),
               _buildActionButton(Icons.share, 'Share', () {
-                HapticFeedback.lightImpact();
                 Share.share(dua.shareableText);
               }),
             ],
@@ -350,10 +362,10 @@ class _HadithDuaScreenState extends ConsumerState<HadithDuaScreen>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: const Color(0xFF21262D),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -477,7 +489,6 @@ class _HadithDuaScreenState extends ConsumerState<HadithDuaScreen>
           }).toList(),
           onChanged: (value) {
             if (value != null) {
-              HapticFeedback.selectionClick();
               ref.read(selectedCollectionProvider.notifier).state = value;
             }
           },
@@ -489,7 +500,6 @@ class _HadithDuaScreenState extends ConsumerState<HadithDuaScreen>
   Widget _buildGradeFilterButton(HadithGrade? selectedGrade) {
     return PopupMenuButton<HadithGrade?>(
       onSelected: (grade) {
-        HapticFeedback.selectionClick();
         ref.read(selectedGradeFilterProvider.notifier).state = grade;
       },
       itemBuilder: (context) => [
@@ -716,11 +726,18 @@ class _EnhancedHadithCardState extends ConsumerState<EnhancedHadithCard> {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF161B22),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(20),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
         border: Border.all(
           color: widget.isDaily
-              ? const Color(0xFFC2A366).withValues(alpha: 0.3)
-              : Colors.white.withValues(alpha: 0.08),
+              ? const Color(0xFFC2A366).withAlpha(40)
+              : Colors.white.withAlpha(5),
         ),
       ),
       child: Column(
@@ -952,10 +969,18 @@ class _EnhancedHadithCardState extends ConsumerState<EnhancedHadithCard> {
       onToggle: () => setState(() => _showArabic = !_showArabic),
       content: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(8),
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFFC2A366).withAlpha(15),
+              Colors.white.withAlpha(5),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFC2A366).withAlpha(15)),
         ),
         child: Column(
           children: [
@@ -975,14 +1000,13 @@ class _EnhancedHadithCardState extends ConsumerState<EnhancedHadithCard> {
               child: GestureDetector(
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: widget.hadith.arabicText!));
-                  HapticFeedback.lightImpact();
                   _showSnackBar('Arabic text copied');
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFF21262D),
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1026,14 +1050,13 @@ class _EnhancedHadithCardState extends ConsumerState<EnhancedHadithCard> {
           GestureDetector(
             onTap: () {
               Clipboard.setData(ClipboardData(text: widget.hadith.text));
-              HapticFeedback.lightImpact();
               _showSnackBar('Translation copied');
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: const Color(0xFF21262D),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1122,7 +1145,6 @@ class _EnhancedHadithCardState extends ConsumerState<EnhancedHadithCard> {
           // Copy all
           _buildActionButton(Icons.copy_all, 'Copy All', () {
             Clipboard.setData(ClipboardData(text: widget.hadith.shareableText));
-            HapticFeedback.lightImpact();
             _showSnackBar('Copied to clipboard');
           }),
           
@@ -1130,7 +1152,6 @@ class _EnhancedHadithCardState extends ConsumerState<EnhancedHadithCard> {
           
           // Share
           _buildActionButton(Icons.share, 'Share', () {
-            HapticFeedback.lightImpact();
             Share.share(widget.hadith.shareableText);
           }),
           
@@ -1254,7 +1275,6 @@ class _EnhancedHadithCardState extends ConsumerState<EnhancedHadithCard> {
                     onPressed: () {
                       ref.read(bookmarksProvider.notifier).toggleHadithBookmark(widget.hadith);
                       Navigator.pop(context);
-                      HapticFeedback.lightImpact();
                     },
                     child: const Text(
                       'Remove',
@@ -1284,7 +1304,6 @@ class _EnhancedHadithCardState extends ConsumerState<EnhancedHadithCard> {
                   collectionName: collection,
                 );
                 Navigator.pop(context);
-                HapticFeedback.lightImpact();
                 _showSnackBar('Saved to $collection');
               },
             )),

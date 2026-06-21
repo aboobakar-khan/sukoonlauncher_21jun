@@ -182,7 +182,6 @@ class _FilteredNotificationsTab extends ConsumerWidget {
           _ClearAllBar(
             accent: accent,
             onClear: () {
-              HapticFeedback.mediumImpact();
               ref.read(notificationFilterProvider.notifier).dismissAll();
             },
           ),
@@ -393,7 +392,6 @@ class _SettingsTab extends ConsumerWidget {
           enabled: filterState.featureEnabled,
           accent: accent,
           onChanged: (v) {
-            HapticFeedback.selectionClick();
             ref.read(notificationFilterProvider.notifier).setEnabled(v);
           },
         ),
@@ -423,7 +421,6 @@ class _SettingsTab extends ConsumerWidget {
                 allowed: isAllowed,
                 accent: accent,
                 onChanged: (_) {
-                  HapticFeedback.selectionClick();
                   ref.read(notificationFilterProvider.notifier).toggleApp(app.packageName);
                 },
               );
@@ -500,7 +497,6 @@ class _PermissionBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        HapticFeedback.mediumImpact();
         NativeAppBlockerService.requestNotificationListenerPermission();
       },
       child: Container(

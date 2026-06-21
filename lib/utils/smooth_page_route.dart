@@ -15,10 +15,25 @@ class SmoothForwardRoute<T> extends CupertinoPageRoute<T> {
   SmoothForwardRoute({required Widget child, super.settings})
       : super(builder: (_) => child);
 
-  // Slightly faster than default Cupertino (400ms) for a snappier feel
+  /// True when the OS "reduce motion" accessibility setting is enabled.
+  ///
+  /// Read from the live navigator context (available once the route is pushed)
+  /// so navigation collapses to a near-instant cut for motion-sensitive users
+  /// instead of sliding. 1ms (not zero) keeps the route lifecycle intact.
+  bool get _reducedMotion {
+    final ctx = navigator?.context;
+    if (ctx == null) return false;
+    return MediaQuery.maybeOf(ctx)?.disableAnimations ?? false;
+  }
+
+  // Slightly faster than default Cupertino (400ms) for a snappier feel.
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 350);
+  Duration get transitionDuration => _reducedMotion
+      ? const Duration(milliseconds: 1)
+      : const Duration(milliseconds: 350);
 
   @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 300);
+  Duration get reverseTransitionDuration => _reducedMotion
+      ? const Duration(milliseconds: 1)
+      : const Duration(milliseconds: 300);
 }

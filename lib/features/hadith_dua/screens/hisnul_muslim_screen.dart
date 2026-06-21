@@ -444,7 +444,6 @@ class _HisnulMuslimScreenState extends ConsumerState<HisnulMuslimScreen> {
           // Bookmark toggle
           GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               setState(() => _showBookmarksOnly = !_showBookmarksOnly);
             },
             child: Container(
@@ -488,7 +487,6 @@ class _HisnulMuslimScreenState extends ConsumerState<HisnulMuslimScreen> {
                 final selected = _typeFilter == t;
                 return GestureDetector(
                   onTap: () {
-                    HapticFeedback.selectionClick();
                     setState(() => _typeFilter = t);
                   },
                   child: AnimatedContainer(
@@ -536,7 +534,6 @@ class _HisnulMuslimScreenState extends ConsumerState<HisnulMuslimScreen> {
               padding: const EdgeInsets.only(right: 6),
               child: GestureDetector(
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   setState(() => _categoryFilter = null);
                 },
                 child: Chip(
@@ -569,7 +566,6 @@ class _HisnulMuslimScreenState extends ConsumerState<HisnulMuslimScreen> {
             padding: const EdgeInsets.only(right: 6),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.selectionClick();
                 setState(() =>
                     _categoryFilter = _categoryFilter == cat ? null : cat);
               },
@@ -776,7 +772,6 @@ class _HisnulCardState extends ConsumerState<_HisnulCard>
                         GestureDetector(
                           onTap: () {
                             Clipboard.setData(ClipboardData(text: e.arabic));
-                            HapticFeedback.lightImpact();
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: const Text('Arabic text copied'),
@@ -1108,7 +1103,6 @@ class _HisnulCardState extends ConsumerState<_HisnulCard>
             // Minus button
             GestureDetector(
               onTap: () {
-                HapticFeedback.lightImpact();
                 ref.read(_hisnulCountProvider.notifier).decrement(e.id);
               },
               child: Container(
@@ -1183,7 +1177,6 @@ class _HisnulCardState extends ConsumerState<_HisnulCard>
             // Plus button
             GestureDetector(
               onTap: () {
-                HapticFeedback.mediumImpact();
                 ref
                     .read(_hisnulCountProvider.notifier)
                     .increment(e.id, max);
@@ -1204,7 +1197,6 @@ class _HisnulCardState extends ConsumerState<_HisnulCard>
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   ref.read(_hisnulCountProvider.notifier).reset(e.id);
                 },
                 child: Icon(Icons.refresh_rounded,
@@ -1225,7 +1217,6 @@ class _HisnulCardState extends ConsumerState<_HisnulCard>
           // Bookmark
           GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               ref.read(_hisnulBookmarksProvider.notifier).toggle(e.id);
             },
             child: Icon(
@@ -1242,7 +1233,6 @@ class _HisnulCardState extends ConsumerState<_HisnulCard>
           // Share
           GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
               Share.share(e.shareableText);
             },
             child: Icon(Icons.share_outlined,
@@ -1253,7 +1243,6 @@ class _HisnulCardState extends ConsumerState<_HisnulCard>
           GestureDetector(
             onTap: () {
               Clipboard.setData(ClipboardData(text: e.shareableText));
-              HapticFeedback.lightImpact();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: const Text('Copied to clipboard'),

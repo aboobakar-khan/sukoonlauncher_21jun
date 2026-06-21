@@ -28,79 +28,72 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
   late AnimationController _countAnimController;
   late Animation<double> _scaleAnimation;
 
-  // Dhikr list with Arabic and virtues — authentic from Hadith
+  // Dhikr list perfectly aligned with Dhikr.presets in tasbih_provider
   static const List<Map<String, String>> _dhikrList = [
     {
-      'arabic': 'سُبْحَانَ اللهِ',
-      'transliteration': 'SubhanAllah',
-      'meaning': 'Glory be to Allah',
-      'virtue': 'A tree planted in Jannah',
+      'arabic': 'سُبْحَانَ اللَّهِ', 'transliteration': 'SubhanAllah',
+      'meaning': 'Glory be to Allah', 'virtue': 'A tree planted in Jannah',
     },
     {
-      'arabic': 'الْحَمْدُ لِلَّهِ',
-      'transliteration': 'Alhamdulillah',
-      'meaning': 'All praise is for Allah',
-      'virtue': 'Fills the scales',
+      'arabic': 'الْحَمْدُ لِلَّهِ', 'transliteration': 'Alhamdulillah',
+      'meaning': 'Praise be to Allah', 'virtue': 'Fills the scales',
     },
     {
-      'arabic': 'اللهُ أَكْبَرُ',
-      'transliteration': 'Allahu Akbar',
-      'meaning': 'Allah is the Greatest',
-      'virtue': 'Fills the heavens',
+      'arabic': 'اللَّهُ أَكْبَرُ', 'transliteration': 'Allahu Akbar',
+      'meaning': 'Allah is the Greatest', 'virtue': 'Fills the heavens',
     },
     {
-      'arabic': 'لَا إِلَٰهَ إِلَّا اللهُ',
-      'transliteration': 'La ilaha illallah',
-      'meaning': 'None worthy of worship but Allah',
-      'virtue': 'Best of all dhikr',
+      'arabic': 'لَا إِلَٰهَ إِلَّا اللَّهُ', 'transliteration': 'La ilaha illallah',
+      'meaning': 'There is no god but Allah', 'virtue': 'Best of all dhikr',
     },
     {
-      'arabic': 'أَسْتَغْفِرُ اللهَ',
-      'transliteration': 'Astaghfirullah',
-      'meaning': 'I seek forgiveness from Allah',
-      'virtue': 'Sins forgiven like sea foam',
+      'arabic': 'أَسْتَغْفِرُ اللَّهَ', 'transliteration': 'Astaghfirullah',
+      'meaning': 'I seek forgiveness from Allah', 'virtue': 'Sins forgiven like sea foam',
     },
     {
-      'arabic': 'سُبْحَانَ اللهِ وَبِحَمْدِهِ',
-      'transliteration': 'SubhanAllahi wa bihamdihi',
-      'meaning': 'Glory and praise be to Allah',
-      'virtue': 'Beloved words to Allah — Muslim',
+      'arabic': 'أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ', 'transliteration': 'Astaghfirullah al-Azeem',
+      'meaning': 'I seek forgiveness from Allah, the Mighty', 'virtue': 'Brings peace to the heart',
     },
     {
-      'arabic': 'سُبْحَانَ اللهِ الْعَظِيمِ',
-      'transliteration': 'SubhanAllahil Azeem',
-      'meaning': 'Glory be to Allah, the Almighty',
-      'virtue': 'Heavy on the scales — Bukhari',
+      'arabic': 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ', 'transliteration': 'SubhanAllahi wa bihamdihi',
+      'meaning': 'Glory and praise be to Allah', 'virtue': 'Beloved words to Allah — Muslim',
     },
     {
-      'arabic': 'لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللهِ',
-      'transliteration': 'La hawla wa la quwwata illa billah',
-      'meaning': 'No power except with Allah',
-      'virtue': 'A treasure of Jannah — Bukhari',
+      'arabic': 'سُبْحَانَ اللَّهِ الْعَظِيمِ', 'transliteration': 'SubhanAllah al-Azeem',
+      'meaning': 'Glory be to Allah, the Mighty', 'virtue': 'Heavy on the scales — Bukhari',
     },
     {
-      'arabic': 'حَسْبُنَا اللهُ وَنِعْمَ الْوَكِيلُ',
-      'transliteration': 'HasbunAllahu wa ni\'mal wakeel',
-      'meaning': 'Allah is sufficient for us',
-      'virtue': 'Said by Ibrahim (AS) — Bukhari',
+      'arabic': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ', 'transliteration': 'Allahumma salli ala Muhammad',
+      'meaning': 'O Allah, send blessings upon Muhammad ﷺ', 'virtue': '10 blessings for each one — Muslim',
     },
     {
-      'arabic': 'اللَّهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ',
-      'transliteration': 'Allahumma salli ala Muhammad',
-      'meaning': 'O Allah, send blessings upon Muhammad ﷺ',
-      'virtue': '10 blessings for each one — Muslim',
+      'arabic': 'لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ', 'transliteration': 'La hawla wa la quwwata illa billah',
+      'meaning': 'There is no power except with Allah', 'virtue': 'A treasure of Jannah — Bukhari',
     },
     {
-      'arabic': 'لَا إِلَٰهَ إِلَّا اللهُ وَحْدَهُ لَا شَرِيكَ لَهُ',
-      'transliteration': 'La ilaha illallahu wahdahu la shareeka lah',
-      'meaning': 'None worthy of worship but Allah alone',
-      'virtue': '100x = freeing 10 slaves — Bukhari',
+      'arabic': 'سُبْحَانَ اللَّهِ وَالْحَمْدُ لِلَّهِ...', 'transliteration': 'SubhanAllah wal Hamdulillah...',
+      'meaning': 'Glory to Allah, Praise to Allah...', 'virtue': 'Four most beloved words to Allah',
     },
     {
-      'arabic': 'رَبِّ اغْفِرْ لِي وَتُبْ عَلَيَّ',
-      'transliteration': 'Rabbighfirli wa tub alayya',
-      'meaning': 'My Lord, forgive me and accept my repentance',
-      'virtue': 'Prophet ﷺ said it 100x daily — Abu Dawud',
+      'arabic': 'يَا اللَّهُ', 'transliteration': 'Ya Allah',
+      'meaning': 'O Allah', 'virtue': 'Calling upon the Creator',
+    },
+    {
+      'arabic': 'يَا رَحْمَٰنُ', 'transliteration': 'Ya Rahman',
+      'meaning': 'O Most Merciful', 'virtue': 'Invoking His endless mercy',
+    },
+    {
+      'arabic': 'يَا رَحِيمُ', 'transliteration': 'Ya Raheem',
+      'meaning': 'O Most Compassionate', 'virtue': 'Invoking His special compassion',
+    },
+    {
+      'arabic': '...', 'transliteration': 'Custom Count',
+      'meaning': 'Use for any dhikr', 'virtue': 'Your personal adhkar',
+    },
+    // New authentic Durood requested
+    {
+      'arabic': 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ... إِنَّكَ حَمِيدٌ مَجِيدٌ', 'transliteration': 'Durood Ibrahim',
+      'meaning': 'O Allah, send prayers upon Muhammad ﷺ and his family', 'virtue': 'The most authentic Durood in Salah — Bukhari',
     },
   ];
 
@@ -123,7 +116,7 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
   }
 
   void _incrementCount() {
-    HapticFeedback.lightImpact();
+    HapticFeedback.mediumImpact();
     _countAnimController.forward().then((_) => _countAnimController.reverse());
     ref.read(tasbihProvider.notifier).increment();
   }
@@ -228,7 +221,6 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
             padding: const EdgeInsets.only(right: 6),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.selectionClick();
                 ref.read(tasbihProvider.notifier).selectDhikr(i);
               },
               child: AnimatedContainer(
@@ -266,18 +258,22 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
         child: Column(
           children: [
             // Arabic text
-            Text(
-              dhikr['arabic']!,
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w400,
-                color: tc.text.withValues(alpha: 0.95),
-                height: 1.6,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                dhikr['arabic']!,
+                style: TextStyle(
+                  // Dynamic font size for longer texts like Durood Ibrahim
+                  fontSize: dhikr['arabic']!.length > 80 ? 18 : (dhikr['arabic']!.length > 40 ? 22 : 26),
+                  fontWeight: FontWeight.w400,
+                  color: tc.text.withValues(alpha: 0.95),
+                  height: 1.6,
+                ),
+                textDirection: TextDirection.rtl,
+                textAlign: TextAlign.center,
               ),
-              textDirection: TextDirection.rtl,
-              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(
               dhikr['meaning']!,
               style: TextStyle(fontSize: 11, color: tc.textSecondary.withValues(alpha: 0.7), fontStyle: FontStyle.italic),
@@ -287,8 +283,8 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
 
             // Progress ring + count
             SizedBox(
-              width: 80,
-              height: 80,
+              width: 120, // increased from 80
+              height: 120,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -298,12 +294,12 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
                     curve: Curves.easeOutCubic,
                     builder: (_, val, _) {
                       return CustomPaint(
-                        size: const Size(80, 80),
+                        size: const Size(120, 120),
                         painter: _ArcPainter(
                           progress: val,
                           bgColor: tc.surface.withValues(alpha: 0.3),
-                          fgColor: done ? tc.green : accent,
-                          stroke: 4,
+                          fgColor: done ? const Color(0xFF4ADE80) : const Color(0xFF81C784), // light leaf green line
+                          stroke: 5, // slightly thicker stroke
                         ),
                       );
                     },
@@ -321,7 +317,7 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
                           style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.w300,
-                            color: done ? tc.green : tc.text.withValues(alpha: 0.9),
+                            color: done ? const Color(0xFF4ADE80) : tc.text.withValues(alpha: 0.9),
                             fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
@@ -339,7 +335,7 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
               dhikr['virtue']!,
               style: TextStyle(
                 fontSize: 9,
-                color: done ? tc.green.withValues(alpha: 0.7) : tc.textSecondary.withValues(alpha: 0.6),
+                color: done ? const Color(0xFF4ADE80).withValues(alpha: 0.8) : tc.textSecondary.withValues(alpha: 0.6),
                 letterSpacing: 0.3,
               ),
               textAlign: TextAlign.center,
@@ -358,7 +354,6 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
         children: [
           GestureDetector(
             onTap: () {
-              HapticFeedback.mediumImpact();
               ref.read(tasbihProvider.notifier).reset();
             },
             child: Padding(
@@ -423,7 +418,6 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
                 final sel = t == currentTarget;
                 return GestureDetector(
                   onTap: () {
-                    HapticFeedback.selectionClick();
                     ref.read(tasbihProvider.notifier).setTarget(t);
                     Navigator.pop(ctx);
                   },

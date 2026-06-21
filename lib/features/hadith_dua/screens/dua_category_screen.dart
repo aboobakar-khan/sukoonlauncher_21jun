@@ -185,7 +185,6 @@ class DuaCategoryScreen extends ConsumerWidget {
           count: count,
           tc: tc,
           onTap: () {
-            HapticFeedback.lightImpact();
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => DuaListScreen(

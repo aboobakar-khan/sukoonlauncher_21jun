@@ -100,11 +100,11 @@ const List<_PermEntry> _permissions = [
   ),
   _PermEntry(
     name: 'Usage Access',
-    subtitle: 'Screen Time · App Stats',
+    subtitle: 'App Timer · App Stats',
     purpose:
         'Reads how long you spend in each app to show daily screen-time stats and '
         'enforce app-blocking time limits. Data stays on-device — never uploaded.',
-    feature: '📊 Screen Time Analytics',
+    feature: '📊 App Timer Analytics',
     icon: Icons.bar_chart_outlined,
     color: Color(0xFF2196F3),
     importance: _PermImportance.critical,
@@ -241,7 +241,6 @@ class _AppPermissionsScreenState extends State<AppPermissionsScreen> {
   }
 
   Future<void> _toggle(_PermEntry p) async {
-    HapticFeedback.lightImpact();
     final granted = _isGranted(p);
 
     // Already granted → go to exact settings page so user can turn it OFF

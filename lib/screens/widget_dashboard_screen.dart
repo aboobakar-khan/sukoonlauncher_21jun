@@ -18,9 +18,10 @@ import '../providers/arabic_font_provider.dart';
 import '../providers/saved_verses_provider.dart';
 import '../providers/premium_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/widget_visibility_provider.dart';
 import '../features/prayer_alarm/widgets/prayer_alarm_dashboard_card.dart';
 import '../widgets/charity_log_widget.dart';
-
+import '../widgets/edge_to_edge.dart';
 
 
 /// Widget Dashboard — Minimalist Redesign
@@ -48,7 +49,19 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
     final currentTheme = ref.watch(themeColorProvider);
     final accent = currentTheme.color;
 
-    return Container(
+    // Watch visibility state — rebuilds when user toggles widgets
+    ref.watch(widgetVisibilityProvider);
+    final visNotifier = ref.read(widgetVisibilityProvider.notifier);
+
+    // Bottom inset so the last card / footer clears the gesture pill while the
+    // scroll area itself still extends edge-to-edge behind it.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    // SafeArea top keeps content below the status bar; bottom is handled
+    // manually via [bottomInset] so the scroll view fills to the screen edge.
+    return EdgeToEdge(
+      bottom: false,
+      child: Container(
       color: Colors.transparent,
       child: Column(
         children: [
@@ -64,52 +77,56 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
                 children: [
-                  const SizedBox(height: 48),
-
-                  // ─── Prayer Alarm (Salah Wake) — TOP since it shows Ramadan times ──
-                  const PrayerAlarmDashboardCard(),
-
-                  _sectionGap(accent),
-
-                  // ─── Verse of the Moment ───────────────────────
-                  _buildVerseCard(ref, arabicFont, accent),
-
-                  _sectionGap(accent),
-
-                  // ─── Dhikr Summary — tap to open counter ──
-                  const DhikrSummaryWidget(),
-
-                  _sectionGap(accent),
-
-                  // ─── Prayer Tracker ─────────────────────────────
-                  const PrayerTrackerWidget(),
-
-                  _sectionGap(accent),
-
-                  // ─── Deen Mode — Quick Entry (below Salah tracker) ──
-                  _buildDeenModeCard(context, ref, accent),
-
-                  _sectionGap(accent),
-
-                  // ─── Charity Log ───────────────────────────────
-                  const CharityLogWidget(),
-
-                  _sectionGap(accent),
-
-                  // ─── Calendar ──────────────────────────────────
-                  CalendarWidget(onExpand: () {}),
-
-                  const SizedBox(height: 24),
-
-                  // ─── Support Sukoon — subtle donation CTA ────────────────
-                  _buildSupportRow(context, accent),
-
                   const SizedBox(height: 12),
 
-                  // ─── Rate us on Play Store ────────────────
-                  _buildRateUsRow(context, accent),
+                  // ─── Prayer Alarm (Salah Wake) — TOP since it shows Ramadan times ──
+                  if (visNotifier.isVisible(DashboardWidget.prayerAlarm)) ...[
+                    const PrayerAlarmDashboardCard(),
+                    _sectionGap(accent),
+                  ],
 
-                  const SizedBox(height: 32),
+                  // ─── Verse of the Moment ───────────────────────
+                  if (visNotifier.isVisible(DashboardWidget.verseOfMoment)) ...[
+                    _buildVerseCard(ref, arabicFont, accent),
+                    _sectionGap(accent),
+                  ],
+
+                  // ─── Dhikr Summary — tap to open counter ──
+                  if (visNotifier.isVisible(DashboardWidget.dhikrSummary)) ...[
+                    const DhikrSummaryWidget(),
+                    _sectionGap(accent),
+                  ],
+
+                  // ─── Prayer Tracker ─────────────────────────────
+                  if (visNotifier.isVisible(DashboardWidget.prayerTracker)) ...[
+                    const PrayerTrackerWidget(),
+                    _sectionGap(accent),
+                  ],
+
+
+                  // ─── Deen Mode — Quick Entry (below Salah tracker) ──
+                  if (visNotifier.isVisible(DashboardWidget.deenMode)) ...[
+                    _buildDeenModeCard(context, ref, accent),
+                    _sectionGap(accent),
+                  ],
+
+                  // ─── Charity Log ───────────────────────────────
+                  if (visNotifier.isVisible(DashboardWidget.charityLog)) ...[
+                    const CharityLogWidget(),
+                    _sectionGap(accent),
+                  ],
+
+                  // ─── Calendar ──────────────────────────────────
+                  if (visNotifier.isVisible(DashboardWidget.calendar)) ...[
+                    CalendarWidget(onExpand: () {}),
+                  ],
+
+                  const SizedBox(height: 20),
+
+                  // ─── Compact footer: Widgets · Donate · Rate · Settings ──
+                  _buildFooter(context, accent),
+
+                  SizedBox(height: 28 + bottomInset),
                 ],
               ),
             ),     // closes RepaintBoundary child (SingleChildScrollView)
@@ -117,6 +134,100 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
           ),       // closes Expanded child
         ],
       ),
+      ),         // closes Container child of EdgeToEdge
+    );
+  }
+
+  // ── Minimal footer: four icon-text pills in one row ──
+  Widget _buildFooter(BuildContext context, Color accent) {
+    final items = [
+      (
+        icon: Icons.dashboard_customize_outlined,
+        label: 'Widgets',
+        color: accent,
+        onTap: () {
+          _showEditWidgetsSheet(context, accent);
+        },
+      ),
+      (
+        icon: Icons.favorite_rounded,
+        label: 'Donate',
+        color: Colors.white,
+        onTap: () => showDonationScreen(context),
+      ),
+      (
+        icon: Icons.star_border_rounded,
+        label: 'Rate',
+        color: Colors.white,
+        onTap: () async {
+          await requestSukoonReview();
+        },
+      ),
+      (
+        icon: Icons.settings_outlined,
+        label: 'Settings',
+        color: Colors.white,
+        onTap: () {
+          Navigator.push(
+            context,
+            SmoothForwardRoute(child: const SettingsScreen()),
+          );
+        },
+      ),
+    ];
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (int i = 0; i < items.length; i++) ...[
+          if (i > 0)
+            Container(
+              width: 1,
+              height: 14,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+          Expanded(
+            child: GestureDetector(
+              onTap: items[i].onTap,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      items[i].icon,
+                      size: 16,
+                      color: (i == 1 ? Colors.redAccent : items[i].color)
+                          .withValues(alpha: (i == 0 || i == 1) ? 0.75 : 0.3),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      items[i].label,
+                      style: TextStyle(
+                        color: items[i].color.withValues(alpha: (i == 0 || i == 1) ? 0.65 : 0.28),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // ── Bottom sheet: toggle widget visibility ──
+  void _showEditWidgetsSheet(BuildContext context, Color accent) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _EditWidgetsSheet(accent: accent),
     );
   }
 
@@ -146,7 +257,6 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
 
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
         if (!isPremium) {
           showPremiumPaywall(context, triggerFeature: 'Deen Mode');
           return;
@@ -192,7 +302,7 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Quran · Dhikr · Calls only — distraction free',
+                        'Quran · Dhikr · Calls only',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.35),
                           fontSize: 11,
@@ -290,7 +400,6 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
                         // Bookmark icon
                         GestureDetector(
                           onTap: () {
-                            HapticFeedback.lightImpact();
                             if (isSaved) {
                               ref.read(savedVersesProvider.notifier).removeVerse(verseKey);
                             } else {
@@ -425,176 +534,228 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
     );
   }
 
-  // ── Support Sukoon — donation CTA ──
-  Widget _buildSupportRow(BuildContext context, Color accent) {
-    return GestureDetector(
-      onTap: () => showDonationScreen(context),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0D0D0D),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: accent.withValues(alpha: 0.20),
+  /// Try native in-app review first, fall back to Play Store URL
+  // Replaced by shared requestSukoonReview() from review_helper.dart
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// EDIT WIDGETS BOTTOM SHEET
+// ═══════════════════════════════════════════════════════════════════
+
+class _EditWidgetsSheet extends ConsumerWidget {
+  final Color accent;
+  const _EditWidgetsSheet({required this.accent});
+
+  // Map DashboardWidget → icon
+  static IconData _iconFor(DashboardWidget w) {
+    switch (w) {
+      case DashboardWidget.prayerAlarm:
+        return Icons.mosque_rounded;
+      case DashboardWidget.verseOfMoment:
+        return Icons.auto_awesome_rounded;
+      case DashboardWidget.dhikrSummary:
+        return Icons.radio_button_checked_rounded;
+      case DashboardWidget.prayerTracker:
+        return Icons.check_circle_outline_rounded;
+      case DashboardWidget.qadhaTracker:
+        return Icons.replay_rounded;
+      case DashboardWidget.deenMode:
+        return Icons.nights_stay_rounded;
+      case DashboardWidget.charityLog:
+        return Icons.volunteer_activism_rounded;
+      case DashboardWidget.calendar:
+        return Icons.calendar_month_rounded;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch visibility state so toggles reflect live
+    ref.watch(widgetVisibilityProvider);
+    final notifier = ref.read(widgetVisibilityProvider.notifier);
+    final screenHeight = MediaQuery.of(context).size.height;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: screenHeight * 0.65,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(
+          top: BorderSide(color: accent.withValues(alpha: 0.15)),
+          left: BorderSide(color: accent.withValues(alpha: 0.08)),
+          right: BorderSide(color: accent.withValues(alpha: 0.08)),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Handle bar ──
+          const SizedBox(height: 12),
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withValues(alpha: 0.04),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Brand icon
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: accent.withValues(alpha: 0.15)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(11),
-                child: Image.asset(
-                  'assets/app_icon.png',
-                  width: 44,
-                  height: 44,
-                  fit: BoxFit.cover,
+          const SizedBox(height: 16),
+
+          // ── Title ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              children: [
+                Icon(Icons.dashboard_customize_outlined,
+                    size: 18, color: accent.withValues(alpha: 0.7)),
+                const SizedBox(width: 10),
+                Text(
+                  'Edit Widgets',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                  ),
                 ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.close_rounded,
+                        size: 16, color: Colors.white.withValues(alpha: 0.5)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              'Toggle widgets to show or hide them on your dashboard',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.35),
+                fontSize: 12,
+                height: 1.4,
               ),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Support Sukoon',
-                    style: TextStyle(
-                      color: accent.withValues(alpha: 0.90),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
+          ),
+          const SizedBox(height: 16),
+
+          // ── Widget list ──
+          Flexible(
+            child: Builder(builder: (context) {
+              // Filter out qadhaTracker — moved to Prayer Analytics page
+              final widgets = DashboardWidget.values
+                  .where((w) => w != DashboardWidget.qadhaTracker)
+                  .toList();
+              return ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPadding + 20),
+                itemCount: widgets.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 4),
+                itemBuilder: (context, index) {
+                  final widget = widgets[index];
+                final isVisible = notifier.isVisible(widget);
+
+                return GestureDetector(
+                  onTap: () {
+                    notifier.toggle(widget);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOutCubic,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isVisible
+                          ? accent.withValues(alpha: 0.06)
+                          : Colors.white.withValues(alpha: 0.02),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isVisible
+                            ? accent.withValues(alpha: 0.18)
+                            : Colors.white.withValues(alpha: 0.05),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        // Widget icon
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: isVisible
+                                ? accent.withValues(alpha: 0.12)
+                                : Colors.white.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            _iconFor(widget),
+                            size: 18,
+                            color: isVisible
+                                ? accent.withValues(alpha: 0.8)
+                                : Colors.white.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        // Widget name
+                        Expanded(
+                          child: Text(
+                            widget.label,
+                            style: TextStyle(
+                              color: isVisible
+                                  ? Colors.white.withValues(alpha: 0.85)
+                                  : Colors.white.withValues(alpha: 0.35),
+                              fontSize: 14,
+                              fontWeight:
+                                  isVisible ? FontWeight.w600 : FontWeight.w400,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                        ),
+                        // Toggle switch
+                        SizedBox(
+                          height: 28,
+                          child: FittedBox(
+                            child: Switch.adaptive(
+                              value: isVisible,
+                              onChanged: (_) {
+                                notifier.toggle(widget);
+                              },
+                              activeTrackColor: accent.withValues(alpha: 0.3),
+                              thumbColor: WidgetStateProperty.resolveWith(
+                                (states) => states.contains(WidgetState.selected)
+                                    ? accent
+                                    : Colors.white.withValues(alpha: 0.3),
+                              ),
+                              inactiveTrackColor:
+                                  Colors.white.withValues(alpha: 0.08),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Free forever · Donate as sadaqah jariyah',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: accent.withValues(alpha: 0.25)),
-              ),
-              child: Text(
-                'Donate',
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
+                );
+              },
+              );
+            }),
+          ),
+        ],
       ),
     );
   }
-
-  // ── Compact bottom row: Rate Sukoon + Settings ──
-  Widget _buildRateUsRow(BuildContext context, Color accent) {
-    return Row(
-      children: [
-        // Rate Sukoon
-        Expanded(
-          child: GestureDetector(
-            onTap: () async {
-              HapticFeedback.lightImpact();
-              await requestSukoonReview();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D0D0D),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.star_rounded,
-                      size: 16, color: Colors.amber.withValues(alpha: 0.7)),
-                  const SizedBox(width: 7),
-                  Text(
-                    'Rate Sukoon',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.55),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        // Settings
-        Expanded(
-          child: GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                SmoothForwardRoute(child: const SettingsScreen()),
-              );
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D0D0D),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.settings_outlined,
-                      size: 15, color: Colors.white.withValues(alpha: 0.45)),
-                  const SizedBox(width: 7),
-                  Text(
-                    'Settings',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.55),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Try native in-app review first, fall back to Play Store URL
-  // Replaced by shared requestSukoonReview() from review_helper.dart
 }

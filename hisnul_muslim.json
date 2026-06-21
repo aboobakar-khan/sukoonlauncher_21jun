@@ -1018,5 +1018,142 @@
     "translation": "Glory be to You, O Allah, and praise. I bear witness that none has the right to be worshipped except You. I seek Your forgiveness and turn to You in repentance.",
     "reference": "At-Tirmidhi 3/153, Hisnul Muslim No. 256",
     "reward": "It is an expiation (kaffarah) for whatever sins occurred during the gathering. Whoever says it at the end of a sitting, all the shortcomings of that gathering will be forgiven. (At-Tirmidhi 3/153, authenticated as Sahih)"
+  },
+  {
+    "id": 91,
+    "type": "Dua",
+    "category": "Ramadan",
+    "title": "Upon sighting the Ramadan crescent moon",
+    "arabic": "اللَّهُمَّ أَهِلَّهُ عَلَيْنَا بِالأَمْنِ وَالإِيمَانِ، وَالسَّلاَمَةِ وَالإِسْلاَمِ، وَالتَّوْفِيقِ لِمَا تُحِبُّ وَتَرْضَى، رَبِّي وَرَبُّكَ اللَّهُ",
+    "transliteration": "Allahumma ahillahu 'alayna bil-amni wal-iman, was-salamati wal-islam, wat-tawfiqi lima tuhibbu wa tarda, rabbi wa rabbukallah",
+    "translation": "O Allah, let this moon appear on us with security and faith, with peace and Islam, and with the ability to do what You love and are pleased with. My Lord and your Lord is Allah.",
+    "reference": "At-Tirmidhi 5/504, Ad-Darimi 1/336, Hisnul Muslim No. 176",
+    "reward": "The Prophet ﷺ would say this upon sighting every new moon. Welcoming the moon of Ramadan with this dua establishes the entire month under Allah's blessing, security, and tawfiq from its very first moment. (At-Tirmidhi 5/504)"
+  },
+  {
+    "id": 92,
+    "type": "Dua",
+    "category": "Ramadan",
+    "title": "Breaking the fast at Iftar",
+    "arabic": "ذَهَبَ الظَّمَأُ، وَابْتَلَّتِ الْعُرُوقُ، وَثَبَتَ الأَجْرُ إِنْ شَاءَ اللَّهُ",
+    "transliteration": "Dhahabaz-zama'u wabtallatil-'uruqu wa thabatal-ajru insha'allah",
+    "translation": "The thirst is gone, the veins are moistened, and the reward is confirmed, if Allah wills.",
+    "reference": "Abu Dawud 2/306, Hisnul Muslim No. 202",
+    "reward": "The Prophet ﷺ said: 'The fasting person has at the time of breaking his fast a supplication that is not rejected.' This is the most authentic dua at iftar — the reward for the entire day of fasting is confirmed with these words. (Abu Dawud 2/306, authenticated by Al-Albani)"
+  },
+  {
+    "id": 93,
+    "type": "Dua",
+    "category": "Ramadan",
+    "title": "When someone abuses you while you are fasting",
+    "arabic": "إِنِّي صَائِمٌ، إِنِّي صَائِمٌ",
+    "transliteration": "Inni sa'im, inni sa'im",
+    "translation": "I am fasting. I am fasting.",
+    "reference": "Al-Bukhari 4/103, Muslim 2/806, Hisnul Muslim No. 203",
+    "reward": "The Prophet ﷺ said: 'Fasting is a shield. When one of you is fasting and someone abuses him or fights with him, let him say: I am fasting. I am fasting.' This statement repels Shaytan, preserves the fast, and earns the full reward of patience. (Al-Bukhari 4/103, Muslim 2/806)"
+  },
+  {
+    "id": 94,
+    "type": "Adhkar",
+    "category": "Ramadan",
+    "title": "Seeking Laylatul Qadr in the last 10 nights",
+    "arabic": "اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي",
+    "transliteration": "Allahumma innaka 'afuwwun tuhibbul-'afwa fa'fu 'anni",
+    "translation": "O Allah, You are Most Forgiving, You love forgiveness, so forgive me.",
+    "count": 1,
+    "reference": "At-Tirmidhi 3/153, Ibn Majah 2/1265, Hisnul Muslim No. 206",
+    "reward": "Aisha (ra) asked: 'O Messenger of Allah, if I know which night is Laylatul Qadr, what should I say?' He ﷺ replied: 'Say this dua.' Reciting it on Laylatul Qadr is equivalent to worship for over 83 years — more than a lifetime. (At-Tirmidhi 3/153)"
+  },
+  {
+    "id": 95,
+    "type": "Adhkar",
+    "category": "Ramadan",
+    "title": "Eid Takbir",
+    "arabic": "اللَّهُ أَكْبَرُ، اللَّهُ أَكْبَرُ، لاَ إِلَهَ إِلاَّ اللَّهُ، وَاللَّهُ أَكْبَرُ، اللَّهُ أَكْبَرُ، وَلِلَّهِ الْحَمْدُ",
+    "transliteration": "Allahu akbar, Allahu akbar, la ilaha illallah, wallahu akbar, Allahu akbar, wa lillahil-hamd",
+    "translation": "Allah is the Greatest, Allah is the Greatest. None has the right to be worshipped except Allah. Allah is the Greatest, Allah is the Greatest. And all praise is for Allah.",
+    "count": 1,
+    "reference": "Al-Bukhari (mu'allaqan), Ibn Abi Shaybah 2/1, authenticated by Al-Albani",
+    "reward": "The Companions used to raise their voices with this Takbir from the night of Eid until the Imam came out for prayer. It is the Sunnah of the Ummah on its greatest days — filling the earth with the remembrance of Allah earns immeasurable reward. (Al-Bukhari, authenticated by Al-Albani)"
+  },
+  {
+    "id": 96,
+    "type": "Dua",
+    "category": "Ramadan",
+    "title": "Eid greeting to a fellow Muslim",
+    "arabic": "تَقَبَّلَ اللَّهُ مِنَّا وَمِنْكُمْ",
+    "transliteration": "Taqabbalallahu minna wa minkum",
+    "translation": "May Allah accept from us and from you.",
+    "reference": "Al-Mughni li Ibn Qudamah 2/259, authenticated by Al-Albani",
+    "reward": "This was the greeting of the Companions of the Prophet ﷺ on the day of Eid. Ibn Hajar said its chain is hasan. Saying it to your fellow Muslim means you are making dua for their deeds to be accepted — and the angels say Ameen and the same for you. (Al-Albani, Irwa al-Ghalil 3/124)"
+  },
+  {
+    "id": 97,
+    "type": "Dua",
+    "category": "Ramadan",
+    "title": "Witr Qunut — supplication in the last rak'ah",
+    "arabic": "اللَّهُمَّ اهْدِنِي فِيمَنْ هَدَيْتَ، وَعَافِنِي فِيمَنْ عَافَيْتَ، وَتَوَلَّنِي فِيمَنْ تَوَلَّيْتَ، وَبَارِكْ لِي فِيمَا أَعْطَيْتَ، وَقِنِي شَرَّ مَا قَضَيْتَ، فَإِنَّكَ تَقْضِي وَلاَ يُقْضَى عَلَيْكَ، وَإِنَّهُ لاَ يَذِلُّ مَنْ وَالَيْتَ، تَبَارَكْتَ رَبَّنَا وَتَعَالَيْتَ",
+    "transliteration": "Allahummahdini fiman hadayt, wa 'afini fiman 'afayt, wa tawallani fiman tawallayt, wa barik li fima a'tayt, wa qini sharra ma qadayt, fa innaka taqdi wa la yuqda 'alayk, wa innahu la yadhillu man walayt, tabarakta rabbana wa ta'alayt",
+    "translation": "O Allah, guide me among those You have guided, pardon me among those You have pardoned, turn to me in friendship among those on whom You have turned in friendship, bless me in what You have bestowed, and save me from the evil of what You have decreed. For verily You decree and none can influence You. And he is not humiliated whom You have befriended. Blessed are You, our Lord, and Exalted.",
+    "reference": "Abu Dawud 2/39, At-Tirmidhi 2/328, Hisnul Muslim No. 23",
+    "reward": "The Prophet ﷺ taught this Qunut to Al-Hasan ibn Ali (ra) to recite in Witr. It covers every comprehensive need of the believer: guidance, pardon, divine friendship, blessing, and protection from evil decrees. Reciting it in Witr especially in Ramadan's last nights carries enormous reward. (Abu Dawud 2/39)"
+  },
+  {
+    "id": 98,
+    "type": "Adhkar",
+    "category": "Ramadan",
+    "title": "Abundant istighfar in Ramadan",
+    "arabic": "أَسْتَغْفِرُ اللَّهَ",
+    "transliteration": "Astaghfirullah",
+    "translation": "I seek the forgiveness of Allah.",
+    "count": 100,
+    "reference": "Muslim 4/2075, Hisnul Muslim No. 270",
+    "reward": "The Prophet ﷺ said: 'By Allah, I seek forgiveness from Allah and repent to Him more than seventy times a day.' Ramadan is the month of forgiveness — the Prophet ﷺ said: 'Whoever fasts Ramadan with faith and seeking reward, his past sins are forgiven.' Pairing the fast with abundant istighfar multiplies this expiation. (Al-Bukhari 1/21)"
+  },
+  {
+    "id": 99,
+    "type": "Adhkar",
+    "category": "Ramadan",
+    "title": "Tasbih of Ramadan nights — abundant in Tarawih",
+    "arabic": "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ الْعَظِيمِ",
+    "transliteration": "SubhanAllahi wa bihamdih, SubhanAllahil-'azim",
+    "translation": "Glory be to Allah and praise be to Him. Glory be to Allah, the Most Great.",
+    "count": 100,
+    "reference": "Al-Bukhari 7/168, Muslim 4/2072, Hisnul Muslim No. 72",
+    "reward": "Two phrases light on the tongue, heavy on the scales, beloved to the Most Merciful. The Prophet ﷺ said these are the best words after the four blessed phrases. Filling Ramadan nights with this tasbih multiplies rewards in the month where every good deed is multiplied manifold. (Al-Bukhari 7/168)"
+  },
+  {
+    "id": 100,
+    "type": "Dua",
+    "category": "Ramadan",
+    "title": "Supplication when hearing the adhan of Fajr in Ramadan",
+    "arabic": "اللَّهُمَّ رَبَّ هَذِهِ الدَّعْوَةِ التَّامَّةِ وَالصَّلاَةِ الْقَائِمَةِ، آتِ مُحَمَّداً الْوَسِيلَةَ وَالْفَضِيلَةَ وَابْعَثْهُ مَقَاماً مَحْمُوداً الَّذِي وَعَدْتَهُ",
+    "transliteration": "Allahumma rabba hadhihid-da'watit-tammati was-salatil-qa'imah, ati Muhammadanil-wasilata wal-fadilah, wab'athu maqamam-mahmudan alladhi wa'adtah",
+    "translation": "O Allah, Lord of this perfect call and established prayer, grant Muhammad the privilege of intercession and excellence, and raise him to the praiseworthy station You have promised him.",
+    "reference": "Al-Bukhari 1/152, Hisnul Muslim No. 18",
+    "reward": "The Prophet ﷺ said: 'Whoever says this after hearing the adhan, my intercession will be permitted for him on the Day of Resurrection.' In Ramadan, when the Fajr adhan ends the night of worship and fasting, this dua secures the Prophet's ﷺ intercession as the ultimate reward. (Al-Bukhari 1/152)"
+  },
+  {
+    "id": 101,
+    "type": "Dua",
+    "category": "Ramadan",
+    "title": "Dua for a fasting person who eats at your table",
+    "arabic": "أَفْطَرَ عِنْدَكُمُ الصَّائِمُونَ، وَأَكَلَ طَعَامَكُمُ الأَبْرَارُ، وَصَلَّتْ عَلَيْكُمُ الْمَلاَئِكَةُ",
+    "transliteration": "Aftara 'indakumus-sa'imun, wa akala ta'amakumul-abrar, wa sallat 'alaykumul-mala'ikah",
+    "translation": "May the fasting people break their fast with you, may the righteous eat your food, and may the angels send prayers upon you.",
+    "reference": "Abu Dawud 3/367, Ibn Majah 1/556, Hisnul Muslim No. 201",
+    "reward": "The Prophet ﷺ said: 'Whoever feeds a fasting person to break his fast, he will have a reward equal to his without that detracting from the fasting person's reward in the slightest.' This dua calls down three blessings at once: fasting reward, righteousness, and angelic prayers. (At-Tirmidhi 3/143)"
+  },
+  {
+    "id": 102,
+    "type": "Dua",
+    "category": "Ramadan",
+    "title": "Dua at the completion of Ramadan",
+    "arabic": "اللَّهُمَّ تَقَبَّلْ مِنَّا صِيَامَنَا وَقِيَامَنَا وَرُكُوعَنَا وَسُجُودَنَا وَتِلاَوَتَنَا وَصَدَقَاتِنَا، وَأَتْمِمْ تَقْصِيرَنَا، يَا كَرِيمُ",
+    "transliteration": "Allahumma taqabbal minna siyamana wa qiyamana wa ruku'ana wa sujudana wa tilawatana wa sadaqatina, wa atmim taqsirana, ya Karim",
+    "translation": "O Allah, accept from us our fasting, our night prayers, our bowing, our prostrations, our recitation, and our charity. Complete what we fell short in. O Most Generous.",
+    "reference": "Reported from the Salaf, Ibn Rajab's Lata'if al-Ma'arif, authenticated as a sound supplication",
+    "reward": "The pious predecessors (Salaf) used to make dua for 6 months before Ramadan that Allah allow them to reach it, and for 6 months after it that Allah accept it from them. Ending Ramadan with this comprehensive dua of acceptance is the seal of a complete month of worship. (Ibn Rajab, Lata'if al-Ma'arif)"
   }
 ]
+

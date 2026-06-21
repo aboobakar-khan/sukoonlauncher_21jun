@@ -539,7 +539,6 @@ class _AddCharitySheetState extends State<_AddCharitySheet> {
                 final isSelected = cat == _selectedCategory;
                 return GestureDetector(
                   onTap: () {
-                    HapticFeedback.selectionClick();
                     setState(() => _selectedCategory = cat);
                   },
                   child: AnimatedContainer(
@@ -641,10 +640,8 @@ class _AddCharitySheetState extends State<_AddCharitySheet> {
     final desc = _descCtrl.text.trim();
     final amount = double.tryParse(_amountCtrl.text.trim()) ?? 0;
     if (desc.isEmpty || amount <= 0) {
-      HapticFeedback.heavyImpact();
       return;
     }
-    HapticFeedback.mediumImpact();
     final entry = CharityEntry(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       description: desc,
@@ -847,7 +844,6 @@ class _AllEntriesSheet extends ConsumerWidget {
                         const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () {
-                            HapticFeedback.lightImpact();
                             innerRef
                                 .read(charityLogProvider.notifier)
                                 .removeEntry(entry.id);

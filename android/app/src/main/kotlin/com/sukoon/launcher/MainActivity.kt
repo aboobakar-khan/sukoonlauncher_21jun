@@ -37,12 +37,11 @@ class MainActivity : FlutterActivity() {
     private val ALARM_ACTIVITY_CHANNEL = "com.sukoon.launcher/alarm_activity"
     private val NOTIFICATION_FILTER_CHANNEL = "com.sukoon.launcher/notification_filter"
     private val NAVIGATION_CHANNEL = "com.sukoon.launcher/navigation"
-    private val SHARE_CHANNEL = "com.sukoon.launcher/share"
     private var flashlightOn = false
 
     private var pendingTimesUp: Intent? = null
     private var pendingNotificationFeed: Boolean = false
-    private var pendingShareUrl: String? = null
+    private var pendingPromptTimer: Intent? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Enable edge-to-edge: tell the framework NOT to fit system windows so
@@ -53,8 +52,8 @@ class MainActivity : FlutterActivity() {
 
         handleZenLockIntent(intent)
         handleTimesUpIntent(intent)
+        handlePromptTimerIntent(intent)
         handleNotificationFeedIntent(intent)
-        handleShareIntent(intent)
         super.onCreate(savedInstanceState)
     }
 
@@ -63,8 +62,8 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         handleZenLockIntent(intent)
         handleTimesUpIntent(intent)
+        handlePromptTimerIntent(intent)
         handleNotificationFeedIntent(intent)
-        handleShareIntent(intent)
         // When the user presses the home button while in an external app,
         // Android re-delivers ACTION_MAIN + CATEGORY_HOME to the launcher.
         // Forward this to Flutter so LauncherShell can snap back to the
@@ -86,118 +85,6 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             Log.w("MainActivity", "goHome channel not ready: ${e.message}")
         }
-    }
-
-    /**
-     * Handle YouTube share intent (ACTION_SEND text/plain or ACTION_VIEW).
-     *
-     * Extracts the shared URL and either:
-     *  - Sends it to Flutter immediately (if engine is ready)
-     *  - Stores it in [pendingShareUrl] for delivery in configureFlutterEngine
-     *
-     * Guards against re-processing the same intent on config change by tracking
-     * the last processed intent reference.
-     */
-    private var lastHandledIntent: Intent? = null
-
-    private fun handleShareIntent(intent: Intent?) {
-        if (intent == null) return
-        // Avoid processing the same intent twice (e.g. on orientation change)
-        if (intent === lastHandledIntent) return
-
-        var url: String? = null
-
-        when (intent.action) {
-            Intent.ACTION_SEND -> {
-                if (intent.type == "text/plain") {
-                    val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
-                    url = extractYouTubeUrl(text)
-                }
-            }
-            Intent.ACTION_VIEW -> {
-                val data = intent.data?.toString() ?: return
-                if (isYouTubeUrl(data)) url = data
-            }
-        }
-
-        if (url == null || !isYouTubeUrl(url)) return
-
-        // Mark intent as handled so config-change re-deliveries are ignored
-        lastHandledIntent = intent
-
-        Log.d("MainActivity", "Share intent received: $url")
-
-        // Attempt immediate delivery to a running Flutter engine
-        val delivered = tryDeliverShareUrl(url)
-        if (!delivered) {
-            // Engine not ready (cold start) — store for later delivery
-            pendingShareUrl = url
-            Log.d("MainActivity", "Share URL queued for cold-start delivery: $url")
-        }
-    }
-
-    /**
-     * Try to send a share URL to Flutter via MethodChannel.
-     * Returns true if the message was dispatched (engine was available).
-     */
-    private fun tryDeliverShareUrl(url: String): Boolean {
-        return try {
-            val messenger = flutterEngine?.dartExecutor?.binaryMessenger ?: return false
-            MethodChannel(messenger, SHARE_CHANNEL).invokeMethod("sharedUrl", url)
-            Log.d("MainActivity", "Share URL sent to Flutter: $url")
-            true
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    /**
-     * Extract the first YouTube URL from a string.
-     * YouTube's share sheet sends text like:
-     *   "Surah Al-Fatiha https://youtu.be/XXXXX"
-     * We match the broadest possible YouTube URL pattern.
-     */
-    private fun extractYouTubeUrl(text: String): String? {
-        // Match any http/https URL containing a YouTube domain
-        val regex = Regex("""https?://(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\S*""")
-        val match = regex.find(text)
-        if (match != null) return match.value.trimEnd('.')
-
-        // Fallback: if the whole trimmed string looks like a URL, use it
-        val trimmed = text.trim()
-        return if (trimmed.startsWith("http") && isYouTubeUrl(trimmed)) trimmed else null
-    }
-
-    private fun isYouTubeUrl(url: String): Boolean {
-        return url.contains("youtube.com") || url.contains("youtu.be")
-    }
-
-    /**
-     * Deliver any share URL that arrived before the Flutter engine was ready.
-     * Called from configureFlutterEngine with a short post-frame delay so that
-     * the Dart MethodCallHandler (ShareIntentService.initialize()) is registered.
-     */
-    private fun deliverPendingShare(flutterEngine: FlutterEngine) {
-        val url = pendingShareUrl ?: return
-        // Retry up to 5 times with 300ms intervals to wait for Dart side to register
-        var attempts = 0
-        fun attempt() {
-            if (pendingShareUrl == null) return // already cleared by getInitialSharedUrl
-            attempts++
-            try {
-                MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL)
-                    .invokeMethod("sharedUrl", url)
-                pendingShareUrl = null
-                Log.d("MainActivity", "Pending share URL delivered on attempt $attempts: $url")
-            } catch (e: Exception) {
-                if (attempts < 5) {
-                    window.decorView.postDelayed({ attempt() }, 300)
-                } else {
-                    Log.w("MainActivity", "Failed to deliver pending share URL after $attempts attempts")
-                }
-            }
-        }
-        window.decorView.postDelayed({ attempt() }, 300)
     }
 
     /** Handle notification hint tap — open notification feed */
@@ -232,6 +119,14 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** Handle "prompt_timer" intent from AppBlockerService */
+    private fun handlePromptTimerIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("prompt_timer", false) == true) {
+            pendingPromptTimer = intent
+            Log.d("MainActivity", "Prompt timer intent received for: ${intent.getStringExtra("timer_package")}")
+        }
+    }
+
     private fun handleZenLockIntent(intent: Intent?) {
         val zenLockActive = intent?.getBooleanExtra("zen_lock_active", false) ?: false
         if (zenLockActive || AppBlockerService.isZenMode(this)) {
@@ -260,22 +155,6 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
-        // ── Deliver any pending share URL that arrived during cold start ──
-        // deliverPendingShare handles its own retry delay internally.
-        deliverPendingShare(flutterEngine)
-
-        // ── Share channel: Flutter can also query for initial share URL ──
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "getInitialSharedUrl" -> {
-                    val url = pendingShareUrl
-                    pendingShareUrl = null
-                    result.success(url)
-                }
-                else -> result.notImplemented()
-            }
-        }
 
         // ── Timezone channel (replaces flutter_timezone plugin) ──
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "sukoon/timezone").setMethodCallHandler { call, result ->
@@ -336,6 +215,15 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("UPDATE_ERROR", "Could not update blocked packages: ${e.message}", null)
+                    }
+                }
+                "updateTimerPackages" -> {
+                    try {
+                        val packages = call.argument<List<String>>("packages") ?: emptyList()
+                        AppBlockerService.updateTimerPackages(this, packages.toSet())
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("UPDATE_ERROR", "Could not update timer packages: ${e.message}", null)
                     }
                 }
                 "isServiceRunning" -> {
@@ -606,6 +494,18 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                 }
+                "getPendingPromptTimer" -> {
+                    val intent = pendingPromptTimer
+                    if (intent != null) {
+                        val data = mapOf(
+                            "packageName" to (intent.getStringExtra("timer_package") ?: "")
+                        )
+                        pendingPromptTimer = null
+                        result.success(data)
+                    } else {
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -713,10 +613,10 @@ class MainActivity : FlutterActivity() {
                             intent.data = Uri.parse("package:$packageName")
                             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             
-                            if (intent.resolveActivity(packageManager) != null) {
+                            try {
                                 startActivity(intent)
                                 result.success(true)
-                            } else {
+                            } catch (e: Exception) {
                                 result.error("UNAVAILABLE", "No app found to handle uninstall", null)
                             }
                         } else {
@@ -734,10 +634,10 @@ class MainActivity : FlutterActivity() {
                             intent.data = Uri.parse("package:$packageName")
                             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
                             
-                            if (intent.resolveActivity(packageManager) != null) {
+                            try {
                                 startActivity(intent)
                                 result.success(true)
-                            } else {
+                            } catch (e: Exception) {
                                 result.error("UNAVAILABLE", "No app found to handle app settings", null)
                             }
                         } else {
@@ -912,6 +812,82 @@ class MainActivity : FlutterActivity() {
                 else -> {
                     result.notImplemented()
                 }
+            }
+        }
+
+        // Launcher apps channel — Play-compliant replacement for installed_apps plugin
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.sukoon.launcher/apps").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getLauncherApps" -> {
+                    // Uses ACTION_MAIN + CATEGORY_LAUNCHER — only sees apps the user
+                    // has intentionally installed with a launcher icon.
+                    // No QUERY_ALL_PACKAGES permission required (covered by <queries> in manifest).
+                    Thread {
+                        try {
+                            val intent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_LAUNCHER)
+                            }
+                            @Suppress("DEPRECATION")
+                            val resolveList = packageManager.queryIntentActivities(intent, 0)
+                            val apps = resolveList
+                                .filter { it.activityInfo.packageName != packageName } // exclude self
+                                .map { ri ->
+                                    mapOf(
+                                        "package" to ri.activityInfo.packageName,
+                                        "name"    to ri.loadLabel(packageManager).toString()
+                                    )
+                                }
+                            Handler(Looper.getMainLooper()).post { result.success(apps) }
+                        } catch (e: Exception) {
+                            Handler(Looper.getMainLooper()).post {
+                                result.error("ERROR", "getLauncherApps failed: ${e.message}", null)
+                            }
+                        }
+                    }.start()
+                }
+                "launchApp" -> {
+                    try {
+                        val pkg = call.argument<String>("packageName") ?: ""
+                        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                        if (launchIntent != null) {
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(launchIntent)
+                            result.success(true)
+                        } else {
+                            result.error("NOT_FOUND", "No launch intent for: $pkg", null)
+                        }
+                    } catch (e: Exception) {
+                        result.error("ERROR", "launchApp failed: ${e.message}", null)
+                    }
+                }
+                "getAppName" -> {
+                    val pkg = call.argument<String>("packageName") ?: ""
+                    try {
+                        val info = packageManager.getApplicationInfo(pkg, 0)
+                        val name = packageManager.getApplicationLabel(info).toString()
+                        result.success(name)
+                    } catch (e: Exception) {
+                        result.success(pkg) // fallback to package name
+                    }
+                }
+                "getInstalledApps" -> {
+                    // Legacy — redirect to getLauncherApps for Zen Mode compatibility
+                    Thread {
+                        try {
+                            val intent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_LAUNCHER)
+                            }
+                            @Suppress("DEPRECATION")
+                            val apps = packageManager.queryIntentActivities(intent, 0)
+                                .filter { it.activityInfo.packageName != packageName }
+                                .map { ri -> mapOf("package" to ri.activityInfo.packageName) }
+                            Handler(Looper.getMainLooper()).post { result.success(apps) }
+                        } catch (e: Exception) {
+                            Handler(Looper.getMainLooper()).post { result.error("ERROR", e.message, null) }
+                        }
+                    }.start()
+                }
+                else -> result.notImplemented()
             }
         }
 

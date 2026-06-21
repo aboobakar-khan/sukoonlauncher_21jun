@@ -427,6 +427,9 @@ class AppBlockRule extends HiveObject {
   @HiveField(16)
   DateTime? expiresAt; // For duration-based blocks — auto-disable after this time
 
+  @HiveField(17)
+  DateTime? snoozedUntil; // Paused until this time (usually next midnight) — auto-resumes after
+
   AppBlockRule({
     required this.id,
     required this.name,
@@ -445,8 +448,13 @@ class AppBlockRule extends HiveObject {
     this.maxBreaksPerSession = 3,
     this.isHardBlock = false,
     this.expiresAt,
+    this.snoozedUntil,
   })  : blockedPackages = blockedPackages ?? [],
         activeDays = activeDays ?? [1, 2, 3, 4, 5, 6, 7];
+
+  /// True when the rule is temporarily paused (snoozed) and hasn't resumed yet.
+  bool get isSnoozed =>
+      snoozedUntil != null && DateTime.now().isBefore(snoozedUntil!);
 }
 
 class AppBlockRuleAdapter extends TypeAdapter<AppBlockRule> {
@@ -480,12 +488,15 @@ class AppBlockRuleAdapter extends TypeAdapter<AppBlockRule> {
       expiresAt: fields.containsKey(16) && fields[16] != null
           ? DateTime.fromMillisecondsSinceEpoch(fields[16] as int)
           : null,
+      snoozedUntil: fields.containsKey(17) && fields[17] != null
+          ? DateTime.fromMillisecondsSinceEpoch(fields[17] as int)
+          : null,
     );
   }
 
   @override
   void write(BinaryWriter writer, AppBlockRule obj) {
-    writer.writeByte(17);
+    writer.writeByte(18);
     writer.writeByte(0); writer.write(obj.id);
     writer.writeByte(1); writer.write(obj.name);
     writer.writeByte(2); writer.write(obj.blockedPackages);
@@ -503,6 +514,7 @@ class AppBlockRuleAdapter extends TypeAdapter<AppBlockRule> {
     writer.writeByte(14); writer.write(obj.maxBreaksPerSession);
     writer.writeByte(15); writer.write(obj.isHardBlock);
     writer.writeByte(16); writer.write(obj.expiresAt?.millisecondsSinceEpoch);
+    writer.writeByte(17); writer.write(obj.snoozedUntil?.millisecondsSinceEpoch);
   }
 }
 
