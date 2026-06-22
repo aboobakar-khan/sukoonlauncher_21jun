@@ -5,11 +5,11 @@ import '../../../providers/theme_provider.dart';
 import '../services/prayer_alarm_service.dart';
 
 // ─── Minimalist Permission Setup ─────────────────────────────────
-// Only the permissions actually needed:
+// Only the two permissions actually needed for prayer alarms:
 //   • Notifications — required   (show prayer alerts)
 //   • Exact Alarms  — required   (fire at precise time)
-//   • Battery       — optional   (prevent alarm delays)
-// Display Over Apps is NOT used — removed.
+// Battery optimization & Display-Over-Apps prompts removed — they are
+// intrusive nags that aren't required for the feature to work.
 
 class PermissionSetupScreen extends ConsumerStatefulWidget {
   final VoidCallback onAllGranted;
@@ -29,7 +29,6 @@ class PermissionSetupScreen extends ConsumerStatefulWidget {
 class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   bool _notif = false;
   bool _alarm = false;
-  bool _battery = false;
   bool _busy = false;
 
   @override
@@ -41,10 +40,9 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
   Future<void> _checkAll() async {
     final n = await Permission.notification.isGranted;
     final a = await PrayerAlarmService.canScheduleExactAlarms();
-    final b = await Permission.ignoreBatteryOptimizations.isGranted;
     if (!mounted) return;
-    setState(() { _notif = n; _alarm = a; _battery = b; });
-    // Auto-complete if both critical permissions are already granted
+    setState(() { _notif = n; _alarm = a; });
+    // Auto-complete if both permissions are already granted
     if (n && a) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) widget.onAllGranted();
@@ -52,7 +50,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
     }
   }
 
-  int get _granted => [_notif, _alarm, _battery].where((v) => v).length;
+  int get _granted => [_notif, _alarm].where((v) => v).length;
   bool get _criticalGranted => _notif && _alarm;
 
   Future<void> _request(int step) async {
@@ -78,17 +76,11 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
           if (mounted) setState(() => _alarm = ok);
         }
         break;
-      case 2: // Battery optimization
-        await PrayerAlarmService.openBatterySettings();
-        await Future.delayed(const Duration(milliseconds: 800));
-        final re = await Permission.ignoreBatteryOptimizations.isGranted;
-        if (mounted) setState(() => _battery = re);
-        break;
     }
 
     if (mounted) setState(() => _busy = false);
 
-    // Auto-complete if critical permissions are now granted
+    // Auto-complete if both permissions are now granted
     if (_notif && _alarm) {
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) widget.onAllGranted();
@@ -128,14 +120,6 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
       } else {
         if (mounted) setState(() => _alarm = ok);
       }
-    }
-
-    // Battery (optional — don't block flow)
-    if (!_battery) {
-      await PrayerAlarmService.openBatterySettings();
-      await Future.delayed(const Duration(milliseconds: 800));
-      final re = await Permission.ignoreBatteryOptimizations.isGranted;
-      if (mounted) setState(() => _battery = re);
     }
 
     if (mounted) setState(() => _busy = false);
@@ -246,7 +230,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                   color: Colors.white.withValues(alpha: 0.35),
                 )),
 
-              // Progress dots (3 permissions)
+              // Progress dots (2 permissions)
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -254,8 +238,6 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                   _dot(_notif, accent),
                   const SizedBox(width: 4),
                   _dot(_alarm, accent),
-                  const SizedBox(width: 4),
-                  _dot(_battery, accent),
                 ],
               ),
 
@@ -285,16 +267,6 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                       required_: true,
                       accent: accent,
                       onTap: () => _request(1),
-                    ),
-                    const SizedBox(height: 8),
-                    _PermCard(
-                      icon: Icons.battery_saver_rounded,
-                      title: 'Battery Optimization',
-                      desc: 'Prevent alarms being delayed by power saving',
-                      granted: _battery,
-                      required_: false,
-                      accent: accent,
-                      onTap: () => _request(2),
                     ),
                   ],
                 ),
@@ -332,7 +304,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                                 strokeWidth: 2, color: accent))
                         : Text(
                             _criticalGranted
-                                ? 'CONTINUE  ($_granted/3 granted)'
+                                ? 'CONTINUE  ($_granted/2 granted)'
                                 : 'GRANT PERMISSIONS',
                             style: TextStyle(
                               fontSize: 13,
@@ -352,7 +324,7 @@ class _PermissionSetupScreenState extends ConsumerState<PermissionSetupScreen> {
                   onTap: widget.onAllGranted,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text('Continue without optional',
+                    child: Text('Continue',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.white.withValues(alpha: 0.3),

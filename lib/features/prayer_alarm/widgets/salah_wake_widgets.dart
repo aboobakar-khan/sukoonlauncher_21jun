@@ -5,21 +5,21 @@ import 'package:flutter/services.dart';
 //  DESIGN TOKENS
 // ═══════════════════════════════════════════════════════
 
-const kSwBg = Color(0xFF0A0A0A);
-const kSwCard = Color(0xFF131313);
-const kSwCardNext = Color(0xFF0F1A10);   // subtle green tint for next prayer
-const kSwActive = Color(0xFF4CAF50);
-const kSwTextPrimary = Color(0xFFE8E8E8);
-const kSwTextSecondary = Color(0xFF888888);
-const kSwTextMuted = Color(0xFF444444);
-const kSwDivider = Color(0xFF1E1E1E);
-const kSwRadius = 16.0;
+const kSwBg = Color(0xFF000000);          // true black (AMOLED / iOS dark)
+const kSwCard = Color(0xFF1A1A1C);        // elevated surface (iOS systemGray6-ish)
+const kSwCardNext = Color(0xFF112619);    // subtle green wash for the next prayer
+const kSwActive = Color(0xFF34C759);      // iOS system green
+const kSwTextPrimary = Color(0xFFF2F2F7); // iOS label
+const kSwTextSecondary = Color(0xFF9A9AA0);// iOS secondary label
+const kSwTextMuted = Color(0xFF5C5C62);   // iOS tertiary label
+const kSwDivider = Color(0xFF2A2A2C);
+const kSwRadius = 18.0;
 
-// Mode colors: each mode gets its own subtle identity
+// Mode colors: each mode gets its own subtle identity (iOS system palette)
 const kModeColors = <String, Color>{
-  'off': Color(0xFF555555),
-  'notify': Color(0xFF5C9CE6),   // calm blue
-  'adhan': Color(0xFF4CAF50),    // green
+  'off': Color(0xFF636366),
+  'notify': Color(0xFF0A84FF),   // iOS blue
+  'adhan': Color(0xFF34C759),    // iOS green
 };
 
 const kPrayerIcons = <String, IconData>{
@@ -56,27 +56,27 @@ class AlarmModeInfo {
 
 const kAlarmModes = [
   AlarmModeInfo('off', 'Off', 'No alarm or notification',
-    Icons.notifications_off_rounded, Color(0xFF555555)),
+    Icons.notifications_off_rounded, Color(0xFF636366)),
   AlarmModeInfo('notify', 'Notify', 'Silent banner notification',
-    Icons.notifications_rounded, Color(0xFF5C9CE6)),
+    Icons.notifications_rounded, Color(0xFF0A84FF)),
   AlarmModeInfo('adhan', 'Adhan', 'Notification with Adhan audio',
-    Icons.mosque_rounded, Color(0xFF4CAF50)),
+    Icons.mosque_rounded, Color(0xFF34C759)),
 ];
 
 const kSunriseModes = [
   AlarmModeInfo('off', 'Off', 'No notification',
-    Icons.notifications_off_rounded, Color(0xFF555555)),
+    Icons.notifications_off_rounded, Color(0xFF636366)),
   AlarmModeInfo('notify', 'Notify', 'Silent banner notification',
-    Icons.notifications_rounded, Color(0xFF5C9CE6)),
+    Icons.notifications_rounded, Color(0xFF0A84FF)),
 ];
 
 const kFastingModes = [
   AlarmModeInfo('off', 'Off', 'No alarm',
-    Icons.notifications_off_rounded, Color(0xFF555555)),
+    Icons.notifications_off_rounded, Color(0xFF636366)),
   AlarmModeInfo('notify', 'Notify', 'Silent notification',
-    Icons.notifications_rounded, Color(0xFF5C9CE6)),
+    Icons.notifications_rounded, Color(0xFF0A84FF)),
   AlarmModeInfo('adhan', 'Adhan', 'Notification with Adhan',
-    Icons.mosque_rounded, Color(0xFF4CAF50)),
+    Icons.mosque_rounded, Color(0xFF34C759)),
 ];
 
 // ═══════════════════════════════════════════════════════
@@ -250,32 +250,17 @@ class _PrayerRowState extends State<PrayerRow> {
       duration: const Duration(milliseconds: 300),
       opacity: opacity,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
+        margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: _isCurrent ? kSwCardNext : kSwCard,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            if (_isCurrent)
-              BoxShadow(
-                color: kSwActive.withAlpha(15),
-                blurRadius: 16,
-                spreadRadius: -2,
-                offset: const Offset(0, 4),
-              )
-            else
-              BoxShadow(
-                color: Colors.black.withAlpha(20),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-          ],
+          borderRadius: BorderRadius.circular(kSwRadius),
           border: Border.all(
-            color: _isCurrent ? kSwActive.withAlpha(40) : Colors.white.withAlpha(6),
-            width: 1,
+            color: _isCurrent ? kSwActive.withAlpha(60) : Colors.white.withAlpha(8),
+            width: _isCurrent ? 1.2 : 1,
           ),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(19),
+          borderRadius: BorderRadius.circular(kSwRadius - 1),
           child: Column(
             children: [
               // ── Main row ──

@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:location/location.dart' as loc;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../providers/fasting_provider.dart';
 import '../../../providers/display_settings_provider.dart';
@@ -293,15 +294,15 @@ class _PrayerAlarmSettingsScreenState
                           child: CircularProgressIndicator(
                               strokeWidth: 1.2, color: kSwActive.withAlpha(100)))
                       : GestureDetector(
-                          onTap: _detectLocation,
+                          onTap: _enableLocationInApp,
                           child: Icon(Icons.my_location_rounded,
                               size: 12, color: kSwTextMuted.withAlpha(80)),
                         ),
                   onTap: () async {
-                    // If device location (GPS) is off, prompt to turn it on
+                    // If device location (GPS) is off, turn it on in-app.
                     final serviceEnabled = await _isLocationServiceEnabled();
                     if (!serviceEnabled) {
-                      await _showLocationServiceDialog();
+                      await _enableLocationInApp();
                       return;
                     }
                     setState(() {
@@ -738,7 +739,7 @@ class _PrayerAlarmSettingsScreenState
                       : IconButton(
                           icon: Icon(Icons.my_location_rounded, size: 16, color: kSwTextMuted),
                           tooltip: 'Auto-detect location',
-                          onPressed: _detectLocation,
+                          onPressed: _enableLocationInApp,
                         ),
               filled: true,
               fillColor: Colors.white.withAlpha(6),
@@ -950,42 +951,69 @@ class _PrayerAlarmSettingsScreenState
     }
   }
 
-  Future<void> _showLocationServiceDialog() async {
+  /// Enables device location WITHOUT leaving the app:
+  ///   1. `requestService()` shows the in-app Android "turn on GPS" dialog
+  ///   2. the location permission is requested via the in-app system prompt
+  ///   3. on success we auto-detect the city immediately
+  /// Falls back gracefully to city search if the user declines.
+  Future<void> _enableLocationInApp() async {
+    final location = loc.Location();
+
+    // 1. Turn on the GPS service via the in-app dialog (one tap, no settings).
+    bool serviceOn = false;
+    try {
+      serviceOn = await location.serviceEnabled();
+      if (!serviceOn) serviceOn = await location.requestService();
+    } catch (_) {
+      serviceOn = await _isLocationServiceEnabled();
+    }
+    if (!serviceOn) {
+      if (!mounted) return;
+      // User left GPS off — open the search panel so they can pick manually.
+      setState(() {
+        _showLocationSearch = true;
+        _showCalcMethod = false;
+        _showAsrSchool = false;
+      });
+      _toast('Location is off — search your city instead.');
+      return;
+    }
+
+    // 2. Request the location permission with the in-app system prompt.
+    try {
+      var perm = await location.hasPermission();
+      if (perm == loc.PermissionStatus.denied) {
+        perm = await location.requestPermission();
+      }
+      if (perm == loc.PermissionStatus.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Location permission is blocked. Enable it in Settings.'),
+          backgroundColor: Colors.red.shade800,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'SETTINGS', textColor: Colors.white,
+            onPressed: openAppSettings),
+        ));
+        return;
+      }
+      if (perm != loc.PermissionStatus.granted &&
+          perm != loc.PermissionStatus.grantedLimited) {
+        return; // user declined the prompt
+      }
+    } catch (_) {/* fall through to detection, which re-checks */}
+
+    // 3. We have GPS + permission — detect the city right away.
+    await _detectLocation();
+  }
+
+  void _toast(String message) {
     if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF161616),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(children: [
-          Icon(Icons.location_off_rounded, color: kSwActive, size: 20),
-          const SizedBox(width: 8),
-          const Text('Location is Off', style: TextStyle(
-            fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFFE8E8E8))),
-        ]),
-        content: Text(
-          'Turn on device location to auto-detect your city for accurate prayer times.',
-          style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(120)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Not Now', style: TextStyle(
-              color: Colors.white.withAlpha(80), fontSize: 12)),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              // Open system Location Settings directly
-              await openAppSettings();
-            },
-            style: TextButton.styleFrom(foregroundColor: kSwActive),
-            child: const Text('Open Settings', style: TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: kSwCard,
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
   Future<void> _detectLocation() async {
@@ -1013,7 +1041,9 @@ class _PrayerAlarmSettingsScreenState
       _autoDetectedCity = null;
     });
     try {
-      await PrayerAlarmService.requestNotificationPermission();
+      // Note: we intentionally do NOT request notification permission here —
+      // setting a location should never trigger an unrelated permission prompt.
+      // Notifications are only requested when a Notify/Adhan alarm is chosen.
       final coords = await LocationService.getCurrentLocation();
       final lat = coords['lat']!;
       final lng = coords['lng']!;
@@ -1067,7 +1097,7 @@ class _PrayerAlarmSettingsScreenState
     _cityController.text = name;
     setState(() => _searchResults = []);
     FocusScope.of(context).unfocus();
-    await PrayerAlarmService.requestNotificationPermission();
+    // Picking a city must not trigger a notification permission prompt.
     ref.read(prayerAlarmProvider.notifier).updateConfig(
       latitude: lat, longitude: lng,
       timezone: DateTime.now().timeZoneName, locationLabel: name);

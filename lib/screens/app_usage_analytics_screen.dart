@@ -592,8 +592,14 @@ class _AppUsageAnalyticsScreenState
                     // ── Timer toggle icon ──
                     GestureDetector(
                       onTap: () async {
+                        HapticFeedback.selectionClick();
+                        final messenger = ScaffoldMessenger.of(context);
                         if (hasTimer) {
                           await ref.read(screenTimeProvider.notifier).removeAppTimer(app.packageName);
+                          messenger.clearSnackBars();
+                          messenger.showSnackBar(
+                            _buildSnack('Timer removed for ${app.appName}', accent),
+                          );
                         } else {
                           // Enable feature if not already on
                           if (!st.featureEnabled) {
@@ -604,29 +610,33 @@ class _AppUsageAnalyticsScreenState
                             defaultMinutes: 15,
                             alwaysAsk: true,
                           );
+                          messenger.clearSnackBars();
+                          messenger.showSnackBar(
+                            _buildSnack('Timer on for ${app.appName} · asks each time', accent),
+                          );
                         }
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        width: 30,
-                        height: 30,
+                        width: 34,
+                        height: 34,
                         decoration: BoxDecoration(
                           color: hasTimer
-                              ? accent.withValues(alpha: 0.15)
-                              : Colors.white.withValues(alpha: 0.04),
-                          borderRadius: BorderRadius.circular(8),
+                              ? accent.withValues(alpha: 0.18)
+                              : Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: hasTimer
-                                ? accent.withValues(alpha: 0.35)
-                                : Colors.white.withValues(alpha: 0.08),
+                                ? accent.withValues(alpha: 0.4)
+                                : Colors.white.withValues(alpha: 0.1),
                           ),
                         ),
                         child: Icon(
                           hasTimer ? Icons.timer_rounded : Icons.timer_outlined,
-                          size: 16,
+                          size: 17,
                           color: hasTimer
                               ? accent
-                              : Colors.white.withValues(alpha: 0.25),
+                              : Colors.white.withValues(alpha: 0.3),
                         ),
                       ),
                     ),
@@ -694,6 +704,21 @@ class _AppUsageAnalyticsScreenState
           ),
         ],
       ],
+    );
+  }
+
+  SnackBar _buildSnack(String message, Color accent) {
+    return SnackBar(
+      content: Text(message,
+          style: const TextStyle(fontSize: 13, color: Colors.white)),
+      backgroundColor: const Color(0xFF1E1E1E),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(milliseconds: 1600),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: accent.withValues(alpha: 0.3)),
+      ),
     );
   }
 

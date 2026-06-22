@@ -3,11 +3,12 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/book_models.dart';
+import 'reader_palette.dart';
 
-/// Kindle-style single topic page with vertical scroll.
+/// Apple-Books-style single topic page with vertical scroll.
 class KindleTopicPage extends StatefulWidget {
   final TopicModel topic;
-  final bool isDark;
+  final ReaderPalette p;
   final double fontSize;
   final double lineHeight;
   final String chapterTitle;
@@ -19,7 +20,7 @@ class KindleTopicPage extends StatefulWidget {
   const KindleTopicPage({
     super.key,
     required this.topic,
-    required this.isDark,
+    required this.p,
     required this.fontSize,
     required this.lineHeight,
     required this.chapterTitle,
@@ -41,13 +42,13 @@ class _KindleTopicPageState extends State<KindleTopicPage> {
   bool _onScrollNotification(ScrollNotification notification) {
     if (notification is ScrollUpdateNotification) {
       if (notification.metrics.pixels > notification.metrics.maxScrollExtent) {
-        final newOverscroll = notification.metrics.pixels - notification.metrics.maxScrollExtent;
-        if (newOverscroll >= _overscrollThreshold && _overscroll < _overscrollThreshold) {
-          HapticFeedback.lightImpact(); // Haptic when threshold reached
+        final newOverscroll =
+            notification.metrics.pixels - notification.metrics.maxScrollExtent;
+        if (newOverscroll >= _overscrollThreshold &&
+            _overscroll < _overscrollThreshold) {
+          HapticFeedback.lightImpact();
         }
-        setState(() {
-          _overscroll = newOverscroll;
-        });
+        setState(() => _overscroll = newOverscroll);
       } else if (_overscroll > 0) {
         setState(() {
           _overscroll = 0;
@@ -56,7 +57,9 @@ class _KindleTopicPageState extends State<KindleTopicPage> {
       }
     } else if (notification is UserScrollNotification) {
       if (notification.direction == ScrollDirection.idle) {
-        if (_overscroll >= _overscrollThreshold && widget.onSwipeNext != null && !_triggered) {
+        if (_overscroll >= _overscrollThreshold &&
+            widget.onSwipeNext != null &&
+            !_triggered) {
           _triggered = true;
           HapticFeedback.mediumImpact();
           widget.onSwipeNext!();
@@ -69,208 +72,216 @@ class _KindleTopicPageState extends State<KindleTopicPage> {
   @override
   Widget build(BuildContext context) {
     final topic = widget.topic;
-    final isDark = widget.isDark;
+    final p = widget.p;
     final fontSize = widget.fontSize;
     final lineHeight = widget.lineHeight;
-    final bg = isDark
-        ? const Color(0xFF111111).withValues(alpha: 0.97)
-        : const Color(0xFFFAF8F4).withValues(alpha: 0.97);
-    final textColor = isDark ? const Color(0xFFE8E0D0) : const Color(0xFF1A1A1A);
-    final muted = isDark ? const Color(0xFF666666) : const Color(0xFFAAAAAA);
-    const gold = Color(0xFFD4A017);
-    final double hPad = 28;
+    const double hPad = 26;
+    final triggered = _overscroll >= _overscrollThreshold;
 
     return GestureDetector(
       onVerticalDragEnd: (d) {
         if (d.primaryVelocity == null) return;
-        if (d.primaryVelocity! < -400 && widget.onSwipeNext != null) widget.onSwipeNext!();
-        if (d.primaryVelocity! > 400 && widget.onSwipePrev != null) widget.onSwipePrev!();
+        if (d.primaryVelocity! < -400 && widget.onSwipeNext != null) {
+          widget.onSwipeNext!();
+        }
+        if (d.primaryVelocity! > 400 && widget.onSwipePrev != null) {
+          widget.onSwipePrev!();
+        }
       },
       child: Container(
-        color: bg,
+        color: p.bg,
         child: NotificationListener<ScrollNotification>(
           onNotification: _onScrollNotification,
           child: ListView(
-            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-            padding: EdgeInsets.fromLTRB(hPad, 48, hPad, 80),
-          children: [
-            // ── Chapter label ──────────────────────────────
-            Text(
-              widget.chapterTitle.toUpperCase(),
-              textAlign: TextAlign.center,
-              style: GoogleFonts.nunitoSans(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: muted,
-                letterSpacing: 2.0,
-              ),
-            ),
-            const SizedBox(height: 36),
-
-            // ── Topic title (big centered serif) ──────────
-            Text(
-              topic.title,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.literata(
-                fontSize: fontSize + 8,
-                fontWeight: FontWeight.w700,
-                color: textColor,
-                height: 1.25,
-                letterSpacing: -0.3,
-              ),
-            ),
-
-            // ── Decorative rule ────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 28),
-              child: Row(
-                children: [
-                  Expanded(child: Divider(color: muted.withValues(alpha: 0.35), thickness: 0.8)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('✦', style: TextStyle(color: muted.withValues(alpha: 0.5), fontSize: 11)),
-                  ),
-                  Expanded(child: Divider(color: muted.withValues(alpha: 0.35), thickness: 0.8)),
-                ],
-              ),
-            ),
-
-            // ── Paragraphs ─────────────────────────────────
-            ...topic.paragraphs.asMap().entries.map((e) => _KindleParagraph(
-                  paragraph: e.value,
-                  isFirst: e.key == 0,
-                  isDark: isDark,
-                  fontSize: fontSize,
-                  lineHeight: lineHeight,
-                  textColor: textColor,
-                )),
-
-            // ── Section rule before extras ─────────────────
-            if (topic.topicSummary.isNotEmpty || topic.keyPoints.isNotEmpty || topic.quiz.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 36),
-                child: Divider(color: muted.withValues(alpha: 0.25), thickness: 0.8),
-              ),
-
-            // ── Summary ────────────────────────────────────
-            if (topic.topicSummary.isNotEmpty)
-              _KindleSummary(
-                summary: topic.topicSummary,
-                isDark: isDark,
-                fontSize: fontSize,
-                lineHeight: lineHeight,
-                textColor: textColor,
-                muted: muted,
-              ),
-
-            // ── Key Points ─────────────────────────────────
-            if (topic.keyPoints.isNotEmpty) ...[
-              const SizedBox(height: 32),
-              _KindleKeyPoints(
-                keyPoints: topic.keyPoints,
-                isDark: isDark,
-                fontSize: fontSize,
-                lineHeight: lineHeight,
-                textColor: textColor,
-                muted: muted,
-              ),
-            ],
-
-            // ── Quiz ───────────────────────────────────────
-            if (topic.quiz.isNotEmpty) ...[
-              const SizedBox(height: 32),
-              _KindleQuizSection(
-                questions: topic.quiz,
-                isDark: isDark,
-                fontSize: fontSize,
-                lineHeight: lineHeight,
-                textColor: textColor,
-                muted: muted,
-              ),
-            ],
-
-            const SizedBox(height: 40),
-
-            // ── Navigation hint (Pull to next) ────────────────────────────
-            if (widget.onSwipeNext != null)
-              GestureDetector(
-                onTap: widget.onSwipeNext,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 16, bottom: 32),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        _overscroll >= _overscrollThreshold
-                            ? 'Release for next unit'
-                            : 'Pull up for next unit',
-                        style: GoogleFonts.nunitoSans(
-                          fontSize: 12,
-                          fontWeight: _overscroll >= _overscrollThreshold ? FontWeight.w700 : FontWeight.w600,
-                          color: _overscroll >= _overscrollThreshold ? gold : muted,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      AnimatedRotation(
-                        turns: _overscroll >= _overscrollThreshold ? 0.5 : 0.0,
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOutBack,
-                        child: AnimatedScale(
-                          scale: _overscroll >= _overscrollThreshold ? 1.2 : 1.0,
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOutBack,
-                          child: Icon(Icons.arrow_upward_rounded, 
-                            size: 16, 
-                            color: _overscroll >= _overscrollThreshold ? gold : muted,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+            physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics()),
+            padding: EdgeInsets.fromLTRB(
+                hPad, MediaQuery.paddingOf(context).top + 64, hPad, 96),
+            children: [
+              // ── Chapter eyebrow ──
+              Text(
+                widget.chapterTitle.toUpperCase(),
+                textAlign: TextAlign.center,
+                style: GoogleFonts.nunitoSans(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: p.textTertiary,
+                  letterSpacing: 2.2,
                 ),
               ),
-          ],
+              const SizedBox(height: 28),
+
+              // ── Topic title ──
+              Text(
+                topic.title,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.literata(
+                  fontSize: fontSize + 9,
+                  fontWeight: FontWeight.w700,
+                  color: p.text,
+                  height: 1.24,
+                  letterSpacing: -0.3,
+                ),
+              ),
+
+              // ── Ornamental divider ──
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 26),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                        width: 30,
+                        height: 1,
+                        color: p.accent.withValues(alpha: 0.4)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('✦',
+                          style: TextStyle(
+                              color: p.accent.withValues(alpha: 0.7),
+                              fontSize: 11)),
+                    ),
+                    Container(
+                        width: 30,
+                        height: 1,
+                        color: p.accent.withValues(alpha: 0.4)),
+                  ],
+                ),
+              ),
+
+              // ── Paragraphs ──
+              ...topic.paragraphs.asMap().entries.map((e) => _KindleParagraph(
+                    paragraph: e.value,
+                    isFirst: e.key == 0,
+                    p: p,
+                    fontSize: fontSize,
+                    lineHeight: lineHeight,
+                  )),
+
+              // ── Section rule ──
+              if (topic.topicSummary.isNotEmpty ||
+                  topic.keyPoints.isNotEmpty ||
+                  topic.quiz.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 34),
+                  child: Divider(
+                      color: p.textTertiary.withValues(alpha: 0.25),
+                      thickness: 0.8),
+                ),
+
+              if (topic.topicSummary.isNotEmpty)
+                _KindleSummary(
+                  summary: topic.topicSummary,
+                  p: p,
+                  fontSize: fontSize,
+                  lineHeight: lineHeight,
+                ),
+
+              if (topic.keyPoints.isNotEmpty) ...[
+                const SizedBox(height: 34),
+                _KindleKeyPoints(
+                  keyPoints: topic.keyPoints,
+                  p: p,
+                  fontSize: fontSize,
+                  lineHeight: lineHeight,
+                ),
+              ],
+
+              if (topic.quiz.isNotEmpty) ...[
+                const SizedBox(height: 34),
+                _KindleQuizSection(
+                  questions: topic.quiz,
+                  p: p,
+                  fontSize: fontSize,
+                  lineHeight: lineHeight,
+                ),
+              ],
+
+              const SizedBox(height: 40),
+
+              // ── Pull-up to next unit ──
+              if (widget.onSwipeNext != null)
+                GestureDetector(
+                  onTap: widget.onSwipeNext,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 32),
+                    child: Column(
+                      children: [
+                        AnimatedScale(
+                          scale: triggered ? 1.15 : 1.0,
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOutBack,
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: triggered
+                                  ? p.accent.withValues(alpha: 0.18)
+                                  : p.textTertiary.withValues(alpha: 0.10),
+                            ),
+                            child: AnimatedRotation(
+                              turns: triggered ? 0.5 : 0.0,
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeOutBack,
+                              child: Icon(Icons.arrow_upward_rounded,
+                                  size: 18,
+                                  color: triggered ? p.accent : p.textTertiary),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          triggered ? 'Release for next unit' : 'Next unit',
+                          style: GoogleFonts.nunitoSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: triggered ? p.accent : p.textTertiary,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// KINDLE PARAGRAPH — justified, drop-cap on first
+// PARAGRAPH — justified, drop-cap on first
 // ════════════════════════════════════════════════════════════════════════
 
 class _KindleParagraph extends StatelessWidget {
   final ParagraphModel paragraph;
   final bool isFirst;
-  final bool isDark;
+  final ReaderPalette p;
   final double fontSize;
   final double lineHeight;
-  final Color textColor;
 
   const _KindleParagraph({
     required this.paragraph,
     required this.isFirst,
-    required this.isDark,
+    required this.p,
     required this.fontSize,
     required this.lineHeight,
-    required this.textColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final body = GoogleFonts.literata(
       fontSize: fontSize + 2,
-      color: textColor,
+      color: p.text,
       height: lineHeight * 1.1,
       letterSpacing: 0.05,
       fontWeight: FontWeight.w400,
     );
 
     Widget content;
-    // Drop cap on first paragraph
     if (isFirst && paragraph.text.isNotEmpty) {
       final first = paragraph.text[0];
       final rest = paragraph.text.substring(1);
@@ -278,20 +289,18 @@ class _KindleParagraph extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 4, top: 2),
+            padding: const EdgeInsets.only(right: 6, top: 4),
             child: Text(
               first,
               style: GoogleFonts.literata(
-                fontSize: (fontSize + 2) * 3.4,
+                fontSize: (fontSize + 2) * 3.2,
                 fontWeight: FontWeight.w700,
-                color: textColor,
-                height: 0.82,
+                color: p.accent,
+                height: 0.8,
               ),
             ),
           ),
-          Expanded(
-            child: Text(rest, textAlign: TextAlign.justify, style: body),
-          ),
+          Expanded(child: Text(rest, textAlign: TextAlign.justify, style: body)),
         ],
       );
     } else {
@@ -309,43 +318,74 @@ class _KindleParagraph extends StatelessWidget {
 
   void _onLongPress(BuildContext context) {
     HapticFeedback.mediumImpact();
-    final bgSheet = isDark ? const Color(0xFF1A1A1A) : Colors.white;
-    final tc = isDark ? const Color(0xFFE8E0D0) : const Color(0xFF1A1A1A);
     showModalBottomSheet(
       context: context,
-      backgroundColor: bgSheet,
+      backgroundColor: p.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 36, height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
+              width: 38,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 18),
               decoration: BoxDecoration(
-                color: tc.withValues(alpha: 0.15),
+                color: p.textTertiary.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            ListTile(
-              leading: const Text('📋', style: TextStyle(fontSize: 20)),
-              title: Text('Copy', style: GoogleFonts.nunitoSans(fontSize: 15, fontWeight: FontWeight.w600, color: tc)),
+            _SheetAction(
+              icon: Icons.copy_rounded,
+              label: 'Copy',
+              p: p,
               onTap: () {
                 Clipboard.setData(ClipboardData(text: paragraph.text));
                 Navigator.pop(context);
               },
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              dense: true,
             ),
-            ListTile(
-              leading: const Text('🔖', style: TextStyle(fontSize: 20)),
-              title: Text('Bookmark', style: GoogleFonts.nunitoSans(fontSize: 15, fontWeight: FontWeight.w600, color: tc)),
+            _SheetAction(
+              icon: Icons.bookmark_outline_rounded,
+              label: 'Bookmark',
+              p: p,
               onTap: () => Navigator.pop(context),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              dense: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final ReaderPalette p;
+  final VoidCallback onTap;
+  const _SheetAction(
+      {required this.icon,
+      required this.label,
+      required this.p,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: p.accent),
+            const SizedBox(width: 14),
+            Text(
+              label,
+              style: GoogleFonts.nunitoSans(
+                  fontSize: 15, fontWeight: FontWeight.w600, color: p.text),
             ),
           ],
         ),
@@ -355,44 +395,37 @@ class _KindleParagraph extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// KINDLE SUMMARY
+// SUMMARY
 // ════════════════════════════════════════════════════════════════════════
 
 class _KindleSummary extends StatelessWidget {
   final String summary;
-  final bool isDark;
+  final ReaderPalette p;
   final double fontSize;
   final double lineHeight;
-  final Color textColor;
-  final Color muted;
 
   const _KindleSummary({
     required this.summary,
-    required this.isDark,
+    required this.p,
     required this.fontSize,
     required this.lineHeight,
-    required this.textColor,
-    required this.muted,
   });
 
   @override
   Widget build(BuildContext context) {
-    const sage = Color(0xFF7D9686);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Label
         Text(
           'SUMMARY',
           style: GoogleFonts.nunitoSans(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: sage,
-            letterSpacing: 2.2,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+            color: p.accent,
+            letterSpacing: 2.4,
           ),
         ),
-        const SizedBox(height: 20),
-        // Blockquote style
+        const SizedBox(height: 18),
         IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -400,7 +433,7 @@ class _KindleSummary extends StatelessWidget {
               Container(
                 width: 3,
                 decoration: BoxDecoration(
-                  color: sage.withValues(alpha: 0.6),
+                  color: p.accent.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -412,7 +445,7 @@ class _KindleSummary extends StatelessWidget {
                   style: GoogleFonts.literata(
                     fontSize: fontSize + 1,
                     fontStyle: FontStyle.italic,
-                    color: textColor.withValues(alpha: 0.85),
+                    color: p.textSecondary,
                     height: lineHeight * 1.05,
                     letterSpacing: 0.05,
                   ),
@@ -427,24 +460,20 @@ class _KindleSummary extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// KINDLE KEY POINTS
+// KEY POINTS
 // ════════════════════════════════════════════════════════════════════════
 
 class _KindleKeyPoints extends StatelessWidget {
   final List<String> keyPoints;
-  final bool isDark;
+  final ReaderPalette p;
   final double fontSize;
   final double lineHeight;
-  final Color textColor;
-  final Color muted;
 
   const _KindleKeyPoints({
     required this.keyPoints,
-    required this.isDark,
+    required this.p,
     required this.fontSize,
     required this.lineHeight,
-    required this.textColor,
-    required this.muted,
   });
 
   @override
@@ -455,41 +484,48 @@ class _KindleKeyPoints extends StatelessWidget {
         Text(
           'KEY LEARNINGS',
           style: GoogleFonts.nunitoSans(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: muted,
-            letterSpacing: 2.2,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+            color: p.textTertiary,
+            letterSpacing: 2.4,
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
         ...keyPoints.asMap().entries.map((e) => Padding(
-              padding: const EdgeInsets.only(bottom: 18),
+              padding: const EdgeInsets.only(bottom: 16),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Roman-numeral style index
-                  SizedBox(
-                    width: 24,
+                  Container(
+                    width: 26,
+                    height: 26,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: p.accent.withValues(alpha: 0.12),
+                    ),
                     child: Text(
-                      '${e.key + 1}.',
-                      style: GoogleFonts.literata(
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.w700,
-                        color: textColor,
-                        height: lineHeight,
+                      '${e.key + 1}',
+                      style: GoogleFonts.nunitoSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: p.accent,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 14),
                   Expanded(
-                    child: Text(
-                      e.value,
-                      textAlign: TextAlign.justify,
-                      style: GoogleFonts.literata(
-                        fontSize: fontSize,
-                        color: textColor.withValues(alpha: 0.9),
-                        height: lineHeight,
-                        letterSpacing: 0.05,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        e.value,
+                        textAlign: TextAlign.justify,
+                        style: GoogleFonts.literata(
+                          fontSize: fontSize,
+                          color: p.text,
+                          height: lineHeight,
+                          letterSpacing: 0.05,
+                        ),
                       ),
                     ),
                   ),
@@ -502,24 +538,20 @@ class _KindleKeyPoints extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// KINDLE QUIZ SECTION — book-like styling
+// QUIZ SECTION
 // ════════════════════════════════════════════════════════════════════════
 
 class _KindleQuizSection extends StatelessWidget {
   final List<QuizQuestion> questions;
-  final bool isDark;
+  final ReaderPalette p;
   final double fontSize;
   final double lineHeight;
-  final Color textColor;
-  final Color muted;
 
   const _KindleQuizSection({
     required this.questions,
-    required this.isDark,
+    required this.p,
     required this.fontSize,
     required this.lineHeight,
-    required this.textColor,
-    required this.muted,
   });
 
   @override
@@ -530,21 +562,19 @@ class _KindleQuizSection extends StatelessWidget {
         Text(
           'COMPREHENSION',
           style: GoogleFonts.nunitoSans(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: muted,
-            letterSpacing: 2.2,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+            color: p.textTertiary,
+            letterSpacing: 2.4,
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
         KindleQuizWidget(
           key: ValueKey('quiz_${questions.hashCode}'),
           questions: questions,
-          isDark: isDark,
+          p: p,
           fontSize: fontSize,
           lineHeight: lineHeight,
-          textColor: textColor,
-          muted: muted,
         ),
       ],
     );
@@ -552,25 +582,21 @@ class _KindleQuizSection extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// KINDLE QUIZ WIDGET — stateful, book-style options
+// QUIZ WIDGET — stateful
 // ════════════════════════════════════════════════════════════════════════
 
 class KindleQuizWidget extends StatefulWidget {
   final List<QuizQuestion> questions;
-  final bool isDark;
+  final ReaderPalette p;
   final double fontSize;
   final double lineHeight;
-  final Color textColor;
-  final Color muted;
 
   const KindleQuizWidget({
     super.key,
     required this.questions,
-    required this.isDark,
+    required this.p,
     required this.fontSize,
     required this.lineHeight,
-    required this.textColor,
-    required this.muted,
   });
 
   @override
@@ -584,11 +610,12 @@ class _KindleQuizWidgetState extends State<KindleQuizWidget> {
   bool _done = false;
   int _correct = 0;
 
-  static const _correctColor = Color(0xFF5A8A6A);
-  static const _wrongColor = Color(0xFF9B4A4A);
+  static const _correctColor = Color(0xFF4E9A6B);
+  static const _wrongColor = Color(0xFFC25B5B);
 
   void _pick(String option) {
     if (_answered) return;
+    HapticFeedback.selectionClick();
     setState(() {
       _selected = option;
       _answered = true;
@@ -597,47 +624,52 @@ class _KindleQuizWidgetState extends State<KindleQuizWidget> {
     Future.delayed(const Duration(milliseconds: 1400), () {
       if (!mounted) return;
       if (_idx < widget.questions.length - 1) {
-        setState(() { _idx++; _selected = null; _answered = false; });
+        setState(() {
+          _idx++;
+          _selected = null;
+          _answered = false;
+        });
       } else {
         setState(() => _done = true);
       }
     });
   }
 
-  void _reset() => setState(() { _idx = 0; _selected = null; _answered = false; _done = false; _correct = 0; });
+  void _reset() => setState(() {
+        _idx = 0;
+        _selected = null;
+        _answered = false;
+        _done = false;
+        _correct = 0;
+      });
 
   @override
   Widget build(BuildContext context) {
-    if (_done) return _buildResult();
+    final p = widget.p;
+    if (_done) return _buildResult(p);
     final q = widget.questions[_idx];
     final letters = ['A', 'B', 'C', 'D'];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Progress
         Text(
           'Question ${_idx + 1} of ${widget.questions.length}',
           style: GoogleFonts.nunitoSans(
-            fontSize: 11,
-            color: widget.muted,
-            letterSpacing: 0.3,
-          ),
+              fontSize: 11, color: p.textTertiary, letterSpacing: 0.3),
         ),
-        const SizedBox(height: 14),
-        // Question
+        const SizedBox(height: 12),
         Text(
           q.question,
           textAlign: TextAlign.justify,
           style: GoogleFonts.literata(
             fontSize: widget.fontSize + 1,
             fontWeight: FontWeight.w600,
-            color: widget.textColor,
+            color: p.text,
             height: widget.lineHeight,
           ),
         ),
         const SizedBox(height: 18),
-        // Options
         ...q.options.asMap().entries.map((e) {
           final letter = e.key < letters.length ? letters[e.key] : '${e.key + 1}';
           final opt = e.value;
@@ -648,27 +680,22 @@ class _KindleQuizWidgetState extends State<KindleQuizWidget> {
           Color bgColor;
           Color labelColor;
 
-          final bg = widget.isDark ? const Color(0xFF1A1A1A) : Colors.white;
-          final subtle = widget.isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.07);
-
           if (!_answered) {
-            bgColor = bg;
-            borderColor = subtle;
-            labelColor = widget.textColor;
+            bgColor = p.surface;
+            borderColor = p.border;
+            labelColor = p.text;
           } else if (isCorrect) {
-            bgColor = _correctColor.withValues(alpha: 0.10);
-            borderColor = _correctColor.withValues(alpha: 0.45);
+            bgColor = _correctColor.withValues(alpha: 0.12);
+            borderColor = _correctColor.withValues(alpha: 0.5);
             labelColor = _correctColor;
           } else if (isSelected) {
-            bgColor = _wrongColor.withValues(alpha: 0.10);
-            borderColor = _wrongColor.withValues(alpha: 0.45);
+            bgColor = _wrongColor.withValues(alpha: 0.12);
+            borderColor = _wrongColor.withValues(alpha: 0.5);
             labelColor = _wrongColor;
           } else {
-            bgColor = bg.withValues(alpha: 0.4);
-            borderColor = subtle.withValues(alpha: 0.4);
-            labelColor = widget.textColor.withValues(alpha: 0.35);
+            bgColor = p.surface.withValues(alpha: 0.4);
+            borderColor = p.border.withValues(alpha: 0.5);
+            labelColor = p.textTertiary;
           }
 
           return Padding(
@@ -677,18 +704,18 @@ class _KindleQuizWidgetState extends State<KindleQuizWidget> {
               onTap: () => _pick(opt),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                 decoration: BoxDecoration(
                   color: bgColor,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: borderColor, width: 1.2),
                 ),
                 child: Row(
                   children: [
-                    // Letter badge
                     Container(
-                      width: 24,
-                      height: 24,
+                      width: 26,
+                      height: 26,
                       margin: const EdgeInsets.only(right: 12),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
@@ -702,7 +729,7 @@ class _KindleQuizWidgetState extends State<KindleQuizWidget> {
                           letter,
                           style: GoogleFonts.nunitoSans(
                             fontSize: 11,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                             color: labelColor,
                           ),
                         ),
@@ -732,88 +759,69 @@ class _KindleQuizWidgetState extends State<KindleQuizWidget> {
     );
   }
 
-  Widget _buildResult() {
+  Widget _buildResult(ReaderPalette p) {
     final total = widget.questions.length;
     final pct = ((_correct / total) * 100).round();
     final emoji = pct >= 80 ? '🎉' : pct >= 50 ? '👏' : '💪';
-    final msg = pct >= 80 ? 'Excellent mastery!' : pct >= 50 ? 'Good understanding.' : 'Keep studying — you will get there.';
+    final msg = pct >= 80
+        ? 'Excellent mastery!'
+        : pct >= 50
+            ? 'Good understanding.'
+            : 'Keep studying — you will get there.';
 
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        Text(emoji, style: const TextStyle(fontSize: 36)),
-        const SizedBox(height: 12),
-        Text(
-          '$_correct / $total',
-          style: GoogleFonts.literata(
-            fontSize: widget.fontSize + 8,
-            fontWeight: FontWeight.w700,
-            color: widget.textColor,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          msg,
-          style: GoogleFonts.literata(
-            fontSize: widget.fontSize - 1,
-            fontStyle: FontStyle.italic,
-            color: widget.muted,
-            height: 1.5,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 24),
-        GestureDetector(
-          onTap: _reset,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: widget.muted.withValues(alpha: 0.4), width: 1.2),
-              borderRadius: BorderRadius.circular(6),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: p.border, width: 0.8),
+      ),
+      child: Column(
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 36)),
+          const SizedBox(height: 12),
+          Text(
+            '$_correct / $total',
+            style: GoogleFonts.literata(
+              fontSize: widget.fontSize + 8,
+              fontWeight: FontWeight.w700,
+              color: p.text,
             ),
-            child: Text(
-              'Try Again',
-              style: GoogleFonts.nunitoSans(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: widget.muted,
-                letterSpacing: 0.5,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            msg,
+            style: GoogleFonts.literata(
+              fontSize: widget.fontSize - 1,
+              fontStyle: FontStyle.italic,
+              color: p.textSecondary,
+              height: 1.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 22),
+          GestureDetector(
+            onTap: _reset,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 11),
+              decoration: BoxDecoration(
+                color: p.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Text(
+                'Try Again',
+                style: GoogleFonts.nunitoSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: p.accent,
+                  letterSpacing: 0.3,
+                ),
               ),
             ),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-// Keep old class name alias so existing code doesn't break
-class TopicContent extends StatelessWidget {
-  final TopicModel topic;
-  final bool isDark;
-  final double fontSize;
-  final double lineHeight;
-  final ScrollController? scrollController;
-
-  const TopicContent({
-    super.key,
-    required this.topic,
-    required this.isDark,
-    required this.fontSize,
-    required this.lineHeight,
-    this.scrollController,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return KindleTopicPage(
-      topic: topic,
-      isDark: isDark,
-      fontSize: fontSize,
-      lineHeight: lineHeight,
-      chapterTitle: '',
-      topicIndex: 0,
-      totalTopics: 1,
+        ],
+      ),
     );
   }
 }
