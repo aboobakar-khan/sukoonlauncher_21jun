@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tasbih_provider.dart';
+import '../providers/islamic_theme_provider.dart';
 
 import 'dhikr_history_pro_dashboard_redesigned.dart';
 
@@ -17,16 +18,19 @@ class DhikrCounterScreen extends ConsumerStatefulWidget {
 
 class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
     with SingleTickerProviderStateMixin {
-  // ── Design tokens - DARK MODE ──
-  static const _darkBg = Color(0xFF121212);
-  static const _cardBg = Color(0xFF1E1E1E);
-  static const _gold = Color(0xFFC2A366);
-  static const _green = Color(0xFF8BA883); // Fresh Leaf Sage
-  static const _leafSoft = Color(0xFFE8F1E7);
-  static const _textPrimary = Color(0xFFE8E8E8);
-  static const _textSecondary = Color(0xFFB0B0B0);
-  static const _textTertiary = Color(0xFF808080);
-  static const _border = Color(0xFF2A2A2A);
+  // ── Design tokens — bridged to the active master palette so Dhikr follows
+  //    the same themes (Makhtut, Catppuccin, Tokyo Night, Rose Pine, Gruvbox,
+  //    One Dark) × light/dark as the Quran. Each maps to its semantic tier so
+  //    the palette's contrast hierarchy is preserved across every theme.
+  IslamicThemeColors get _tc => ref.watch(islamicThemeColorsProvider);
+  Color get _darkBg => _tc.background;                       // base surface
+  Color get _cardBg => _tc.surface;                          // raised cards
+  Color get _gold => _tc.accent;                             // signature/emphasis
+  Color get _green => _tc.green;                             // primary / progress
+  Color get _textPrimary => _tc.text;                        // primary text
+  Color get _textSecondary => _tc.textSecondary;             // secondary text
+  Color get _textTertiary => _tc.textTertiary;               // muted text
+  Color get _border => _tc.border;                           // hairlines
 
   late AnimationController _tapCtrl;
   late Animation<double> _scaleAnim;
@@ -81,11 +85,11 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
     final done = tasbih.currentCount >= tasbih.targetCount;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
+      value: SystemUiOverlayStyle(
         statusBarColor: _darkBg,
-        statusBarIconBrightness: Brightness.light,
+        statusBarIconBrightness: _tc.statusBarBrightness,
         systemNavigationBarColor: _darkBg,
-        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarIconBrightness: _tc.statusBarBrightness,
       ),
       child: Scaffold(
         backgroundColor: _darkBg,
@@ -324,7 +328,7 @@ class _DhikrCounterScreenState extends ConsumerState<DhikrCounterScreen>
                 child: Center(
                   child: hasCount 
                     ? Icon(Icons.check_rounded, color: _green, size: 12)
-                    : (isToday ? Container(width: 4, height: 4, decoration: const BoxDecoration(color: _gold, shape: BoxShape.circle)) : null),
+                    : (isToday ? Container(width: 4, height: 4, decoration: BoxDecoration(color: _gold, shape: BoxShape.circle)) : null),
                 ),
               ),
             ],
