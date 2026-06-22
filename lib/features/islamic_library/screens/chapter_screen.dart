@@ -105,7 +105,6 @@ class _ChapterScreenState extends ConsumerState<ChapterScreen>
     } else {
       _overlayAnim.reverse();
     }
-    HapticFeedback.lightImpact();
   }
 
   void _hideOverlay() {
@@ -126,15 +125,14 @@ class _ChapterScreenState extends ConsumerState<ChapterScreen>
     setState(() => _currentTopicIndex = index);
     _pageController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeInOutCubic,
+      duration: const Duration(milliseconds: 460),
+      curve: Curves.easeOutCubic,
     );
     _saveProgress();
   }
 
   // ── Contents index — a full, always-reachable chapter/topic browser ──
   void _showContents() {
-    HapticFeedback.lightImpact();
     final p = ref.read(readerSettingsProvider).palette;
     showModalBottomSheet(
       context: context,
@@ -222,7 +220,7 @@ class _ChapterScreenState extends ConsumerState<ChapterScreen>
                   },
                   itemBuilder: (context, index) {
                     final item = _allTopics[index];
-                    return KindleTopicPage(
+                    final page = KindleTopicPage(
                       key: ValueKey('topic_${item.topic.id}'),
                       topic: item.topic,
                       palette: p,
@@ -236,6 +234,32 @@ class _ChapterScreenState extends ConsumerState<ChapterScreen>
                           : null,
                       onSwipePrev:
                           index > 0 ? () => _jumpToTopic(index - 1) : null,
+                    );
+                    // Premium unit transition: fade + scale + gentle parallax,
+                    // driven by the live page-scroll position.
+                    return AnimatedBuilder(
+                      animation: _pageController,
+                      child: page,
+                      builder: (context, child) {
+                        double delta = 0.0;
+                        if (_pageController.hasClients &&
+                            _pageController.position.haveDimensions) {
+                          delta = (_pageController.page ??
+                                  _currentTopicIndex.toDouble()) -
+                              index;
+                        }
+                        final t = delta.abs().clamp(0.0, 1.0);
+                        return Opacity(
+                          opacity: (1.0 - t * 0.85).clamp(0.0, 1.0),
+                          child: Transform.translate(
+                            offset: Offset(0, -delta * 28.0),
+                            child: Transform.scale(
+                              scale: 1.0 - t * 0.05,
+                              child: child,
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

@@ -612,7 +612,6 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
   // ── Verse jump sheet (tap the header pill) ──
   void _showVerseJump(String mode, int verseCount) {
     final tc = ref.read(islamicThemeColorsProvider);
-    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

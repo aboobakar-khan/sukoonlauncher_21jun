@@ -36,7 +36,8 @@ class KindleTopicPage extends StatefulWidget {
 
 class _KindleTopicPageState extends State<KindleTopicPage> {
   double _overscroll = 0.0;
-  static const double _overscrollThreshold = 80.0;
+  // Looser, lower-effort pull: a short tug past the end is enough.
+  static const double _overscrollThreshold = 52.0;
   bool _triggered = false;
 
   bool _onScrollNotification(ScrollNotification notification) {
@@ -46,7 +47,6 @@ class _KindleTopicPageState extends State<KindleTopicPage> {
             notification.metrics.pixels - notification.metrics.maxScrollExtent;
         if (newOverscroll >= _overscrollThreshold &&
             _overscroll < _overscrollThreshold) {
-          HapticFeedback.lightImpact();
         }
         setState(() => _overscroll = newOverscroll);
       } else if (_overscroll > 0) {
@@ -61,7 +61,6 @@ class _KindleTopicPageState extends State<KindleTopicPage> {
             widget.onSwipeNext != null &&
             !_triggered) {
           _triggered = true;
-          HapticFeedback.mediumImpact();
           widget.onSwipeNext!();
         }
       }
@@ -80,10 +79,10 @@ class _KindleTopicPageState extends State<KindleTopicPage> {
     return GestureDetector(
       onVerticalDragEnd: (d) {
         if (d.primaryVelocity == null) return;
-        if (d.primaryVelocity! < -400 && widget.onSwipeNext != null) {
+        if (d.primaryVelocity! < -280 && widget.onSwipeNext != null) {
           widget.onSwipeNext!();
         }
-        if (d.primaryVelocity! > 400 && widget.onSwipePrev != null) {
+        if (d.primaryVelocity! > 280 && widget.onSwipePrev != null) {
           widget.onSwipePrev!();
         }
       },
@@ -202,49 +201,70 @@ class _KindleTopicPageState extends State<KindleTopicPage> {
 
               const SizedBox(height: 40),
 
-              // ── Pull-to-next hint ──
+              // ── Pull-to-next affordance: a ring that fills as you tug ──
               if (widget.onSwipeNext != null)
-                GestureDetector(
-                  onTap: widget.onSwipeNext,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 16, bottom: 32),
-                    child: Column(
-                      children: [
-                        Text(
-                          _overscroll >= _overscrollThreshold
-                              ? 'Release for next unit'
-                              : 'Pull up for next unit',
-                          style: GoogleFonts.nunitoSans(
-                            fontSize: 12,
-                            fontWeight: _overscroll >= _overscrollThreshold
-                                ? FontWeight.w700
-                                : FontWeight.w600,
-                            color: _overscroll >= _overscrollThreshold
-                                ? p.accent
-                                : p.textFaint,
-                            letterSpacing: 0.3,
-                          ),
+                _pullAffordance(p),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pullAffordance(ReaderPalette p) {
+    final progress = (_overscroll / _overscrollThreshold).clamp(0.0, 1.0);
+    final ready = progress >= 1.0;
+    // Subtle at rest, prominent as the pull deepens.
+    final appear = (0.45 + progress * 0.55).clamp(0.0, 1.0);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onSwipeNext,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 40),
+        child: Opacity(
+          opacity: appear,
+          child: Column(
+            children: [
+              Transform.scale(
+                scale: 0.9 + progress * 0.22,
+                child: SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 42,
+                        height: 42,
+                        child: CircularProgressIndicator(
+                          value: progress,
+                          strokeWidth: 2.2,
+                          backgroundColor: p.divider,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              ready ? p.accent : p.accent.withValues(alpha: 0.85)),
                         ),
-                        const SizedBox(height: 8),
-                        AnimatedRotation(
-                          turns: _overscroll >= _overscrollThreshold ? 0.5 : 0.0,
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOutBack,
-                          child: AnimatedScale(
-                            scale:
-                                _overscroll >= _overscrollThreshold ? 1.2 : 1.0,
-                            duration: const Duration(milliseconds: 250),
-                            curve: Curves.easeOutBack,
-                            child: Icon(Icons.arrow_upward_rounded,
-                                size: 16,
-                                color: _overscroll >= _overscrollThreshold
-                                    ? p.accent
-                                    : p.textFaint),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                      AnimatedRotation(
+                        turns: ready ? 0.5 : 0.0,
+                        duration: const Duration(milliseconds: 240),
+                        curve: Curves.easeOutBack,
+                        child: Icon(Icons.arrow_upward_rounded,
+                            size: 17, color: ready ? p.accent : p.textFaint),
+                      ),
+                    ],
                   ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 180),
+                style: GoogleFonts.nunitoSans(
+                  fontSize: 12,
+                  fontWeight: ready ? FontWeight.w700 : FontWeight.w600,
+                  color: ready ? p.accent : p.textFaint,
+                  letterSpacing: 0.4,
+                ),
+                child: Text(ready ? 'Release' : 'Pull up for next unit'),
                 ),
             ],
           ),
@@ -321,7 +341,6 @@ class _KindleParagraph extends StatelessWidget {
   }
 
   void _onLongPress(BuildContext context) {
-    HapticFeedback.mediumImpact();
     final p = palette;
     showModalBottomSheet(
       context: context,
