@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -192,11 +193,11 @@ class SukoonLauncherApp extends ConsumerWidget {
         // Android zoom transitions.
         pageTransitionsTheme: PageTransitionsTheme(
           builders: {
-            TargetPlatform.android: const CupertinoPageTransitionsBuilder(),
-            TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
-            TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
-            TargetPlatform.linux: const CupertinoPageTransitionsBuilder(),
-            TargetPlatform.windows: const CupertinoPageTransitionsBuilder(),
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
           },
         ),
         // 2-font hierarchy: headings use heading font, body uses body font
