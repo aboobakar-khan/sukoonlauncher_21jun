@@ -36,6 +36,7 @@ import '../providers/tasbih_provider.dart';
 import '../providers/app_update_provider.dart';
 import '../utils/hive_box_manager.dart';
 import '../utils/launcher_physics.dart';
+import '../utils/smooth_page_route.dart' show DeferredFade;
 
 /// ─────────────────────────────────────────────────────────────────────────
 ///  GESTURE-ARENA DISAMBIGUATION  (horizontal page  vs.  vertical content)
@@ -508,13 +509,18 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             appName: appName,
             defaultMinutes: config.defaultMinutes,
           );
-          if (minutes != null && mounted) {
-            // User chose a time -> start session and launch app
-            ref.read(screenTimeProvider.notifier).startSession(packageName, appName, minutes);
-            try {
-              const MethodChannel('com.sukoon.launcher/apps').invokeMethod('launchApp', {'packageName': packageName});
-            } catch (_) {}
+          if (!mounted) return;
+          if (minutes != null && minutes > 0) {
+            // Chose a limit → start a timed session, then open the app.
+            ref
+                .read(screenTimeProvider.notifier)
+                .startSession(packageName, appName, minutes);
+            _launchPkg(packageName);
+          } else if (minutes == 0) {
+            // "Open without a limit" → open it this once, no session.
+            _launchPkg(packageName);
           }
+          // minutes == null → dismissed; stay on Sukoon.
         }
       }
       return; // Do not check times_up if we handled prompt_timer
@@ -554,8 +560,6 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
 
       if (!mounted) return;
 
-      if (!mounted) return;
-
       TimesUpOverlay.showAsDialog(
         context,
         appName: appName,
@@ -564,17 +568,30 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
         todayUsage: todayDuration,
         weekUsage: weekDuration,
         onExit: () {
-          if (mounted) {
-            // Force the launcher to show the home clock, preventing a trapped state
-            _goHome(popRoutes: true);
-          }
+          if (!mounted) return;
+          // End the session cleanly and return to the launcher home.
+          ref.read(screenTimeProvider.notifier).endSession();
+          _goHome(popRoutes: true);
         },
         onExtend: (mins) {
-          if (mounted) {
-            try { const MethodChannel('com.sukoon.launcher/apps').invokeMethod('launchApp', {'packageName': packageName}); } catch (_) {}
-          }
+          if (!mounted) return;
+          // Native already ENDED the session before showing "time's up", so a
+          // plain extend has nothing to extend. Start a FRESH session (reschedules
+          // the exact alarm), then reopen the app — this is why extend works now.
+          ref
+              .read(screenTimeProvider.notifier)
+              .startSession(packageName, appName, mins);
+          _launchPkg(packageName);
         },
       );
+    } catch (_) {}
+  }
+
+  /// Open an app by package via the native launch channel.
+  void _launchPkg(String packageName) {
+    try {
+      const MethodChannel('com.sukoon.launcher/apps')
+          .invokeMethod('launchApp', {'packageName': packageName});
     } catch (_) {}
   }
 
@@ -1449,8 +1466,14 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
                         label: 'Seerah',
                         sublabel: 'Sealed Nectar',
                         accentColor: green,
-                        onTap: () => Navigator.push(context, _SmoothForwardRoute(
-                            child: const BookHomeScreen())),
+                        onTap: () => Navigator.push(
+                            context,
+                            _SmoothForwardRoute(
+                                child: DeferredFade(
+                                    background: ref
+                                        .read(islamicThemeColorsProvider)
+                                        .background,
+                                    child: const BookHomeScreen()))),
                       ),
                     ),
                   ],
@@ -2011,7 +2034,7 @@ class _IslamicSubScreen extends ConsumerWidget {
                 ),
               ),
               // Child screen
-              Expanded(child: child),
+              Expanded(child: DeferredFade(background: colors.background, child: child)),
             ],
           ),
         ),

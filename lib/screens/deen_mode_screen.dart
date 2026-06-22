@@ -1453,7 +1453,7 @@ class _DeenSubScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              Expanded(child: child),
+              Expanded(child: DeferredFade(background: tc.background, child: child)),
             ],
           ),
         ),
