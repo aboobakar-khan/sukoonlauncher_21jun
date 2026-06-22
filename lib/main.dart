@@ -190,13 +190,13 @@ class SukoonLauncherApp extends ConsumerWidget {
         // This gives every push/pop the smooth Apple slide animation with
         // interactive swipe-back on both Android and iOS — no more janky
         // Android zoom transitions.
-        pageTransitionsTheme: const PageTransitionsTheme(
+        pageTransitionsTheme: PageTransitionsTheme(
           builders: {
-            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.android: const CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
+            TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
+            TargetPlatform.linux: const CupertinoPageTransitionsBuilder(),
+            TargetPlatform.windows: const CupertinoPageTransitionsBuilder(),
           },
         ),
         // 2-font hierarchy: headings use heading font, body uses body font
