@@ -1642,7 +1642,7 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           color: Colors.white.withValues(alpha: 0.03),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1691,7 +1691,7 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           color: accent.withValues(alpha: 0.03),
-          border: Border.all(color: accent.withValues(alpha: 0.08)),
+          border: Border.all(color: accent.withValues(alpha: 0.16)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1777,7 +1777,7 @@ class _QuranHeroCardState extends State<_QuranHeroCard> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             color: accent.withValues(alpha: 0.06),
-            border: Border.all(color: accent.withValues(alpha: 0.14)),
+            border: Border.all(color: accent.withValues(alpha: 0.22)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -1876,7 +1876,7 @@ class _SmallHubCardState extends State<_SmallHubCard> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             color: Colors.white.withValues(alpha: 0.03),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

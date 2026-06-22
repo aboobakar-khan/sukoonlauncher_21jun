@@ -274,7 +274,7 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
             decoration: BoxDecoration(
               color: accent.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: accent.withValues(alpha: 0.15)),
+              border: Border.all(color: accent.withValues(alpha: 0.22)),
             ),
             child: Row(
               children: [
@@ -376,7 +376,7 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
                   color: Colors.white.withValues(alpha: 0.025),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: accent.withValues(alpha: 0.08),
+                    color: accent.withValues(alpha: 0.18),
                   ),
                 ),
                 child: Column(

@@ -42,7 +42,7 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
   // ☪️ Sukoon brand design tokens — semi-transparent to follow dashboard theme
   static final Color _bgDark = Colors.white.withValues(alpha: 0.02);
   static final Color _cardBg = Colors.white.withValues(alpha: 0.03);
-  static final Color _borderColor = Colors.white.withValues(alpha: 0.06);
+  static final Color _borderColor = Colors.white.withValues(alpha: 0.09);
   static const Color _textPrimary = Color(0xFFE6EDF3);
   static const Color _textSecondary = Color(0xFF8B949E);
   static const Color _textMuted = Color(0xFF484F58);
@@ -286,10 +286,10 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
           color: _cardBg,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: completedCount == 5 
-                ? accent.withValues(alpha: 0.25) 
-                : _borderColor,
-            width: completedCount == 5 ? 1.0 : 1,
+            color: completedCount == 5
+                ? accent.withValues(alpha: 0.30)
+                : Colors.white.withValues(alpha: 0.12),
+            width: 1,
           ),
           boxShadow: completedCount == 5
               ? [

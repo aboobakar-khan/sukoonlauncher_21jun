@@ -37,7 +37,7 @@ final Color _ftCard = Colors.white.withValues(alpha: 0.04);       // semi-transp
 final Color _ftCardLight = Colors.white.withValues(alpha: 0.06);  // slightly lighter card variant
 const Color _ftText = Color(0xFFE8E8E8);       // light text on dark
 const Color _ftTextSoft = Color(0xFF8A8A8A);   // muted text
-final Color _ftBorder = Colors.white.withValues(alpha: 0.08);     // subtle border
+final Color _ftBorder = Colors.white.withValues(alpha: 0.12);     // subtle border
 const Color _ftGold = Color(0xFFBFA76A);       // gold accent for streaks
 
 // ─── Shadow Systems ─────────────────────────────────────────────────────────

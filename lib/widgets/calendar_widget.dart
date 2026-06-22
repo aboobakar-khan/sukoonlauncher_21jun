@@ -265,7 +265,7 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
       ),
       padding: const EdgeInsets.symmetric(vertical: 24),
       child: Column(

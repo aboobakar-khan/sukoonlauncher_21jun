@@ -3,15 +3,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/book_models.dart';
+import 'reader_settings_provider.dart';
 
 // ══════════════════════════════════════════════════════════════════════
 // BOOK DATA PROVIDER
 // ══════════════════════════════════════════════════════════════════════
 
-/// Loads the book from both separate JSON asset files and merges chapters.
+/// Loads the book from separate JSON asset files and merges chapters.
+/// Language-aware: re-loads from the Hinglish asset set when the reader
+/// language changes (English ⇆ Hinglish share identical chapter/topic IDs,
+/// so reading progress carries across a language switch).
 final bookProvider = FutureProvider<BookModel>((ref) async {
+  final lang = ref.watch(readerLanguageProvider);
+  final prefix = lang.assetPrefix; // 'ar_raheeq' or 'ar_raheeq_hi'
+
   // Load ch1 (has book envelope)
-  final ch1Raw = await rootBundle.loadString('assets/ar_raheeq_ch1_v2.json');
+  final ch1Raw = await rootBundle.loadString('assets/${prefix}_ch1_v2.json');
   final ch1Json = jsonDecode(ch1Raw) as Map<String, dynamic>;
   final bookJson = ch1Json['book'] as Map<String, dynamic>;
 
@@ -24,14 +31,14 @@ final bookProvider = FutureProvider<BookModel>((ref) async {
   // Dynamically load available chapters or yield placeholders
   for (int i = 2; i <= 30; i++) {
     try {
-      final chRaw = await rootBundle.loadString('assets/ar_raheeq_ch$i.json');
+      final chRaw = await rootBundle.loadString('assets/${prefix}_ch$i.json');
       final chJson = jsonDecode(chRaw) as Map<String, dynamic>;
       allChapters.add(ChapterModel.fromJson(chJson));
     } catch (_) {
       // File not found; fallback to placeholder "Coming Soon" chapter
       allChapters.add(ChapterModel(
         id: 'ch-$i',
-        title: _placeholderChapterTitle(i),
+        title: _placeholderChapterTitle(i, lang),
         arabicTitle: '',
         number: i,
         totalTopics: 0,
@@ -76,9 +83,9 @@ final bookProvider = FutureProvider<BookModel>((ref) async {
   );
 });
 
-/// Placeholder chapter titles for locked chapters
-String _placeholderChapterTitle(int number) {
-  const titles = {
+/// Placeholder chapter titles for locked ("Coming Soon") chapters.
+String _placeholderChapterTitle(int number, ReaderLanguage lang) {
+  const en = {
     3: 'Religions of the Arabs',
     4: 'The Lineage and Family of Muhammad ﷺ',
     5: 'Muhammad ﷺ from Birth to Prophethood',
@@ -108,7 +115,39 @@ String _placeholderChapterTitle(int number) {
     29: 'The Prophet\'s ﷺ Attributes and Manners',
     30: 'The Prophetic Household',
   };
-  return titles[number] ?? 'Chapter $number';
+  const hi = {
+    3: 'Arab ke Adyaan-o-Mazaahib',
+    4: 'Muhammad ﷺ ka Khaandaan aur Nasab',
+    5: 'Muhammad ﷺ — Wiladat se Nubuwwat tak',
+    6: 'Nubuwwat se Hijrat tak',
+    7: 'Islam ke Ibtidaai Qubool karne waale',
+    8: 'Zulm-o-Sitam ka Daur',
+    9: 'Habsha ki Hijrat',
+    10: 'Gham ka Saal (Aam-ul-Huzn)',
+    11: 'Isra aur Mi\'raj',
+    12: 'Pehli Bai\'at-e-Aqabah',
+    13: 'Doosri Bai\'at-e-Aqabah',
+    14: 'Hijrat — Madinah ki taraf',
+    15: 'Islami Riyaasat ka Qiyaam',
+    16: 'Ghazwaat ka Aaghaz',
+    17: 'Ghazwa-e-Badr',
+    18: 'Ghazwa-e-Uhud',
+    19: 'Ghazwa-e-Khandaq (Ahzaab)',
+    20: 'Sulah-e-Hudaibiyah',
+    21: 'Khaybar ki Fatah',
+    22: 'Islam ka Phailaao',
+    23: 'Fatah-e-Makkah',
+    24: 'Ghazwa-e-Hunain',
+    25: 'Ghazwa-e-Tabook',
+    26: 'Wufood ka Saal (Aam-ul-Wufood)',
+    27: 'Hujjat-ul-Wida (Alvidaai Hajj)',
+    28: 'Rafeeq-e-A\'la ki taraf Safar',
+    29: 'Nabi ﷺ ke Akhlaaq-o-Ausaaf',
+    30: 'Khaandaan-e-Nubuwwat',
+  };
+  final titles = lang == ReaderLanguage.hinglish ? hi : en;
+  return titles[number] ??
+      (lang == ReaderLanguage.hinglish ? 'Baab $number' : 'Chapter $number');
 }
 
 /// Provides a single chapter by ID.

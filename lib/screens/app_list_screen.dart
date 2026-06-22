@@ -519,7 +519,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
           color: const Color(0xFF1A1A1A),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           border: Border(
-            top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.10)),
           ),
         ),
         padding: const EdgeInsets.symmetric(vertical: 20),

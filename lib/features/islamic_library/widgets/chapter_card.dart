@@ -2,20 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math';
 import '../models/book_models.dart';
+import '../providers/reader_settings_provider.dart';
 
-/// Full-card chapter tile — premium ebook style.
+/// Full-card chapter tile — premium ebook style, themed by the [ReaderPalette].
 /// Every chapter (including locked/coming-soon) is tappable.
 /// No read/unread status display.
 class ChapterCard extends StatefulWidget {
   final ChapterModel chapter;
-  final bool isDark;
+  final ReaderPalette palette;
   final VoidCallback onTap;
   final int index; // 0-based position for display number
 
   const ChapterCard({
     super.key,
     required this.chapter,
-    required this.isDark,
+    required this.palette,
     required this.onTap,
     required this.index,
   });
@@ -30,20 +31,14 @@ class _ChapterCardState extends State<ChapterCard> {
   @override
   Widget build(BuildContext context) {
     final ch = widget.chapter;
-    final isDark = widget.isDark;
+    final p = widget.palette;
     final locked = !ch.hasContent;
 
-    const gold = Color(0xFFD4A017);
-    final textColor =
-        isDark ? const Color(0xFFF0EBE1) : const Color(0xFF1C1C1E);
-    final mutedText =
-        isDark ? const Color(0xFF888580) : const Color(0xFF9B9896);
-    final cardBg = isDark
-        ? const Color(0xFF111111)
-        : const Color(0xFFF5F2EC);
-    final cardBorder = isDark
-        ? const Color(0xFF222222)
-        : const Color(0xFFE4DFD6);
+    final gold = p.accent;
+    final textColor = p.text;
+    final mutedText = p.textMuted;
+    final cardBg = p.surface;
+    final cardBorder = p.divider;
 
     final int minutes = _estimateMinutes(ch);
     final String chapterNum =

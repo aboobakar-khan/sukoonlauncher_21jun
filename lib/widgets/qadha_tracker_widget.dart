@@ -19,7 +19,7 @@ class QadhaTrackerWidget extends ConsumerStatefulWidget {
 class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
   // Design tokens
   static final Color _cardBg = Colors.white.withValues(alpha: 0.03);
-  static final Color _borderColor = Colors.white.withValues(alpha: 0.06);
+  static final Color _borderColor = Colors.white.withValues(alpha: 0.09);
   static const Color _textPrimary = Color(0xFFE6EDF3);
   static const Color _textSecondary = Color(0xFF8B949E);
   static const Color _textMuted = Color(0xFF484F58);
@@ -77,7 +77,7 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
       decoration: BoxDecoration(
         color: _cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
         children: [

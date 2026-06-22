@@ -8,14 +8,15 @@ import '../providers/reader_settings_provider.dart';
 import '../widgets/topic_content.dart';
 import '../widgets/reader_settings_sheet.dart';
 
-/// Kindle-style chapter reader:
-///   • Full-screen vertical scroll (no tabs)
-///   • Tap anywhere → overlay with unit picker dropdown
-///   • Location bar at the bottom (like real Kindle)
+/// Immersive chapter reader:
+///   • One topic per vertical page; tap toggles the top bar.
+///   • A slim, always-visible bottom bar keeps Contents one tap away.
+///   • Contents opens a full chapter→topic index (current unit highlighted).
 class ChapterScreen extends ConsumerStatefulWidget {
   final BookModel book;
   final String initialChapterId;
-  const ChapterScreen({super.key, required this.book, required this.initialChapterId});
+  const ChapterScreen(
+      {super.key, required this.book, required this.initialChapterId});
 
   @override
   ConsumerState<ChapterScreen> createState() => _ChapterScreenState();
@@ -29,30 +30,39 @@ class _TopicWithChapter {
 
 class _ChapterScreenState extends ConsumerState<ChapterScreen>
     with SingleTickerProviderStateMixin {
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _currentTopicIndex = 0;
   late final PageController _pageController;
-  late final List<_TopicWithChapter> _allTopics;
+  late List<_TopicWithChapter> _allTopics;
+  late BookModel _book;
 
-  // Overlay visibility
   bool _overlayVisible = false;
   late AnimationController _overlayAnim;
   late Animation<double> _fadeCurve;
 
-  @override
-  void initState() {
-    super.initState();
-    
-    _allTopics = [];
-    for (var c in widget.book.chapters) {
+  /// Flattens a book's chapters into the linear topic list the reader pages
+  /// through. Used at startup and whenever the language (and thus the book)
+  /// changes underneath an open reader.
+  List<_TopicWithChapter> _buildTopics(BookModel book) {
+    final list = <_TopicWithChapter>[];
+    for (var c in book.chapters) {
       if (c.hasContent) {
         for (var t in c.topics) {
-          _allTopics.add(_TopicWithChapter(c, t));
+          list.add(_TopicWithChapter(c, t));
         }
       }
     }
-    
-    _currentTopicIndex = _allTopics.indexWhere((t) => t.chapter.id == widget.initialChapterId);
+    return list;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    _book = widget.book;
+    _allTopics = _buildTopics(_book);
+
+    _currentTopicIndex =
+        _allTopics.indexWhere((t) => t.chapter.id == widget.initialChapterId);
     if (_currentTopicIndex == -1) _currentTopicIndex = 0;
     _pageController = PageController(initialPage: _currentTopicIndex);
 
@@ -62,7 +72,7 @@ class _ChapterScreenState extends ConsumerState<ChapterScreen>
     );
     _fadeCurve = CurvedAnimation(parent: _overlayAnim, curve: Curves.easeOut);
 
-    // Show unit panel immediately when reader opens
+    // Reveal the top bar briefly when the reader opens, then let the reader breathe.
     _overlayVisible = true;
     _overlayAnim.value = 1.0;
 
@@ -108,14 +118,11 @@ class _ChapterScreenState extends ConsumerState<ChapterScreen>
   void _jumpToTopic(int index) {
     _hideOverlay();
     if (index == _currentTopicIndex) return;
-
-    // Mark old topic completed if moving forward
     if (index > _currentTopicIndex) {
       ref
           .read(readingProgressProvider.notifier)
           .markTopicCompleted(_allTopics[_currentTopicIndex].topic.id);
     }
-
     setState(() => _currentTopicIndex = index);
     _pageController.animateToPage(
       index,
@@ -125,118 +132,137 @@ class _ChapterScreenState extends ConsumerState<ChapterScreen>
     _saveProgress();
   }
 
+  // ── Contents index — a full, always-reachable chapter/topic browser ──
+  void _showContents() {
+    HapticFeedback.lightImpact();
+    final p = ref.read(readerSettingsProvider).palette;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _ContentsSheet(
+        chapters: _book.chapters.where((c) => c.hasContent).toList(),
+        allTopics: _allTopics,
+        currentIndex: _currentTopicIndex,
+        palette: p,
+        bookTitle: _book.title,
+        onJump: (globalIndex) {
+          Navigator.pop(context);
+          _jumpToTopic(globalIndex);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Live-swap the book when the reader language changes mid-read. English and
+    // Hinglish share identical chapter/topic IDs and ordering, so the current
+    // page index stays valid — the open unit simply re-renders in the new
+    // language without losing the reader's place.
+    ref.listen<AsyncValue<BookModel>>(bookProvider, (prev, next) {
+      final book = next.asData?.value;
+      if (book != null && !identical(book, _book)) {
+        setState(() {
+          _book = book;
+          _allTopics = _buildTopics(_book);
+          if (_currentTopicIndex >= _allTopics.length) {
+            _currentTopicIndex = _allTopics.isEmpty ? 0 : _allTopics.length - 1;
+          }
+        });
+      }
+    });
+
     if (_allTopics.isEmpty) {
       return const Scaffold(body: Center(child: Text('No content available.')));
     }
     final tc = _allTopics[_currentTopicIndex];
-    final currentChapter = tc.chapter;
-    
     final settings = ref.watch(readerSettingsProvider);
-    final settingsNotifier = ref.read(readerSettingsProvider.notifier);
-    final isDark = settingsNotifier.isDarkMode(context);
-
-    final bgColor = isDark ? const Color(0xFF111111) : const Color(0xFFFAF8F4);
-    final textColor = isDark ? const Color(0xFFE8E0D0) : const Color(0xFF1A1A1A);
-    final mutedColor = isDark ? const Color(0xFF6B6B6B) : const Color(0xFF9B9B9B);
-    const gold = Color(0xFFD4A017);
-
+    final p = settings.palette;
     final totalTopics = _allTopics.length;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: isDark
-          ? SystemUiOverlayStyle.light.copyWith(
-              statusBarColor: Colors.transparent,
-              systemNavigationBarColor: const Color(0xFF111111),
-            )
-          : SystemUiOverlayStyle.dark.copyWith(
-              statusBarColor: Colors.transparent,
-              systemNavigationBarColor: const Color(0xFFFAF8F4),
-            ),
+      value: (p.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+          .copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: p.surface,
+        systemNavigationBarIconBrightness:
+            p.isDark ? Brightness.light : Brightness.dark,
+      ),
       child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: bgColor,
-        endDrawer: _buildUnitSidebar(isDark, textColor, mutedColor, gold),
+        backgroundColor: p.bg,
         body: GestureDetector(
-          // Single tap anywhere toggles the overlay
           onTap: _toggleOverlay,
           behavior: HitTestBehavior.translucent,
           child: Stack(
             children: [
-              // ── Main page content ──────────────────────────────────────────
+              // ── Reading content ──
               NotificationListener<ScrollUpdateNotification>(
-                      onNotification: (notif) {
-                        if (notif.scrollDelta != null && notif.scrollDelta!.abs() > 2) {
-                          _hideOverlay();
-                        }
-                        return false;
-                      },
-                      child: PageView.builder(
-                        controller: _pageController,
-                        scrollDirection: Axis.vertical,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: totalTopics,
-                        onPageChanged: (index) {
-                          if (index > _currentTopicIndex) {
-                            ref
-                                .read(readingProgressProvider.notifier)
-                                .markTopicCompleted(
-                                    _allTopics[_currentTopicIndex].topic.id);
-                          }
-                          setState(() => _currentTopicIndex = index);
-                          _saveProgress();
-                        },
-                        itemBuilder: (context, index) {
-                          final item = _allTopics[index];
-                          return KindleTopicPage(
-                            key: ValueKey('topic_${item.topic.id}'),
-                            topic: item.topic,
-                            isDark: isDark,
-                            fontSize: settings.fontSize,
-                            lineHeight: settings.lineHeight,
-                            chapterTitle: item.chapter.title,
-                            topicIndex: index,
-                            totalTopics: totalTopics,
-                            onSwipeNext: index < totalTopics - 1
-                                ? () => _jumpToTopic(index + 1)
-                                : null,
-                            onSwipePrev:
-                                index > 0 ? () => _jumpToTopic(index - 1) : null,
-                          );
-                        },
-                      ),
-                    ),
-
-              // ── Kinlde location bar (bottom) ───────────────────────────────
-              if (totalTopics > 0)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _LocationBar(
-                    currentIndex: _currentTopicIndex,
-                    total: totalTopics,
-                    isDark: isDark,
-                  ),
+                onNotification: (notif) {
+                  if (notif.scrollDelta != null &&
+                      notif.scrollDelta!.abs() > 2) {
+                    _hideOverlay();
+                  }
+                  return false;
+                },
+                child: PageView.builder(
+                  controller: _pageController,
+                  scrollDirection: Axis.vertical,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: totalTopics,
+                  onPageChanged: (index) {
+                    if (index > _currentTopicIndex) {
+                      ref
+                          .read(readingProgressProvider.notifier)
+                          .markTopicCompleted(
+                              _allTopics[_currentTopicIndex].topic.id);
+                    }
+                    setState(() => _currentTopicIndex = index);
+                    _saveProgress();
+                  },
+                  itemBuilder: (context, index) {
+                    final item = _allTopics[index];
+                    return KindleTopicPage(
+                      key: ValueKey('topic_${item.topic.id}'),
+                      topic: item.topic,
+                      palette: p,
+                      fontSize: settings.fontSize,
+                      lineHeight: settings.lineHeight,
+                      chapterTitle: item.chapter.title,
+                      topicIndex: index,
+                      totalTopics: totalTopics,
+                      onSwipeNext: index < totalTopics - 1
+                          ? () => _jumpToTopic(index + 1)
+                          : null,
+                      onSwipePrev:
+                          index > 0 ? () => _jumpToTopic(index - 1) : null,
+                    );
+                  },
                 ),
+              ),
 
-              // ── Tap overlay: top bar ─────────────────────────
-              FadeTransition(
-                opacity: _fadeCurve,
-                child: IgnorePointer(
-                  ignoring: !_overlayVisible,
-                  child: _ReaderOverlay(
-                    chapter: currentChapter,
-                    currentTopicIndex: _allTopics[_currentTopicIndex].topic.number - 1,
-                    totalTopics: currentChapter.topics.length,
-                    isDark: isDark,
-                    onBack: () => Navigator.pop(context),
-                    onOpenSidebar: () {
-                      _hideOverlay();
-                      _scaffoldKey.currentState?.openEndDrawer();
-                    },
-                    onDismiss: _hideOverlay,
+              // ── Always-visible bottom bar (Contents + progress + nav) ──
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildBottomBar(p),
+              ),
+
+              // ── Tap overlay: top bar ──
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: FadeTransition(
+                  opacity: _fadeCurve,
+                  child: IgnorePointer(
+                    ignoring: !_overlayVisible,
+                    child: _ReaderOverlay(
+                      title: tc.chapter.title,
+                      palette: p,
+                      onBack: () => Navigator.pop(context),
+                    ),
                   ),
                 ),
               ),
@@ -247,251 +273,276 @@ class _ChapterScreenState extends ConsumerState<ChapterScreen>
     );
   }
 
-  Widget _buildUnitSidebar(bool isDark, Color textColor, Color muted, Color gold) {
-    final bg = isDark ? const Color(0xFF111111) : const Color(0xFFFAF8F4);
-    final divider = isDark ? const Color(0xFF222222) : const Color(0xFFE8E4DC);
-    final chapters = widget.book.chapters.where((c) => c.hasContent).toList();
+  Widget _buildBottomBar(ReaderPalette p) {
+    final total = _allTopics.length;
+    final percent =
+        total > 1 ? ((_currentTopicIndex / (total - 1)) * 100).round() : 100;
+    return Container(
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(top: BorderSide(color: p.divider, width: 0.5)),
+      ),
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 6,
+        top: 8,
+        bottom: MediaQuery.paddingOf(context).bottom + 8,
+      ),
+      child: Row(
+        children: [
+          // Contents — the always-reachable index
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _showContents,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+              decoration: BoxDecoration(
+                color: p.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.menu_book_rounded, size: 17, color: p.accent),
+                const SizedBox(width: 7),
+                Text('Contents',
+                    style: GoogleFonts.nunitoSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: p.accent)),
+              ]),
+            ),
+          ),
+          const Spacer(),
+          Text('Unit ${_currentTopicIndex + 1} / $total',
+              style: GoogleFonts.nunitoSans(
+                  fontSize: 12, color: p.textFaint, fontWeight: FontWeight.w500)),
+          const SizedBox(width: 8),
+          Text('· $percent%',
+              style: GoogleFonts.nunitoSans(
+                  fontSize: 12,
+                  color: p.accent.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(width: 4),
+          _navBtn(Icons.keyboard_arrow_up_rounded,
+              _currentTopicIndex > 0 ? () => _jumpToTopic(_currentTopicIndex - 1) : null, p),
+          _navBtn(Icons.keyboard_arrow_down_rounded,
+              _currentTopicIndex < total - 1 ? () => _jumpToTopic(_currentTopicIndex + 1) : null, p),
+        ],
+      ),
+    );
+  }
 
-    return Drawer(
-      backgroundColor: bg,
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-              child: Text(
-                'ALL UNITS',
-                style: GoogleFonts.nunitoSans(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: muted,
-                  letterSpacing: 2.0,
-                ),
-              ),
-            ),
-            Container(height: 0.5, color: divider),
-            Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                itemCount: chapters.length,
-                itemBuilder: (context, chapterIndex) {
-                  final ch = chapters[chapterIndex];
-                  final isCurrentChapter = ch.id == _allTopics[_currentTopicIndex].chapter.id;
-                  
-                  return Theme(
-                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                    child: ExpansionTile(
-                      initiallyExpanded: isCurrentChapter,
-                      iconColor: gold,
-                      collapsedIconColor: muted,
-                      title: Text(
-                        'Ch ${ch.number} · ${ch.title}',
-                        style: GoogleFonts.nunitoSans(
-                          fontSize: 13,
-                          fontWeight: isCurrentChapter ? FontWeight.w700 : FontWeight.w600,
-                          color: isCurrentChapter ? gold : textColor,
-                        ),
-                      ),
-                      children: _allTopics.where((item) => item.chapter.id == ch.id).map((item) {
-                        final t = item.topic;
-                        final globalIndex = _allTopics.indexWhere((x) => x.topic.id == t.id);
-                        final isActive = globalIndex == _currentTopicIndex;
-                        return InkWell(
-                          onTap: () {
-                            Navigator.pop(context); // close drawer
-                            _jumpToTopic(globalIndex);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.fromLTRB(40, 12, 24, 12),
-                            decoration: BoxDecoration(
-                              color: isActive ? gold.withValues(alpha: 0.08) : Colors.transparent,
-                            ),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 24,
-                                  child: Text(
-                                    '${t.number}',
-                                    style: GoogleFonts.nunitoSans(
-                                      fontSize: 12,
-                                      fontWeight: isActive ? FontWeight.w800 : FontWeight.w400,
-                                      color: isActive ? gold : muted,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    t.title,
-                                    style: GoogleFonts.literata(
-                                      fontSize: 13,
-                                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                                      color: isActive ? textColor : muted,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                if (isActive)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 8),
-                                    child: Icon(Icons.circle, size: 6, color: gold.withValues(alpha: 0.7)),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+  Widget _navBtn(IconData icon, VoidCallback? onTap, ReaderPalette p) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(5),
+        child: Icon(icon,
+            size: 24,
+            color: onTap == null
+                ? p.textFaint.withValues(alpha: 0.4)
+                : p.text.withValues(alpha: 0.75)),
       ),
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// KINDLE LOCATION BAR
+// READER OVERLAY — slim top bar (back · chapter · settings)
 // ═══════════════════════════════════════════════════════════════════════════
 
-class _LocationBar extends StatelessWidget {
-  final int currentIndex;
-  final int total;
-  final bool isDark;
+class _ReaderOverlay extends StatelessWidget {
+  final String title;
+  final ReaderPalette palette;
+  final VoidCallback onBack;
 
-  const _LocationBar({
-    required this.currentIndex,
-    required this.total,
-    required this.isDark,
+  const _ReaderOverlay({
+    required this.title,
+    required this.palette,
+    required this.onBack,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? const Color(0xFF111111) : const Color(0xFFFAF8F4);
-    final muted = isDark ? const Color(0xFF555555) : const Color(0xFFBBBBBB);
-    final percent = total > 1
-        ? ((currentIndex / (total - 1)) * 100).round()
-        : 100;
-
+    final p = palette;
+    final topPad = MediaQuery.paddingOf(context).top;
     return Container(
-      color: bg,
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 10,
-        bottom: MediaQuery.paddingOf(context).bottom + 12,
+      decoration: BoxDecoration(
+        color: p.surface.withValues(alpha: 0.97),
+        border: Border(bottom: BorderSide(color: p.divider, width: 0.5)),
       ),
+      padding: EdgeInsets.only(top: topPad + 6, left: 4, right: 12, bottom: 10),
       child: Row(
+          children: [
+            IconButton(
+              onPressed: onBack,
+              icon: Icon(Icons.arrow_back_ios_new_rounded,
+                  size: 20, color: p.text),
+              splashRadius: 20,
+            ),
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.literata(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: p.text,
+                  letterSpacing: 0.1,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            ReaderSettingsButton(palette: p),
+          ],
+        ),
+      );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTENTS SHEET — full chapter/topic index, current unit highlighted
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _ContentsSheet extends StatelessWidget {
+  final List<ChapterModel> chapters;
+  final List<_TopicWithChapter> allTopics;
+  final int currentIndex;
+  final ReaderPalette palette;
+  final String bookTitle;
+  final ValueChanged<int> onJump;
+
+  const _ContentsSheet({
+    required this.chapters,
+    required this.allTopics,
+    required this.currentIndex,
+    required this.palette,
+    required this.bookTitle,
+    required this.onJump,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = palette;
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.82,
+      decoration: BoxDecoration(
+        color: p.bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
         children: [
-          Text(
-            'Unit ${currentIndex + 1} of $total',
-            style: GoogleFonts.nunitoSans(
-              fontSize: 11,
-              color: muted,
-              fontWeight: FontWeight.w400,
-              letterSpacing: 0.3,
+          const SizedBox(height: 10),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: p.textFaint.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const Spacer(),
-          Text(
-            '$percent%',
-            style: GoogleFonts.nunitoSans(
-              fontSize: 11,
-              color: muted,
-              fontWeight: FontWeight.w400,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 16, 20, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Contents',
+                          style: GoogleFonts.literata(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: p.text)),
+                      const SizedBox(height: 2),
+                      Text(bookTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.nunitoSans(
+                              fontSize: 13, color: p.textMuted)),
+                    ],
+                  ),
+                ),
+                Text('${allTopics.length} units',
+                    style: GoogleFonts.nunitoSans(
+                        fontSize: 12.5, color: p.textFaint)),
+              ],
+            ),
+          ),
+          Container(height: 0.5, color: p.divider),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 28, top: 4),
+              physics: const BouncingScrollPhysics(),
+              children: [
+                for (final ch in chapters) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+                    child: Text(
+                      'CHAPTER ${ch.number}  ·  ${ch.title}'.toUpperCase(),
+                      style: GoogleFonts.nunitoSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: p.accent,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                  for (final item
+                      in allTopics.where((x) => x.chapter.id == ch.id))
+                    _topicRow(p, item),
+                ],
+              ],
             ),
           ),
         ],
       ),
     );
   }
-}
 
-// ═══════════════════════════════════════════════════════════════════════════
-// READER OVERLAY — top navigation + unit picker dropdown
-// ═══════════════════════════════════════════════════════════════════════════
-
-class _ReaderOverlay extends StatelessWidget {
-  final ChapterModel chapter;
-  final int currentTopicIndex;
-  final int totalTopics;
-  final bool isDark;
-  final VoidCallback onBack;
-  final VoidCallback onOpenSidebar;
-  final VoidCallback onDismiss;
-
-  const _ReaderOverlay({
-    required this.chapter,
-    required this.currentTopicIndex,
-    required this.totalTopics,
-    required this.isDark,
-    required this.onBack,
-    required this.onOpenSidebar,
-    required this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = isDark
-        ? const Color(0xFF111111).withValues(alpha: 0.97)
-        : const Color(0xFFFAF8F4).withValues(alpha: 0.97);
-    final textColor = isDark ? const Color(0xFFE8E0D0) : const Color(0xFF1A1A1A);
-    final topPad = MediaQuery.paddingOf(context).top;
-
-    return Stack(
-      children: [
-        // Top bar
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            color: bg,
-            padding: EdgeInsets.only(
-              top: topPad + 8,
-              left: 8,
-              right: 16,
-              bottom: 12,
+  Widget _topicRow(ReaderPalette p, _TopicWithChapter item) {
+    final gi = allTopics.indexWhere((x) => x.topic.id == item.topic.id);
+    final active = gi == currentIndex;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onJump(gi),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(22, 12, 22, 12),
+        color: active ? p.accent.withValues(alpha: 0.10) : Colors.transparent,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 26,
+              child: Text('${item.topic.number}',
+                  style: GoogleFonts.nunitoSans(
+                      fontSize: 12.5,
+                      fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+                      color: active ? p.accent : p.textFaint)),
             ),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: onBack,
-                  icon: Icon(Icons.arrow_back_ios_new_rounded,
-                      size: 20, color: textColor),
-                  splashRadius: 20,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                item.topic.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.literata(
+                  fontSize: 14.5,
+                  height: 1.3,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+                  color: active ? p.text : p.text.withValues(alpha: 0.78),
                 ),
-                Expanded(
-                  child: Text(
-                    chapter.title,
-                    style: GoogleFonts.literata(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: textColor,
-                      letterSpacing: 0.1,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                IconButton(
-                  onPressed: onOpenSidebar,
-                  icon: Icon(Icons.format_list_bulleted_rounded,
-                      size: 22, color: textColor.withValues(alpha: 0.8)),
-                  splashRadius: 20,
-                ),
-                ReaderSettingsButton(isDark: isDark),
-              ],
+              ),
             ),
-          ),
+            if (active)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(Icons.menu_book_rounded,
+                    size: 15, color: p.accent.withValues(alpha: 0.8)),
+              ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
-

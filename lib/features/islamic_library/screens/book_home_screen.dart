@@ -5,6 +5,7 @@ import '../models/book_models.dart';
 import '../providers/book_provider.dart';
 import '../providers/reader_settings_provider.dart';
 import '../widgets/chapter_card.dart';
+import '../widgets/reader_settings_sheet.dart';
 import 'chapter_screen.dart';
 
 /// Book home screen — shows book header + chapter list.
@@ -38,21 +39,20 @@ class _BookHomeScreenState extends ConsumerState<BookHomeScreen>
   @override
   Widget build(BuildContext context) {
     final bookAsync = ref.watch(bookProvider);
-    // Force rebuild of root screen when theme changes
-    ref.watch(readerSettingsProvider);
-    final settingsNotifier = ref.read(readerSettingsProvider.notifier);
-    final isDark = settingsNotifier.isDarkMode(context);
+    final settings = ref.watch(readerSettingsProvider);
+    final p = settings.palette;
     final progress = ref.watch(readingProgressProvider);
 
-    const gold = Color(0xFFD4A017);
-    final bgColor =
-        isDark ? const Color(0xFF000000) : const Color(0xFFF9F6EE);
-    final textColor =
-        isDark ? const Color(0xFFF5F0E8) : const Color(0xFF1C1C1E);
+    final gold = p.accent;
+    final bgColor = p.bg;
+    final textColor = p.text;
 
     return Scaffold(
       backgroundColor: bgColor,
       body: bookAsync.when(
+        // Keep the current chapter list on screen while switching language,
+        // instead of flashing a full-screen spinner over a quick local reload.
+        skipLoadingOnReload: true,
         loading: () => Center(
           child: CircularProgressIndicator(color: gold),
         ),
@@ -70,7 +70,7 @@ class _BookHomeScreenState extends ConsumerState<BookHomeScreen>
                 book: book,
                 progress: progress,
                 progressAnim: _progressAnim,
-                isDark: isDark,
+                palette: p,
               ),
             ),
 
@@ -81,7 +81,7 @@ class _BookHomeScreenState extends ConsumerState<BookHomeScreen>
               SliverToBoxAdapter(
                 child: _ContinueReadingBanner(
                   progress: progress,
-                  isDark: isDark,
+                  palette: p,
                   onTap: () {
                     final chapter = book.chapters.firstWhere(
                       (c) => c.id == progress.lastChapterId,
@@ -111,9 +111,7 @@ class _BookHomeScreenState extends ConsumerState<BookHomeScreen>
                   style: GoogleFonts.nunitoSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? const Color(0xFF555555)
-                        : const Color(0xFFAAAAAA),
+                    color: p.textFaint,
                     letterSpacing: 1.4,
                   ),
                 ),
@@ -134,7 +132,7 @@ class _BookHomeScreenState extends ConsumerState<BookHomeScreen>
                       padding: const EdgeInsets.only(bottom: 10),
                       child: ChapterCard(
                         chapter: ch,
-                        isDark: isDark,
+                        palette: p,
                         index: index,
                         onTap: () {
                           if (ch.hasContent) {
@@ -199,35 +197,32 @@ class _BookHomeScreenState extends ConsumerState<BookHomeScreen>
 // BOOK HEADER - Premium typography design
 // ═══════════════════════════════════════════════════════════════════════
 
-class _BookHeader extends ConsumerWidget {
+class _BookHeader extends StatelessWidget {
   final BookModel book;
   final ReadingProgress progress;
   final AnimationController progressAnim;
-  final bool isDark;
+  final ReaderPalette palette;
 
   const _BookHeader({
     required this.book,
     required this.progress,
     required this.progressAnim,
-    required this.isDark,
+    required this.palette,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    const gold = Color(0xFFD4A017);
-    final overallProgress = progress.overallProgress(book);
-    final settings = ref.watch(readerSettingsProvider);
-    final notifier = ref.read(readerSettingsProvider.notifier);
-    
-    final textColor = isDark ? const Color(0xFFF5F0E8) : const Color(0xFF1C1C1E);
-    final mutedText = isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280);
+  Widget build(BuildContext context) {
+    final p = palette;
+    final gold = p.accent;
+    final textColor = p.text;
+    final mutedText = p.textMuted;
 
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       child: Column(
         children: [
-          // ── Top Bar (Back + Theme) ──
+          // ── Top Bar (Back + Language + Theme) ──
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             child: Row(
@@ -238,20 +233,43 @@ class _BookHeader extends ConsumerWidget {
                       color: textColor.withValues(alpha: 0.8), size: 20),
                   onPressed: () => Navigator.pop(context),
                 ),
-                IconButton(
-                  icon: Icon(
-                    settings.themeMode == ReaderThemeMode.dark
-                        ? Icons.dark_mode_rounded
-                        : Icons.light_mode_rounded,
-                    color: gold.withValues(alpha: 0.8),
-                    size: 22,
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Language picker (English ⇆ Hinglish)
+                      _LanguageHeaderPill(palette: p),
+                      const SizedBox(width: 8),
+                      // Reading-theme picker (Paper · Sepia · Night · Black · Nord · Forest)
+                      GestureDetector(
+                        onTap: () => showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          isScrollControlled: true,
+                          builder: (_) => const ReaderThemeQuickSheet(),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: gold.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child:
+                              Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.palette_outlined, color: gold, size: 17),
+                            const SizedBox(width: 6),
+                            Text('Theme',
+                                style: GoogleFonts.nunitoSans(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: gold)),
+                          ]),
+                        ),
+                      ),
+                    ],
                   ),
-                  onPressed: () {
-                    final newMode = settings.themeMode == ReaderThemeMode.dark
-                        ? ReaderThemeMode.light
-                        : ReaderThemeMode.dark;
-                    notifier.setThemeMode(newMode);
-                  },
                 ),
               ],
             ),
@@ -316,20 +334,19 @@ class _BookHeader extends ConsumerWidget {
 
 class _ContinueReadingBanner extends StatelessWidget {
   final ReadingProgress progress;
-  final bool isDark;
+  final ReaderPalette palette;
   final VoidCallback onTap;
 
   const _ContinueReadingBanner({
     required this.progress,
-    required this.isDark,
+    required this.palette,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFD4A017);
-    final mutedText =
-        isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280);
+    final gold = palette.accent;
+    final mutedText = palette.textMuted;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -351,7 +368,7 @@ class _ContinueReadingBanner extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: gold.withValues(alpha: 0.15),
                 ),
-                child: const Icon(Icons.play_arrow_rounded,
+                child: Icon(Icons.play_arrow_rounded,
                     color: gold, size: 20),
               ),
               const SizedBox(width: 12),
@@ -385,6 +402,43 @@ class _ContinueReadingBanner extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// LANGUAGE HEADER PILL — shows the active language, opens the quick picker
+// ═══════════════════════════════════════════════════════════════════════
+
+class _LanguageHeaderPill extends ConsumerWidget {
+  final ReaderPalette palette;
+  const _LanguageHeaderPill({required this.palette});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lang = ref.watch(readerLanguageProvider);
+    final gold = palette.accent;
+    return GestureDetector(
+      onTap: () => showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (_) => const ReaderLanguageQuickSheet(),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: gold.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.translate_rounded, color: gold, size: 17),
+          const SizedBox(width: 6),
+          Text(lang.label,
+              style: GoogleFonts.nunitoSans(
+                  fontSize: 12.5, fontWeight: FontWeight.w700, color: gold)),
+        ]),
       ),
     );
   }
