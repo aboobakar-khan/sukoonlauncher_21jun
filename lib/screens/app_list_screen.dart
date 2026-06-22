@@ -401,29 +401,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     }
   }
 
-  void _scrollToLetter(String letter) {
-    final targetIndex = _sectionFlatIndex[letter];
-    if (targetIndex == null || !_scrollController.hasClients) return;
-    _listController.jumpToItem(
-      index: targetIndex,
-      scrollController: _scrollController,
-      alignment: 0.0,
-    );
-  }
-
-
-
-  Widget _buildAlphabetSidebar(List<InstalledApp> filteredApps, AppThemeColor themeColor) {
-    return _AlphabetSidebar(
-      apps: filteredApps,
-      accent: themeColor.color,
-      scrollController: _scrollController,
-      onScrollToLetter: (letter, apps) {
-        _scrollToLetter(letter);
-      },
-    );
-  }
-
   void _showRenameDialog(BuildContext context, InstalledApp app, WidgetRef ref, AppThemeColor themeColor) {
     final controller = TextEditingController(text: app.customName ?? app.appName);
     final accent = themeColor.color;
@@ -736,10 +713,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                                   ),
                                 ),
 
-                                // Alphabet sidebar — right edge only
-                                if (_searchQuery.isEmpty)
-                                  _buildAlphabetSidebar(filteredApps, themeColor),
-
                                 // ── Floating search button ──────────────────
                                 Positioned(
                                   right: 20,
@@ -975,23 +948,39 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       child: IgnorePointer(
         ignoring: _searchVisible,
         child: GestureDetector(
-          onTap: _showSearch,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            _showSearch();
+          },
           behavior: HitTestBehavior.opaque,
           child: Container(
-            width: 53,
-            height: 53,
+            width: 62,
+            height: 62,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.07),
+              color: accent.withValues(alpha: 0.16),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.10),
-                width: 0.8,
+                color: accent.withValues(alpha: 0.38),
+                width: 1,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.22),
+                  blurRadius: 20,
+                  spreadRadius: -2,
+                  offset: const Offset(0, 6),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Icon(
               Icons.search_rounded,
-              size: 24,
-              color: Colors.white.withValues(alpha: 0.50),
+              size: 27,
+              color: accent,
             ),
           ),
         ),
@@ -1220,309 +1209,6 @@ class _ScaleTapAppItemState extends State<_ScaleTapAppItem>
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: widget.child,
-      ),
-    );
-  }
-}
-
-
-//  Gaussian wave push: selected letter + neighbours push LEFT with
-//  a smooth bell-curve. Dynamic vertical repositioning follows
-//  finger if dragged outside boundaries. Circle indicator.
-// ═══════════════════════════════════════════════════════════════════
-
-class _AlphabetSidebar extends StatefulWidget {
-  final List<InstalledApp> apps;
-  final Color accent;
-  final ScrollController scrollController;
-  final void Function(String letter, List<InstalledApp> apps) onScrollToLetter;
-
-  const _AlphabetSidebar({
-    required this.apps,
-    required this.accent,
-    required this.scrollController,
-    required this.onScrollToLetter,
-  });
-
-  @override
-  State<_AlphabetSidebar> createState() => _AlphabetSidebarState();
-}
-
-class _AlphabetSidebarState extends State<_AlphabetSidebar>
-    with SingleTickerProviderStateMixin {
-  static const _kLetterHeight = 20.0;
-  static const _kStripWidth = 42.0;
-
-  static const _allLetters = [
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-    'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-    'U', 'V', 'W', 'X', 'Y', 'Z', '#',
-  ];
-
-  late AnimationController _controller;
-  late Set<String> _availableLetters;
-
-  final GlobalKey _columnKey = GlobalKey();
-
-  String _selectedLetter = '';
-  bool _isDragging = false;
-  Offset _dragPosition = Offset.zero;
-  int _selectedIndex = -1;
-
-
-  @override
-  void initState() {
-    super.initState();
-    _buildAvailableLetters();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 50),
-      vsync: this,
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant _AlphabetSidebar old) {
-    super.didUpdateWidget(old);
-    if (old.apps != widget.apps) _buildAvailableLetters();
-  }
-
-  void _buildAvailableLetters() {
-    final set = <String>{};
-    for (final app in widget.apps) {
-      if (app.appName.isEmpty) continue;
-      final first = app.appName[0].toUpperCase();
-      if (RegExp(r'[A-Z]').hasMatch(first)) {
-        set.add(first);
-      }
-    }
-    _availableLetters = set;
-  }
-
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  // ── Resolve to nearest available letter (data-driven) ──
-  // Finds the closest letter that actually has apps, walking outward
-  // from the selected position in both directions.
-  String _resolveNearest(String letter) {
-    if (_availableLetters.contains(letter)) return letter;
-    if (_availableLetters.isEmpty) return letter;
-    final idx = _allLetters.indexOf(letter);
-    // Walk outward from idx: check idx-1, idx+1, idx-2, idx+2, ...
-    for (int delta = 1; delta < _allLetters.length; delta++) {
-      final before = idx - delta;
-      final after = idx + delta;
-      if (before >= 0 && _availableLetters.contains(_allLetters[before])) {
-        return _allLetters[before];
-      }
-      if (after < _allLetters.length && _availableLetters.contains(_allLetters[after])) {
-        return _allLetters[after];
-      }
-    }
-    return letter;
-  }
-
-  // ── Drag handlers ──
-  void _onDragStart(DragStartDetails details) {
-    setState(() {
-      _isDragging = true;
-      _updateSelectionFromPosition(details.globalPosition);
-    });
-    HapticFeedback.selectionClick();
-  }
-
-  void _onDragUpdate(DragUpdateDetails details) {
-    _updateSelectionFromPosition(details.globalPosition);
-  }
-
-  void _onDragEnd(DragEndDetails details) {
-    setState(() {
-      _isDragging = false;
-      _selectedIndex = -1;
-      _selectedLetter = '';
-    });
-    _controller.forward(from: 0.0);
-  }
-
-  void _updateSelectionFromPosition(Offset globalPosition) {
-    final RenderBox? box =
-        _columnKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return;
-
-    final localPos = box.globalToLocal(globalPosition);
-    final totalHeight = _kLetterHeight * _allLetters.length;
-    final startY = (box.size.height - totalHeight) / 2;
-
-    // Compute which letter index the finger is on — from local position
-    int index = ((localPos.dy - startY) / _kLetterHeight).floor();
-    index = index.clamp(0, _allLetters.length - 1);
-
-    // Map index → letter, then resolve to nearest letter that has apps
-    final rawLetter = _allLetters[index];
-    final resolved = _resolveNearest(rawLetter);
-    final prevLetter = _selectedLetter;
-
-    setState(() {
-      _dragPosition = globalPosition;
-      _selectedLetter = resolved;
-      _selectedIndex = _allLetters.indexOf(resolved);
-    });
-
-    // Only fire scroll + haptic when letter actually changes
-    if (resolved != prevLetter) {
-      HapticFeedback.selectionClick();
-      widget.onScrollToLetter(resolved, widget.apps);
-    }
-  }
-
-  // ── Gaussian bell-curve offset ──
-  double _calculateOffset(int index) {
-    if (!_isDragging || _selectedIndex == -1) return 0.0;
-
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final distance = (index - _selectedIndex).abs();
-
-    // Right-aligned: letters push LEFT (negative offset)
-    final maxOffset = (screenWidth - _dragPosition.dx + 60).clamp(
-      0.0,
-      screenWidth - 100,
-    );
-
-    // Gaussian bell: divisor controls curve width
-    final divisor = ((screenWidth - _dragPosition.dx) / 4.0) + 12.0;
-    final gaussian = math.exp(-(math.pow(distance, 2) / divisor));
-    final offset = maxOffset * gaussian;
-
-    return -offset; // Negative = push LEFT from right edge
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final screenH = mq.size.height;
-
-    return Positioned(
-      right: 0,
-      top: 0,
-      bottom: 0,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragStart: _onDragStart,
-        onVerticalDragUpdate: _onDragUpdate,
-        onVerticalDragEnd: _onDragEnd,
-        child: Container(
-          width: _kStripWidth,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.transparent),
-          ),
-          child: Stack(
-            alignment: Alignment.centerRight,
-            clipBehavior: Clip.none,
-            children: [
-              // Letter column — AnimatedPositioned for dynamic vertical shift
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 50),
-                right: 0,
-                top: 0,
-                bottom: 0,
-                child: Column(
-                  key: _columnKey,
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(_allLetters.length, (index) {
-                    final letter = _allLetters[index];
-                    final isSelected = letter == _selectedLetter && _isDragging;
-                    final hasApps = _availableLetters.contains(letter);
-
-                    // Opacity: selected = bright, nearby = moderate, far = dim
-                    double alpha;
-                    if (isSelected) {
-                      alpha = 1.0;
-                    } else if (_isDragging) {
-                      final dist = (_selectedIndex - index).abs();
-                      alpha = (0.15 + 0.40 * math.exp(-dist * 0.4)).clamp(0.0, 1.0);
-                    } else {
-                      alpha = hasApps ? 0.45 : 0.18;
-                    }
-
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 50),
-                      width: _kStripWidth,
-                      height: _kLetterHeight,
-                      padding: const EdgeInsets.only(right: 10),
-                      transform: Matrix4.translationValues(
-                        _calculateOffset(index),
-                        0,
-                        0,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          letter,
-                          style: TextStyle(
-                            fontSize: isSelected ? 18 : 11,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.w400,
-                            color: isSelected
-                                ? widget.accent
-                                : Colors.white.withValues(alpha: alpha),
-                            height: 1.0,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-
-              // ── Floating circle indicator ──
-              if (_isDragging && _selectedIndex != -1)
-                Positioned(
-                  right: 30 + _calculateOffset(_selectedIndex).abs(),
-                  top: (_dragPosition.dy - 25 - mq.padding.top - 70)
-                      .clamp(0.0, screenH - 100),
-                  child: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: widget.accent.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: widget.accent.withValues(alpha: 0.50),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: widget.accent.withValues(alpha: 0.10),
-                          blurRadius: 14,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        _selectedLetter,
-                        style: TextStyle(
-                          color: widget.accent,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          height: 1.0,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
       ),
     );
   }
