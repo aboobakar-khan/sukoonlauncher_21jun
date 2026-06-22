@@ -1,0 +1,55 @@
+{
+  "id": "ch-17",
+  "number": 17,
+  "title": "Life in Madinah",
+  "arabicTitle": "الحياة في المدينة",
+  "totalTopics": 1,
+  "topics": [
+    {
+      "id": "ch-17-t-1",
+      "number": 1,
+      "title": "Life in Madinah",
+      "paragraphs": [
+        {
+          "id": "ch-17-t-1-p-1",
+          "text": "The Madinese era could be divided into three phases: The first phase was characterized by too much trouble and discord, and too many obstacles from within coupled with a hostile wave from without aiming at total extermination of the rising faith. It ended with Al-Hudaibiyah Peace Treaty in Dhul Qa'da 6 A.H."
+        },
+        {
+          "id": "ch-17-t-1-p-2",
+          "text": "The second phase featured a truce with the pagan leadership and ended in the conquest of Makkah in Ramadan 8 A.H. It also witnessed the Prophet (Peace be upon him) inviting kings beyond Arabia to enter the fold of Islam."
+        },
+        {
+          "id": "ch-17-t-1-p-3",
+          "text": "In the third phase, people came to embrace Islam in hosts. Tribes and other folks arrived in Madinah to pay homage to the Prophet (Peace be upon him). It ended at the death of the Prophet (Peace be upon him) in Rabi' Al-Awwal 11 A.H."
+        }
+      ],
+      "topicSummary": "The Madinese era falls into three phases: a turbulent first phase of internal discord and external hostility, ending with the Treaty of Al-Hudaibiyah (Dhul Qa'da 6 A.H.); a second phase of truce, the conquest of Makkah (Ramadan 8 A.H.) and letters to foreign kings; and a third phase of mass conversions and tribal delegations, ending with the Prophet's death in Rabi' Al-Awwal 11 A.H.",
+      "keyPoints": [
+        "The Madinese era is divided into three phases",
+        "First phase: internal discord and external hostility, ending with the Treaty of Al-Hudaibiyah (Dhul Qa'da 6 A.H.)",
+        "Second phase: truce with the pagans, ending with the conquest of Makkah (Ramadan 8 A.H.) and letters to foreign kings",
+        "Third phase: people embracing Islam in hosts and tribal delegations arriving in Madinah",
+        "The third phase ended with the death of the Prophet ﷺ in Rabi' Al-Awwal 11 A.H."
+      ],
+      "quiz": [
+        {
+          "id": "ch-17-t-1-q-1",
+          "question": "What event marked the end of the first Madinese phase?",
+          "options": ["The Battle of Badr", "The Treaty of Al-Hudaibiyah (Dhul Qa'da 6 A.H.)", "The conquest of Makkah", "The Battle of Uhud"],
+          "answer": "The Treaty of Al-Hudaibiyah (Dhul Qa'da 6 A.H.)"
+        },
+        {
+          "id": "ch-17-t-1-q-2",
+          "question": "What characterized the third and final Madinese phase?",
+          "options": [
+            "Constant warfare with Quraish",
+            "People embracing Islam in hosts and tribal delegations paying homage",
+            "The migration to Abyssinia",
+            "The boycott of Bani Hashim"
+          ],
+          "answer": "People embracing Islam in hosts and tribal delegations paying homage"
+        }
+      ]
+    }
+  ]
+}
