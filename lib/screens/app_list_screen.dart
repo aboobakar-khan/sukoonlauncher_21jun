@@ -1090,7 +1090,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     return RepaintBoundary(
       child: _ScaleTapAppItem(
         onTap: () {
-          HapticFeedback.selectionClick();
           _launchApp(app.packageName);
         },
         onLongPress: () => _showAppOptions(context, app, ref),
@@ -1291,7 +1290,6 @@ class _AlphabetSidebarState extends State<_AlphabetSidebar>
       _isDragging = true;
       _updateSelectionFromPosition(details.globalPosition);
     });
-    HapticFeedback.selectionClick();
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
@@ -1333,7 +1331,6 @@ class _AlphabetSidebarState extends State<_AlphabetSidebar>
 
     // Only fire scroll + haptic when letter actually changes
     if (resolved != prevLetter) {
-      HapticFeedback.selectionClick();
       widget.onScrollToLetter(resolved, widget.apps);
     }
   }
@@ -1536,7 +1533,6 @@ class _GlassSearchButtonState extends State<_GlassSearchButton> {
       onTapCancel: () => _setPressed(false),
       onTapUp: (_) {
         _setPressed(false);
-        HapticFeedback.lightImpact();
         widget.onTap();
       },
       child: AnimatedScale(

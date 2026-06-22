@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/prayer_provider.dart';
@@ -713,7 +712,6 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
   }
 
   void _showCelebrationOverlay(BuildContext context, Color accent) {
-    HapticFeedback.heavyImpact();
     showDialog(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.88),
@@ -776,17 +774,11 @@ class _CelebrationDialogState extends State<_CelebrationDialog>
     // Start after the first frame so MediaQuery (reduce-motion) is readable.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final reduced = Motion.reduced(context);
       // Under reduce-motion the card renders statically (every visual reads
-      // `reduced ? 1.0 : ...`), so we skip the intro/ambient clocks entirely
-      // and leave only a single confirming pulse.
-      if (reduced) {
-        _runHaptics(true);
-        return;
-      }
+      // `reduced ? 1.0 : ...`), so we skip the intro/ambient clocks entirely.
+      if (Motion.reduced(context)) return;
       _intro.forward();
       _ambient.repeat(reverse: true);
-      _runHaptics(false);
     });
 
     // Auto-dismiss once the moment has had room to land.
@@ -816,23 +808,6 @@ class _CelebrationDialogState extends State<_CelebrationDialog>
         glow: _rng.nextDouble() < 0.3, // a third carry a faint halo
       );
     });
-  }
-
-  /// A restrained haptic score: a soft launch as the glow blooms, one confident
-  /// landing as the ring closes and the check completes, then five light ticks —
-  /// one per prayer. Collapses to a single pulse under reduce-motion.
-  void _runHaptics(bool reduced) {
-    HapticFeedback.lightImpact();
-    if (reduced) return;
-    void at(int ms, void Function() f) {
-      Future.delayed(Duration(milliseconds: ms), () {
-        if (mounted && !_closing) f();
-      });
-    }
-    at(1500, HapticFeedback.mediumImpact); // ring closes + check lands
-    for (var i = 0; i < 5; i++) {          // one tick per prayer
-      at(1680 + i * 110, HapticFeedback.selectionClick);
-    }
   }
 
   void _dismiss() {

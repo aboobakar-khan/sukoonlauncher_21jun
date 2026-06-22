@@ -180,7 +180,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.mediumImpact();
                 final fajr = int.tryParse(_controllers['fajr']!.text) ?? 0;
                 final dhuhr = int.tryParse(_controllers['dhuhr']!.text) ?? 0;
                 final asr = int.tryParse(_controllers['asr']!.text) ?? 0;
@@ -409,7 +408,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
-                      HapticFeedback.heavyImpact();
                       ref.read(qadhaRecordProvider.notifier).setTotals(
                         fajr: fajr,
                         dhuhr: dhuhr,
@@ -692,7 +690,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
               onTap: isDone
                   ? null
                   : () {
-                      HapticFeedback.lightImpact();
                       ref.read(qadhaRecordProvider.notifier).prayedOne(name);
                     },
               child: Container(
@@ -724,7 +721,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
               onTap: remaining >= total
                   ? null
                   : () {
-                      HapticFeedback.lightImpact();
                       ref.read(qadhaRecordProvider.notifier).undoOne(name);
                     },
               child: Container(
@@ -820,7 +816,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
-                      HapticFeedback.heavyImpact();
                       ref.read(qadhaRecordProvider.notifier).reset();
                       setState(() => _isSettingUp = false);
                       Navigator.pop(ctx);

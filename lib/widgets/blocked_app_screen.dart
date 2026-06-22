@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 /// Unified minimalist blocker screen — used across ALL entry points:
 /// home clock favorites, app list, quick search, and native overlay fallback.
@@ -64,7 +63,6 @@ class _BlockedAppScreenState extends State<BlockedAppScreen>
   @override
   void initState() {
     super.initState();
-    HapticFeedback.heavyImpact();
     _motivation = _motivations[DateTime.now().millisecond % _motivations.length];
     _pulseCtrl = AnimationController(
       vsync: this,

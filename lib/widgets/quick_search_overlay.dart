@@ -220,7 +220,6 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
     _searchFocus.unfocus();
     _scrimCtrl.reverse();
     _panelCtrl.reverse().then((_) {
-      HapticFeedback.lightImpact();
       widget.onDismiss();
     });
   }

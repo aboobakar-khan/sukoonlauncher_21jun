@@ -500,7 +500,6 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
   Widget _buildFavItem(dynamic favoriteApp, AppThemeColor themeColor) {
     return _ScaleTapWidget(
       onTap: () {
-        HapticFeedback.selectionClick();
         _launchApp(favoriteApp.packageName);
       },
       onLongPress: () {

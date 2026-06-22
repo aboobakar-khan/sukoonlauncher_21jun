@@ -167,7 +167,6 @@ class _QadhaEstimationWizardState
               padding: const EdgeInsets.only(bottom: 10),
               child: GestureDetector(
                 onTap: () {
-                  HapticFeedback.selectionClick();
                   if (isCustom) {
                     setState(() => _showCustomYear = true);
                   } else {
@@ -355,7 +354,6 @@ class _QadhaEstimationWizardState
             padding: const EdgeInsets.only(bottom: 10),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.selectionClick();
                 setState(() => _missFrequency = opt['value'] as String);
                 Future.delayed(const Duration(milliseconds: 300), _nextPage);
               },
@@ -460,7 +458,6 @@ class _QadhaEstimationWizardState
             padding: const EdgeInsets.only(bottom: 10),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.selectionClick();
                 setState(() {
                   _estimationStyle = opt['value'] as String;
                   _estimatedTotal = QadhaEstimation.calculate(
@@ -679,7 +676,6 @@ class _QadhaEstimationWizardState
           // Accept button
           GestureDetector(
             onTap: () {
-              HapticFeedback.mediumImpact();
               final estimation = QadhaEstimation(
                 yearsNotPraying: _yearsNotPraying ?? 0,
                 missFrequency: _missFrequency ?? 'sometimes',

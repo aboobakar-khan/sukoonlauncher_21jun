@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/screen_time_provider.dart';
@@ -116,7 +115,6 @@ class _NewScheduleScreenState extends ConsumerState<NewScheduleScreen> {
   }
 
   Future<void> _pickTime(bool isStart) async {
-    HapticFeedback.selectionClick();
     final initial = isStart ? _start : _end;
     final picked = await _showWheelPicker(
       context, initial, isStart ? 'Start time' : 'End time');
@@ -199,7 +197,6 @@ class _NewScheduleScreenState extends ConsumerState<NewScheduleScreen> {
   Future<void> _save() async {
     if (!_canSave || _saving) return;
     setState(() => _saving = true);
-    HapticFeedback.mediumImpact();
     final notifier = ref.read(appBlockRuleProvider.notifier);
     try {
       if (_isEdit) {
@@ -436,7 +433,6 @@ class _NewScheduleScreenState extends ConsumerState<NewScheduleScreen> {
         final active = _days.contains(weekday);
         return GestureDetector(
           onTap: () {
-            HapticFeedback.selectionClick();
             setState(() {
               if (active) {
                 _days.remove(weekday);
@@ -559,7 +555,6 @@ class _NewScheduleScreenState extends ConsumerState<NewScheduleScreen> {
   Widget _appChip(String pkg, String name, String usage, bool sel) {
     return GestureDetector(
       onTap: () {
-        HapticFeedback.selectionClick();
         setState(() {
           if (sel) {
             _apps.remove(pkg);

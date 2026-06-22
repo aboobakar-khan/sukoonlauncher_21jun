@@ -1688,7 +1688,6 @@ class _QadhaTab extends ConsumerWidget {
             // Estimation wizard button
             GestureDetector(
               onTap: () {
-                HapticFeedback.mediumImpact();
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -1727,7 +1726,6 @@ class _QadhaTab extends ConsumerWidget {
             // Manual setup button
             GestureDetector(
               onTap: () {
-                HapticFeedback.lightImpact();
                 _showManualSetup(context, ref);
               },
               child: Container(
@@ -1884,7 +1882,6 @@ class _QadhaTab extends ConsumerWidget {
             padding: const EdgeInsets.only(bottom: 16),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.mediumImpact();
                 ref.read(qadhaRecordProvider.notifier).prayedFullDay();
               },
               child: Container(
@@ -2003,7 +2000,6 @@ class _QadhaTab extends ConsumerWidget {
                         // Add more + button
                         GestureDetector(
                           onTap: () {
-                            HapticFeedback.lightImpact();
                             ref.read(qadhaRecordProvider.notifier).addOne(name); 
                           },
                           child: Container(
@@ -2019,7 +2015,6 @@ class _QadhaTab extends ConsumerWidget {
                           onTap: isDone
                               ? null
                               : () {
-                                  HapticFeedback.lightImpact();
                                   ref
                                       .read(qadhaRecordProvider.notifier)
                                       .prayedOne(name);
@@ -2289,7 +2284,6 @@ class _QadhaTab extends ConsumerWidget {
             const SizedBox(height: 16),
             GestureDetector(
               onTap: () async {
-                HapticFeedback.mediumImpact();
                 final fajr =
                     int.tryParse(controllers['fajr']!.text) ?? 0;
                 final dhuhr =
@@ -2427,7 +2421,6 @@ class _QadhaTab extends ConsumerWidget {
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
-                      HapticFeedback.mediumImpact();
                       ref.read(qadhaRecordProvider.notifier).reset();
                       Navigator.pop(ctx);
                     },
