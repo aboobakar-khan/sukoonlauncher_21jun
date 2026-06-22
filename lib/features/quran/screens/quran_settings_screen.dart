@@ -8,6 +8,7 @@ import '../../../providers/arabic_font_provider.dart';
 import '../../../providers/tafseer_edition_provider.dart';
 import '../../../providers/islamic_theme_provider.dart';
 import '../../../widgets/swipe_back_wrapper.dart';
+import 'app_theme_screen.dart';
 
 /// Quran settings screen — language, reciter, translation toggle, offline downloads
 class QuranSettingsScreen extends ConsumerWidget {
@@ -33,6 +34,24 @@ class QuranSettingsScreen extends ConsumerWidget {
                   physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   children: [
+                    // ── APPEARANCE Section ──
+                    _buildSectionLabel('APPEARANCE', tc),
+                    const SizedBox(height: 10),
+                    _buildNavTile(
+                      context: context,
+                      tc: tc,
+                      icon: Icons.palette_outlined,
+                      title: 'App Theme',
+                      subtitle:
+                          '${ref.watch(masterThemeProvider).def.label} · ${ref.watch(appearanceModeProvider).label}',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const AppThemeScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
                     // ── TRANSLATION Section ──
                     _buildSectionLabel('TRANSLATION', tc),
                     const SizedBox(height: 10),
@@ -180,6 +199,63 @@ class QuranSettingsScreen extends ConsumerWidget {
             inactiveTrackColor: tc.surface.withValues(alpha: 0.5),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNavTile({
+    required BuildContext context,
+    required IslamicThemeColors tc,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: tc.surface.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: tc.surface.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: tc.green.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child:
+                  Icon(icon, color: tc.green.withValues(alpha: 0.6), size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                        color: tc.text.withValues(alpha: 0.85),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      )),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: TextStyle(
+                        color: tc.textSecondary.withValues(alpha: 0.45),
+                        fontSize: 12,
+                      )),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded,
+                color: tc.textSecondary.withValues(alpha: 0.35), size: 14),
+          ],
+        ),
       ),
     );
   }

@@ -48,3 +48,8 @@ app.*.map.json
 *.jks
 *.keystore
 android/key.properties
+extract.py
+extracted_methods.txt
+fix_overview.py
+/islamic_hijri_events.json
+/wisdom.json
