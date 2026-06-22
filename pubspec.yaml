@@ -99,6 +99,8 @@ dependencies:
   
   # GPS location for prayer times
   geolocator: ^13.0.2
+  # In-app "turn on location" dialog (enable GPS without leaving the app)
+  location: ^8.0.1
 
   # Persistent key-value store for widget & display settings
   shared_preferences: ^2.3.3

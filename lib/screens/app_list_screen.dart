@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -872,53 +873,31 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       );
     }
 
-    // Normal mode: flat list with letter headers interleaved.
-    // Build a flat list: [HeaderA, AppA1, AppA2, HeaderB, AppB1, ...]
+    // Normal mode: a clean flat list of apps — no inline letter headers.
+    // (Fast scrolling is handled by the A–Z sidebar on the right edge.)
     final flat = <_FlatItem>[];
     for (final sec in _sections) {
-      flat.add(_FlatItem.header(sec.letter));
       for (final app in sec.apps) {
         flat.add(_FlatItem.app(app));
       }
     }
 
-    // Update flat index to point to the HEADER row for each letter
-    // so jumpToItem scrolls the header to the top.
+    // Flat index points to the FIRST app of each letter so the alphabet
+    // sidebar's jumpToItem lands on the right section.
     int idx = 0;
     _sectionFlatIndex = {};
     for (final sec in _sections) {
-      _sectionFlatIndex[sec.letter] = idx; // index of header
-      idx += 1 + sec.apps.length; // header + apps
+      _sectionFlatIndex[sec.letter] = idx;
+      idx += sec.apps.length;
     }
 
     return SuperSliverList(
       listController: _listController,
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          final item = flat[index];
-          if (item.isHeader) {
-            return _buildLetterHeader(item.letter!, themeColor);
-          }
-          return _buildAppItem(item.app!, themeColor);
+          return _buildAppItem(flat[index].app!, themeColor);
         },
         childCount: flat.length,
-      ),
-    );
-  }
-
-  Widget _buildLetterHeader(String letter, AppThemeColor themeColor) {
-    final accent = themeColor.color;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(2, 18, 0, 6),
-      child: Text(
-        letter,
-        style: TextStyle(
-          color: accent.withValues(alpha: 0.40),
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-          decoration: TextDecoration.none,
-        ),
       ),
     );
   }
@@ -974,27 +953,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       duration: const Duration(milliseconds: 180),
       child: IgnorePointer(
         ignoring: _searchVisible,
-        child: GestureDetector(
-          onTap: _showSearch,
-          behavior: HitTestBehavior.opaque,
-          child: Container(
-            width: 53,
-            height: 53,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.07),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.10),
-                width: 0.8,
-              ),
-            ),
-            child: Icon(
-              Icons.search_rounded,
-              size: 24,
-              color: Colors.white.withValues(alpha: 0.50),
-            ),
-          ),
-        ),
+        child: _GlassSearchButton(accent: accent, onTap: _showSearch),
       ),
     );
   }
@@ -1544,4 +1503,101 @@ class _FlatItem {
 
   factory _FlatItem.app(InstalledApp app) =>
       _FlatItem._(isHeader: false, app: app);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// _GlassSearchButton — frosted-glass FAB with iOS spring-press animation
+// ═══════════════════════════════════════════════════════════════════════
+
+class _GlassSearchButton extends StatefulWidget {
+  final Color accent;
+  final VoidCallback onTap;
+  const _GlassSearchButton({required this.accent, required this.onTap});
+
+  @override
+  State<_GlassSearchButton> createState() => _GlassSearchButtonState();
+}
+
+class _GlassSearchButtonState extends State<_GlassSearchButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accent;
+    const size = 62.0;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapCancel: () => _setPressed(false),
+      onTapUp: (_) {
+        _setPressed(false);
+        HapticFeedback.lightImpact();
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        // Quick press-in, springy release for that tactile iOS feel.
+        scale: _pressed ? 0.88 : 1.0,
+        duration: Duration(milliseconds: _pressed ? 90 : 320),
+        curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              // Soft ambient float
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.38),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+              // Subtle accent glow so it stays discoverable
+              BoxShadow(
+                color: accent.withValues(alpha: _pressed ? 0.32 : 0.20),
+                blurRadius: 22,
+                spreadRadius: -4,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  // Frosted glass: bright top-left highlight fading into an
+                  // accent-tinted base.
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.24),
+                      accent.withValues(alpha: 0.12),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                    width: 1,
+                  ),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.search_rounded,
+                    size: 26,
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
