@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -952,43 +953,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       duration: const Duration(milliseconds: 180),
       child: IgnorePointer(
         ignoring: _searchVisible,
-        child: GestureDetector(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            _showSearch();
-          },
-          behavior: HitTestBehavior.opaque,
-          child: Container(
-            width: 62,
-            height: 62,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: accent.withValues(alpha: 0.16),
-              border: Border.all(
-                color: accent.withValues(alpha: 0.38),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.22),
-                  blurRadius: 20,
-                  spreadRadius: -2,
-                  offset: const Offset(0, 6),
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Icon(
-              Icons.search_rounded,
-              size: 27,
-              color: accent,
-            ),
-          ),
-        ),
+        child: _GlassSearchButton(accent: accent, onTap: _showSearch),
       ),
     );
   }
@@ -1538,4 +1503,101 @@ class _FlatItem {
 
   factory _FlatItem.app(InstalledApp app) =>
       _FlatItem._(isHeader: false, app: app);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// _GlassSearchButton — frosted-glass FAB with iOS spring-press animation
+// ═══════════════════════════════════════════════════════════════════════
+
+class _GlassSearchButton extends StatefulWidget {
+  final Color accent;
+  final VoidCallback onTap;
+  const _GlassSearchButton({required this.accent, required this.onTap});
+
+  @override
+  State<_GlassSearchButton> createState() => _GlassSearchButtonState();
+}
+
+class _GlassSearchButtonState extends State<_GlassSearchButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accent;
+    const size = 62.0;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapCancel: () => _setPressed(false),
+      onTapUp: (_) {
+        _setPressed(false);
+        HapticFeedback.lightImpact();
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        // Quick press-in, springy release for that tactile iOS feel.
+        scale: _pressed ? 0.88 : 1.0,
+        duration: Duration(milliseconds: _pressed ? 90 : 320),
+        curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              // Soft ambient float
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.38),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+              // Subtle accent glow so it stays discoverable
+              BoxShadow(
+                color: accent.withValues(alpha: _pressed ? 0.32 : 0.20),
+                blurRadius: 22,
+                spreadRadius: -4,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  // Frosted glass: bright top-left highlight fading into an
+                  // accent-tinted base.
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.24),
+                      accent.withValues(alpha: 0.12),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.22),
+                    width: 1,
+                  ),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.search_rounded,
+                    size: 26,
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
