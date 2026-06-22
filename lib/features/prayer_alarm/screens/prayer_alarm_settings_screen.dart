@@ -33,7 +33,8 @@ class PrayerAlarmSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _PrayerAlarmSettingsScreenState
-    extends ConsumerState<PrayerAlarmSettingsScreen> {
+    extends ConsumerState<PrayerAlarmSettingsScreen>
+    with WidgetsBindingObserver {
   final _cityController = TextEditingController();
   bool _isLocating = false;
   bool _isSearching = false;
@@ -43,8 +44,10 @@ class _PrayerAlarmSettingsScreenState
   bool _showCalcMethod = false;
   bool _showAsrSchool = false;
   String? _autoDetectedCity;
+  bool? _hasLocationPermission;
   bool? _hasNotifPermission;
   bool? _hasExactAlarmPermission;
+  bool? _hasBatteryExempt;
 
   // Date navigation
   DateTime _viewDate = DateTime.now();
@@ -65,6 +68,7 @@ class _PrayerAlarmSettingsScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkPermissions();
     _loadFastingModes(); // load persisted Suhoor/Iftar alarm modes
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -77,13 +81,27 @@ class _PrayerAlarmSettingsScreenState
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Permissions are toggled in system settings (outside the app) — re-read
+    // them whenever the user returns so the inline switches stay truthful.
+    if (state == AppLifecycleState.resumed) _checkPermissions();
+  }
+
   Future<void> _checkPermissions() async {
+    final loc = await Permission.location.isGranted;
     final notif = await Permission.notification.isGranted;
     final exact = await PrayerAlarmService.canScheduleExactAlarms();
+    bool battery = false;
+    try {
+      battery = await Permission.ignoreBatteryOptimizations.isGranted;
+    } catch (_) {}
     if (mounted) {
       setState(() {
+        _hasLocationPermission = loc;
         _hasNotifPermission = notif;
         _hasExactAlarmPermission = exact;
+        _hasBatteryExempt = battery;
       });
     }
   }
@@ -171,6 +189,7 @@ class _PrayerAlarmSettingsScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     _cityController.dispose();
     super.dispose();
@@ -193,14 +212,21 @@ class _PrayerAlarmSettingsScreenState
               _buildSettingsBar(state),
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-                  physics: const ClampingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 40),
+                  physics: const BouncingScrollPhysics(),
                   children: [
-                    _buildPermissionBanner(),
+                    _buildNextPrayerHero(state),
+                    const SizedBox(height: 14),
                     _buildDateNavigator(),
                     const SizedBox(height: 10),
                     ..._buildPrayerRows(state, s),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
+                    _sectionLabel('PERMISSIONS', subtitle: 'Tap a switch to enable'),
+                    const SizedBox(height: 10),
+                    _buildPermissionsSection(),
+                    const SizedBox(height: 24),
+                    _sectionLabel('DISPLAY'),
+                    const SizedBox(height: 10),
                     _buildWidgetToggle(),
                     const SizedBox(height: 16),
                   ],
@@ -219,7 +245,7 @@ class _PrayerAlarmSettingsScreenState
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 10, 16, 4),
+      padding: const EdgeInsets.fromLTRB(8, 12, 16, 6),
       child: Row(
         children: [
           // Circular back button — larger, clearer tap target.
@@ -231,10 +257,10 @@ class _PrayerAlarmSettingsScreenState
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withAlpha(8),
+                color: Colors.white.withAlpha(10),
               ),
               child: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 15, color: kSwTextPrimary.withAlpha(165)),
+                  size: 15, color: kSwTextPrimary.withAlpha(180)),
             ),
           ),
           const SizedBox(width: 12),
@@ -243,13 +269,13 @@ class _PrayerAlarmSettingsScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Salah Wake', style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w700,
-                  color: kSwTextPrimary.withAlpha(235), letterSpacing: -0.4,
+                  fontSize: 25, fontWeight: FontWeight.w700,
+                  color: kSwTextPrimary, letterSpacing: -0.6, height: 1.05,
                 )),
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text('Prayer times & alarms', style: TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w500,
-                  color: kSwTextSecondary.withAlpha(155),
+                  fontSize: 12, fontWeight: FontWeight.w500,
+                  color: kSwTextSecondary.withAlpha(160),
                 )),
               ],
             ),
@@ -610,57 +636,277 @@ class _PrayerAlarmSettingsScreenState
 
 
 
-  Widget _buildPermissionBanner() {
-    final notifOk = _hasNotifPermission ?? true;
-    final exactOk = _hasExactAlarmPermission ?? true;
-    if (notifOk && exactOk) return const SizedBox.shrink();
-
-    final missing = <String>[];
-    if (!notifOk) missing.add('Notifications');
-    if (!exactOk) missing.add('Exact Alarms');
-
+  // ── Small caps section label (iOS grouped-list style) ──
+  Widget _sectionLabel(String label, {String? subtitle}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: GestureDetector(
-        onTap: _openPermissionSetup,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: Colors.amber.withAlpha(15),
-            border: Border.all(color: Colors.amber.withAlpha(40)),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text(label, style: TextStyle(
+            fontSize: 11.5, fontWeight: FontWeight.w700,
+            letterSpacing: 1.4, color: kSwTextSecondary.withAlpha(150))),
+          if (subtitle != null) ...[
+            const Spacer(),
+            Text(subtitle, style: TextStyle(
+              fontSize: 10.5, color: kSwTextMuted, fontWeight: FontWeight.w500)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  NEXT PRAYER HERO — the page's focal point
+  // ══════════════════════════════════════════════════════
+
+  Widget _buildNextPrayerHero(PrayerAlarmState state) {
+    final times = state.todayTimes;
+    if (times == null) {
+      return _heroShell(
+        icon: Icons.location_searching_rounded,
+        title: 'Set your location',
+        subtitle: 'Auto-detect or search a city to load prayer times',
+        accent: kSwTextSecondary,
+      );
+    }
+    if (_nextPrayerName.isEmpty) {
+      return _heroShell(
+        icon: Icons.nightlight_round,
+        title: 'All prayers complete',
+        subtitle: 'Rest well — Fajr is the next call',
+        accent: kSwActive,
+      );
+    }
+    final h = _timeUntilNext.inHours;
+    final m = _timeUntilNext.inMinutes.remainder(60);
+    final countdown = h > 0 ? '${h}h ${m}m' : '${m}m';
+    final timeStr = swFmt12h(times.timeFor(_nextPrayerName));
+    final icon = kPrayerIcons[_nextPrayerName] ?? Icons.access_time_rounded;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: kSwCardNext,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kSwActive.withAlpha(45)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46, height: 46,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle, color: kSwActive.withAlpha(28)),
+            child: Icon(icon, size: 22, color: kSwActive),
           ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.amber.withAlpha(25),
-                ),
-                child: Icon(Icons.warning_amber_rounded,
-                    size: 16, color: Colors.amber.withAlpha(180)),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('NEXT PRAYER', style: TextStyle(
+                  fontSize: 10, fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5, color: kSwActive.withAlpha(180))),
+                const SizedBox(height: 3),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
                   children: [
-                    Text('Permissions Required', style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600,
-                      color: Colors.amber.withAlpha(220),
-                    )),
-                    const SizedBox(height: 2),
-                    Text('${missing.join(' & ')} not granted. Tap to fix.',
-                      style: TextStyle(fontSize: 10, color: Colors.amber.withAlpha(120))),
+                    Flexible(
+                      child: Text(_nextPrayerName,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.w700,
+                          color: kSwTextPrimary, letterSpacing: -0.4)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(timeStr, style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w500,
+                      color: kSwTextSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()])),
                   ],
                 ),
-              ),
-              Icon(Icons.arrow_forward_ios_rounded,
-                  size: 12, color: Colors.amber.withAlpha(100)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('in', style: TextStyle(fontSize: 10, color: kSwTextMuted)),
+              Text(countdown, style: TextStyle(
+                fontSize: 18, fontWeight: FontWeight.w700, color: kSwActive,
+                fontFeatures: const [FontFeature.tabularFigures()])),
             ],
           ),
-        ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroShell({
+    required IconData icon, required String title,
+    required String subtitle, required Color accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: kSwCard,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withAlpha(10)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 46, height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle, color: accent.withAlpha(22)),
+          child: Icon(icon, size: 22, color: accent.withAlpha(210))),
+        const SizedBox(width: 16),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w700,
+              color: kSwTextPrimary.withAlpha(230))),
+            const SizedBox(height: 2),
+            Text(subtitle, style: TextStyle(
+              fontSize: 12, height: 1.3,
+              color: kSwTextSecondary.withAlpha(160))),
+          ])),
+      ]),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  INLINE PERMISSIONS — toggle each right here, no extra screen
+  // ══════════════════════════════════════════════════════
+
+  Widget _buildPermissionsSection() {
+    final loc = _hasLocationPermission ?? false;
+    final notif = _hasNotifPermission ?? false;
+    final exact = _hasExactAlarmPermission ?? false;
+    final battery = _hasBatteryExempt ?? false;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: kSwCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withAlpha(10)),
+      ),
+      child: Column(
+        children: [
+          _permRow(
+            icon: Icons.location_on_rounded,
+            title: 'Location',
+            subtitle: 'Detect your city for accurate times',
+            granted: loc,
+            onEnable: () async {
+              final st = await Permission.location.request();
+              if (st.isPermanentlyDenied) await openAppSettings();
+            },
+          ),
+          _permDivider(),
+          _permRow(
+            icon: Icons.notifications_rounded,
+            title: 'Notifications',
+            subtitle: 'Show alerts at prayer times',
+            granted: notif,
+            onEnable: () async {
+              await PrayerAlarmService.requestNotificationPermission();
+            },
+          ),
+          _permDivider(),
+          _permRow(
+            icon: Icons.alarm_rounded,
+            title: 'Exact Alarms',
+            subtitle: 'Fire precisely at the prayer time',
+            granted: exact,
+            onEnable: () async => openAppSettings(),
+          ),
+          _permDivider(),
+          _permRow(
+            icon: Icons.battery_charging_full_rounded,
+            title: 'Ignore Battery Saver',
+            subtitle: "Stops power-saving from delaying alarms",
+            granted: battery,
+            optional: true,
+            onEnable: () async {
+              await PrayerAlarmService.openBatterySettings();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _permDivider() => Padding(
+        padding: const EdgeInsets.only(left: 62),
+        child: Divider(height: 1, color: Colors.white.withAlpha(10)),
+      );
+
+  Widget _permRow({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool granted,
+    required Future<void> Function() onEnable,
+    bool optional = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      child: Row(
+        children: [
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: granted ? kSwActive.withAlpha(26) : Colors.white.withAlpha(10),
+            ),
+            child: Icon(icon, size: 17,
+                color: granted ? kSwActive : kSwTextSecondary),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Flexible(
+                    child: Text(title,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14.5, fontWeight: FontWeight.w600,
+                        color: kSwTextPrimary.withAlpha(230))),
+                  ),
+                  if (optional) ...[
+                    const SizedBox(width: 6),
+                    Text('OPTIONAL', style: TextStyle(
+                      fontSize: 8, fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5, color: kSwTextMuted)),
+                  ],
+                ]),
+                const SizedBox(height: 2),
+                Text(subtitle, style: TextStyle(
+                  fontSize: 11.5, height: 1.25, color: kSwTextMuted)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          CupertinoSwitch(
+            value: granted,
+            activeTrackColor: kSwActive,
+            inactiveTrackColor: Colors.white.withAlpha(20),
+            onChanged: (v) async {
+              if (v && !granted) {
+                await onEnable();
+              } else if (!v && granted) {
+                await openAppSettings();
+              }
+              await _checkPermissions();
+            },
+          ),
+        ],
       ),
     );
   }
