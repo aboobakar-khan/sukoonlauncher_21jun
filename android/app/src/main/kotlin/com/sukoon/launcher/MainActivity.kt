@@ -750,6 +750,8 @@ class MainActivity : FlutterActivity() {
                             }
                             // Usage access → Usage data access page
                             "usage_access" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                            // Accessibility → Accessibility services list
+                            "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                             // Do Not Disturb access → DND policy access page
                             "dnd" -> Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
                             // Battery optimisation → Battery optimisation page for this app
@@ -804,6 +806,20 @@ class MainActivity : FlutterActivity() {
                                 )
                             }
                             mode == android.app.AppOpsManager.MODE_ALLOWED
+                        }
+                        "accessibility" -> {
+                            // Our service is enabled if its flattened component is
+                            // in the system's enabled-accessibility-services list.
+                            val cn = android.content.ComponentName(
+                                this, SukoonAccessibilityService::class.java)
+                            val full = cn.flattenToString()
+                            val short = cn.flattenToShortString()
+                            val enabled = Settings.Secure.getString(
+                                contentResolver,
+                                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+                            enabled.split(':').any {
+                                it.equals(full, true) || it.equals(short, true)
+                            }
                         }
                         else -> false
                     }

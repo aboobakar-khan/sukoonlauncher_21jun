@@ -16,7 +16,7 @@ import '../services/native_app_blocker_service.dart';
 import '../widgets/swipe_back_wrapper.dart';
 import '../widgets/edge_to_edge.dart';
 import 'zen_mode_entry_screen.dart';
-import 'screen_time_settings_screen.dart';
+import 'app_timer_screen.dart';
 import 'notification_feed_screen.dart';
 import '../providers/screen_time_provider.dart';
 import '../providers/notification_filter_provider.dart';
@@ -630,7 +630,7 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                           value: isScreenTimeActive ? stLabel : 'Off',
                           isActive: isScreenTimeActive,
                           onTap: () => Navigator.push(context, SmoothForwardRoute(
-                              child: const ScreenTimeSettingsScreen())),
+                              child: const AppTimerScreen())),
                         ),
                       ),
                     ],

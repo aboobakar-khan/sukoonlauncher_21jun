@@ -24,7 +24,7 @@ import 'privacy_policy_screen.dart';
 import 'credits_screen.dart';
 
 import '../widgets/swipe_back_wrapper.dart';
-import 'screen_time_settings_screen.dart';
+import 'app_timer_screen.dart';
 import 'notification_feed_screen.dart';
 import 'app_permissions_screen.dart';
 import '../providers/notification_filter_provider.dart';
@@ -221,7 +221,7 @@ class SettingsScreen extends ConsumerWidget {
                           Navigator.push(
                             context,
                             SmoothForwardRoute(
-                              child: const ScreenTimeSettingsScreen(),
+                              child: const AppTimerScreen(),
                             ),
                           );
                         },
