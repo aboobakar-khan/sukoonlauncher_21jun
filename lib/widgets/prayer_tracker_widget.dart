@@ -2,9 +2,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../providers/prayer_provider.dart';
 import '../providers/theme_provider.dart';
 import '../screens/prayer_history_dashboard_redesigned.dart';
+import '../utils/motion.dart';
 
 /// Prayer Tracker Widget - Professional Minimalist Design
 /// 
@@ -37,7 +39,6 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
 
   /// Celebration overlay tracking
   bool _hasShownCelebration = false;
-  int _lastCompletedCount = 0;
 
   // ☪️ Sukoon brand design tokens — semi-transparent to follow dashboard theme
   static final Color _bgDark = Colors.white.withValues(alpha: 0.02);
@@ -722,7 +723,15 @@ class _PrayerTrackerWidgetState extends ConsumerState<PrayerTrackerWidget>
   }
 }
 
-/// Fresh-leaf celebration dialog — shown once when all 5 prayers are marked
+/// Celebration overlay — a crafted "all five fard prayers complete" moment,
+/// built entirely with Flutter's own primitives (no extra packages). The
+/// medallion ring closes itself, a checkmark is drawn inside it, a soft glow
+/// blooms into the dark, and a restrained, accent-toned sparkle field settles
+/// out — each beat carried by a light haptic.
+///
+/// Every colour derives from the active theme [accent] (duotone, never a
+/// rainbow); the Arabic dua is set in Amiri and the UI in Inter to match the
+/// rest of the app. Fully honours the OS "reduce motion" setting.
 class _CelebrationDialog extends StatefulWidget {
   final Color accent;
   const _CelebrationDialog({required this.accent});
@@ -733,228 +742,558 @@ class _CelebrationDialog extends StatefulWidget {
 
 class _CelebrationDialogState extends State<_CelebrationDialog>
     with TickerProviderStateMixin {
-  late AnimationController _enterCtrl;
-  late AnimationController _glowCtrl;
-  late Animation<double> _scaleAnim;
-  late Animation<double> _fadeAnim;
-  late Animation<double> _glowAnim;
+  /// Length of the one-shot intro choreography. Every [_seg] interval below is
+  /// expressed as a fraction of this clock.
+  static const int _introMs = 2400;
 
-  // minimal floating dot positions
-  final _rng = math.Random(7);
-  late final List<_Star> _dots;
+  late final AnimationController _intro;   // one-shot choreography clock
+  late final AnimationController _ambient; // looping glow / breathe
+  late final AnimationController _exit;    // dismissal fade-out
 
-  static const _green = Color(0xFF4CAF50);
-  static const _greenLight = Color(0xFF81C784);
+  late final List<_Particle> _particles;
+  final math.Random _rng = math.Random(42);
+
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
-    _dots = List.generate(14, (i) => _Star(
-      x: _rng.nextDouble(),
-      y: _rng.nextDouble(),
-      size: 2.0 + _rng.nextDouble() * 3.0,
-      opacity: 0.15 + _rng.nextDouble() * 0.25,
-    ));
+    _intro = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: _introMs),
+    );
+    _ambient = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    );
+    _exit = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    );
 
-    _enterCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _glowCtrl  = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))
-      ..repeat(reverse: true);
+    _particles = _buildParticles();
 
-    _scaleAnim = CurvedAnimation(parent: _enterCtrl, curve: Curves.easeOutBack);
-    _fadeAnim  = CurvedAnimation(parent: _enterCtrl, curve: const Interval(0.0, 0.5, curve: Curves.easeOut));
-    _glowAnim  = CurvedAnimation(parent: _glowCtrl,  curve: Curves.easeInOut);
+    // Start after the first frame so MediaQuery (reduce-motion) is readable.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final reduced = Motion.reduced(context);
+      // Under reduce-motion the card renders statically (every visual reads
+      // `reduced ? 1.0 : ...`), so we skip the intro/ambient clocks entirely
+      // and leave only a single confirming pulse.
+      if (reduced) {
+        _runHaptics(true);
+        return;
+      }
+      _intro.forward();
+      _ambient.repeat(reverse: true);
+      _runHaptics(false);
+    });
 
-    _enterCtrl.forward();
+    // Auto-dismiss once the moment has had room to land.
+    Future.delayed(const Duration(milliseconds: 4800), _dismiss);
+  }
 
-    Future.delayed(const Duration(milliseconds: 4000), () {
+  /// Pre-computes the sparkle field once — deterministic so [paint] stays
+  /// allocation-free per frame. The palette is duotone (accent → white), not a
+  /// rainbow: restraint is what reads as crafted rather than generated.
+  List<_Particle> _buildParticles() {
+    final palette = <Color>[
+      widget.accent,
+      Color.lerp(widget.accent, Colors.white, 0.35)!,
+      Color.lerp(widget.accent, Colors.white, 0.7)!,
+      Colors.white,
+    ];
+    return List.generate(30, (i) {
+      return _Particle(
+        angle: _rng.nextDouble() * math.pi * 2,
+        speed: 60 + _rng.nextDouble() * 190,
+        gravity: 90 + _rng.nextDouble() * 150,
+        size: 2.5 + _rng.nextDouble() * 4.5,
+        spin: (_rng.nextDouble() - 0.5) * 6,
+        delay: _rng.nextDouble() * 0.14,
+        color: palette[i % palette.length],
+        isStrip: _rng.nextDouble() < 0.35, // mostly soft dust, a few slivers
+        glow: _rng.nextDouble() < 0.3, // a third carry a faint halo
+      );
+    });
+  }
+
+  /// A restrained haptic score: a soft launch as the glow blooms, one confident
+  /// landing as the ring closes and the check completes, then five light ticks —
+  /// one per prayer. Collapses to a single pulse under reduce-motion.
+  void _runHaptics(bool reduced) {
+    HapticFeedback.lightImpact();
+    if (reduced) return;
+    void at(int ms, void Function() f) {
+      Future.delayed(Duration(milliseconds: ms), () {
+        if (mounted && !_closing) f();
+      });
+    }
+    at(1500, HapticFeedback.mediumImpact); // ring closes + check lands
+    for (var i = 0; i < 5; i++) {          // one tick per prayer
+      at(1680 + i * 110, HapticFeedback.selectionClick);
+    }
+  }
+
+  void _dismiss() {
+    if (_closing || !mounted) return;
+    setState(() => _closing = true);
+    _exit.forward().whenComplete(() {
       if (mounted) Navigator.of(context).pop();
     });
   }
 
   @override
   void dispose() {
-    _enterCtrl.dispose();
-    _glowCtrl.dispose();
+    _intro.dispose();
+    _ambient.dispose();
+    _exit.dispose();
     super.dispose();
+  }
+
+  /// Maps the intro clock onto a sub-interval [start]..[end] with [curve],
+  /// returning 0..1. The backbone of the whole choreography.
+  double _seg(double start, double end, {Curve curve = Curves.easeOut}) {
+    final t = ((_intro.value - start) / (end - start)).clamp(0.0, 1.0);
+    return curve.transform(t);
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final reduced = Motion.reduced(context);
+    final accent = widget.accent;
+    final accentLight = Color.lerp(accent, Colors.white, 0.45)!;
+
     return GestureDetector(
-      onTap: () => Navigator.of(context).pop(),
-      child: Material(
-        color: Colors.transparent,
-        child: Stack(
-          children: [
-            // Subtle floating dots
-            ..._dots.map((d) => Positioned(
-              left: d.x * size.width,
-              top: d.y * size.height,
-              child: AnimatedBuilder(
-                animation: _glowAnim,
-                builder: (_, __) {
-                  final pulse = (math.sin(_glowAnim.value * math.pi * 2) + 1) / 2;
-                  return Container(
-                    width: d.size,
-                    height: d.size,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _green.withValues(alpha: d.opacity * (0.5 + pulse * 0.5)),
-                    ),
-                  );
-                },
-              ),
-            )),
+      onTap: _dismiss,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_intro, _ambient, _exit]),
+        builder: (context, _) {
+          final exit = _exit.value;       // 0 → 1 while closing
+          final breathe = _ambient.value; // 0 → 1 → 0 ambient pulse
+          final bloom =
+              reduced ? 1.0 : _seg(0.0, 0.55, curve: Curves.easeOutCubic);
 
-            // Main card
-            Center(
-              child: ScaleTransition(
-                scale: _scaleAnim,
-                child: FadeTransition(
-                  opacity: _fadeAnim,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 28),
-                    padding: const EdgeInsets.fromLTRB(28, 36, 28, 28),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF080808),
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: _green.withValues(alpha: 0.18),
-                        width: 1,
+          return Opacity(
+            opacity: (1.0 - exit).clamp(0.0, 1.0),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Soft glow bloom — the moment quietly lights up the dark.
+                  if (!reduced)
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(0, -0.12),
+                            radius: 0.9,
+                            colors: [
+                              accent.withValues(alpha: 0.10 * bloom),
+                              accent.withValues(alpha: 0.0),
+                            ],
+                          ),
+                        ),
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _green.withValues(alpha: 0.10),
-                          blurRadius: 48,
-                          spreadRadius: 8,
-                        ),
-                      ],
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Icon — glowing leaf circle
-                        AnimatedBuilder(
-                          animation: _glowAnim,
-                          builder: (_, __) => Container(
-                            width: 68,
-                            height: 68,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _green.withValues(alpha: 0.06 + _glowAnim.value * 0.06),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _green.withValues(alpha: 0.12 + _glowAnim.value * 0.10),
-                                  blurRadius: 28,
-                                  spreadRadius: 4,
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.check_circle_outline_rounded,
-                              size: 32,
-                              color: _greenLight,
-                            ),
+
+                  // Accent-toned sparkle field.
+                  if (!reduced)
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: _SparklePainter(
+                            particles: _particles,
+                            progress: _seg(0.0, 0.72, curve: Curves.linear),
                           ),
                         ),
+                      ),
+                    ),
 
-                        const SizedBox(height: 24),
-
-                        // Main headline
-                        Text(
-                          'All 5 Salah Complete',
-                          style: TextStyle(
-                            fontSize: 20,
-                            color: Colors.white.withValues(alpha: 0.90),
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.4,
+                  // Celebration card — fades + rises, no toy bounce.
+                  Transform.scale(
+                    scale: 1.0 - exit * 0.04,
+                    child: Opacity(
+                      opacity: reduced ? 1.0 : _seg(0.0, 0.22),
+                      child: Transform.translate(
+                        offset: Offset(
+                            0,
+                            reduced
+                                ? 0
+                                : (1 -
+                                        _seg(0.0, 0.42,
+                                            curve: Curves.easeOutCubic)) *
+                                    14),
+                        child: Transform.scale(
+                          scale: reduced
+                              ? 1.0
+                              : 0.96 +
+                                  _seg(0.0, 0.42, curve: Curves.easeOutCubic) *
+                                      0.04,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 30),
+                            child:
+                                _buildCard(accent, accentLight, breathe, reduced),
                           ),
                         ),
-                        const SizedBox(height: 10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-                        // Sub-message
-                        Text(
-                          'May Allah accept your prayers\nand grant you peace.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white.withValues(alpha: 0.38),
-                            height: 1.65,
-                            letterSpacing: 0.1,
-                          ),
-                        ),
+  Widget _buildCard(Color accent, Color accentLight, double breathe, bool reduced) {
+    final ringProgress =
+        reduced ? 1.0 : _seg(0.14, 0.60, curve: Curves.easeInOutCubic);
+    final checkProgress =
+        reduced ? 1.0 : _seg(0.40, 0.66, curve: Curves.easeInOutCubic);
 
-                        const SizedBox(height: 28),
-
-                        // 5 prayer completion dots in green
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(5, (i) => AnimatedBuilder(
-                            animation: _glowAnim,
-                            builder: (_, __) {
-                              final stagger = (math.sin(_glowAnim.value * math.pi * 2 + i * 0.6) + 1) / 2;
-                              return Container(
-                                width: 6, height: 6,
-                                margin: const EdgeInsets.symmetric(horizontal: 4),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: _green.withValues(alpha: 0.5 + stagger * 0.5),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _green.withValues(alpha: 0.3 * stagger),
-                                      blurRadius: 6,
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          )),
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Dismiss note
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 16, height: 1,
-                              color: _green.withValues(alpha: 0.15),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'TAP TO CLOSE',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: Colors.white.withValues(alpha: 0.18),
-                                letterSpacing: 1.8,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              width: 16, height: 1,
-                              color: _green.withValues(alpha: 0.15),
-                            ),
-                          ],
-                        ),
-                      ],
+    return Container(
+      padding: const EdgeInsets.fromLTRB(30, 34, 30, 26),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF14161A), Color(0xFF0A0B0D)],
+        ),
+        borderRadius: BorderRadius.circular(30),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.10 + breathe * 0.05),
+            blurRadius: 60,
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 30,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Medallion — the ring closes, then the check is drawn inside it.
+          SizedBox(
+            width: 116,
+            height: 116,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 78,
+                  height: 78,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(colors: [
+                      accent.withValues(alpha: 0.18 + breathe * 0.06),
+                      accent.withValues(alpha: 0.0),
+                    ]),
+                  ),
+                ),
+                CustomPaint(
+                  size: const Size(116, 116),
+                  painter: _RingProgressPainter(
+                    progress: ringProgress,
+                    color: accent,
+                    trackColor: Colors.white.withValues(alpha: 0.06),
+                  ),
+                ),
+                SizedBox(
+                  width: 56,
+                  height: 56,
+                  child: CustomPaint(
+                    painter: _CheckPainter(
+                      progress: checkProgress,
+                      color: Colors.white,
+                      strokeWidth: 4.5,
                     ),
                   ),
                 ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Headline (Inter — matches the app's UI type).
+          Opacity(
+            opacity: reduced ? 1.0 : _seg(0.52, 0.70),
+            child: Text(
+              'All 5 Salah Complete',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 19,
+                height: 1.2,
+                color: Colors.white.withValues(alpha: 0.95),
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.3,
               ),
             ),
-          ],
-        ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // Arabic dua, set in Amiri — "May Allah accept from us and from you".
+          Opacity(
+            opacity: reduced ? 1.0 : _seg(0.60, 0.80),
+            child: Text(
+              'تَقَبَّلَ ٱللّٰهُ مِنَّا وَمِنْكُم',
+              textAlign: TextAlign.center,
+              textDirection: TextDirection.rtl,
+              style: GoogleFonts.amiri(
+                fontSize: 21,
+                height: 1.9,
+                color: accentLight,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          // Translation of the dua, kept quiet beneath it.
+          Opacity(
+            opacity: reduced ? 1.0 : _seg(0.70, 0.88),
+            child: Text(
+              'May Allah accept it from us and from you',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 12.5,
+                height: 1.5,
+                color: Colors.white.withValues(alpha: 0.42),
+                letterSpacing: 0.1,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Five-prayer resolve — fills left → right, one dot per prayer.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (i) {
+              final start = 0.72 + i * 0.045;
+              final p = reduced
+                  ? 1.0
+                  : _seg(start, start + 0.13, curve: Curves.easeOutCubic);
+              return Container(
+                width: 7,
+                height: 7,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      Color.lerp(Colors.white.withValues(alpha: 0.10), accent, p),
+                  boxShadow: p > 0.6
+                      ? [
+                          BoxShadow(
+                              color: accent.withValues(alpha: 0.45 * p),
+                              blurRadius: 6)
+                        ]
+                      : null,
+                ),
+              );
+            }),
+          ),
+
+          const SizedBox(height: 22),
+
+          // Dismiss hint — sentence case, quiet.
+          Opacity(
+            opacity: reduced ? 1.0 : _seg(0.90, 1.0),
+            child: Text(
+              'Tap to dismiss',
+              style: GoogleFonts.inter(
+                fontSize: 11.5,
+                color: Colors.white.withValues(alpha: 0.30),
+                letterSpacing: 0.2,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _Star {
-  final double x, y, size, opacity;
-  const _Star({required this.x, required this.y, required this.size, required this.opacity});
+/// A single sparkle — launched radially from the medallion, eased outward and
+/// pulled gently down. [glow] gives a third of them a soft halo.
+class _Particle {
+  final double angle, speed, gravity, size, spin, delay;
+  final Color color;
+  final bool isStrip;
+  final bool glow;
+  const _Particle({
+    required this.angle,
+    required this.speed,
+    required this.gravity,
+    required this.size,
+    required this.spin,
+    required this.delay,
+    required this.color,
+    required this.isStrip,
+    required this.glow,
+  });
+}
+
+/// Restrained sparkle field rising from the medallion. [progress] 0→1 drives
+/// the whole flight; each mote fades in fast and out over its final 45% so the
+/// field clears cleanly. Accent-toned dust with a few slivers — no confetti.
+class _SparklePainter extends CustomPainter {
+  final List<_Particle> particles;
+  final double progress;
+
+  _SparklePainter({required this.particles, required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+    final origin = Offset(size.width / 2, size.height * 0.46);
+    for (final pt in particles) {
+      final local = ((progress - pt.delay) / (1 - pt.delay)).clamp(0.0, 1.0);
+      if (local <= 0) continue;
+      final reach = pt.speed * Curves.easeOutCubic.transform(local);
+      final cx = origin.dx + math.cos(pt.angle) * reach;
+      final cy =
+          origin.dy + math.sin(pt.angle) * reach + pt.gravity * local * local;
+      final fadeIn = (local / 0.12).clamp(0.0, 1.0);
+      final fadeOut = local < 0.55 ? 1.0 : 1 - (local - 0.55) / 0.45;
+      final opacity = (fadeIn * fadeOut).clamp(0.0, 1.0);
+      if (opacity <= 0) continue;
+
+      if (pt.glow) {
+        canvas.drawCircle(Offset(cx, cy), pt.size * 1.9,
+            Paint()..color = pt.color.withValues(alpha: opacity * 0.16));
+      }
+      final paint = Paint()..color = pt.color.withValues(alpha: opacity);
+      canvas.save();
+      canvas.translate(cx, cy);
+      canvas.rotate(pt.spin * local);
+      if (pt.isStrip) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(
+                center: Offset.zero, width: pt.size * 0.7, height: pt.size * 2.2),
+            const Radius.circular(2),
+          ),
+          paint,
+        );
+      } else {
+        canvas.drawCircle(Offset.zero, pt.size * 0.5, paint);
+      }
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklePainter old) => old.progress != progress;
+}
+
+/// The medallion ring closing itself: a faint full track, a progress arc that
+/// sweeps from the top, and a bright "comet head" tracing its leading edge —
+/// an Apple-Fitness-style completion, fitting for a tracker.
+class _RingProgressPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  final Color trackColor;
+  _RingProgressPainter({
+    required this.progress,
+    required this.color,
+    required this.trackColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - 8) / 2;
+    const start = -math.pi / 2;
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = trackColor,
+    );
+    if (progress <= 0) return;
+
+    final sweep = 2 * math.pi * progress.clamp(0.0, 1.0);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      start,
+      sweep,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round
+        ..color = color,
+    );
+
+    if (progress < 0.999) {
+      final ang = start + sweep;
+      final head = Offset(center.dx + radius * math.cos(ang),
+          center.dy + radius * math.sin(ang));
+      canvas.drawCircle(
+          head, 5, Paint()..color = color.withValues(alpha: 0.25));
+      canvas.drawCircle(head, 2.4, Paint()..color = Colors.white);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingProgressPainter old) =>
+      old.progress != progress || old.color != color;
+}
+
+/// A checkmark that draws itself: extracts a partial [Path] via [PathMetric]
+/// so the stroke grows from tail to tip as [progress] runs 0→1.
+class _CheckPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  final double strokeWidth;
+  _CheckPainter({
+    required this.progress,
+    required this.color,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+    final w = size.width, h = size.height;
+    final path = Path()
+      ..moveTo(w * 0.28, h * 0.52)
+      ..lineTo(w * 0.43, h * 0.67)
+      ..lineTo(w * 0.72, h * 0.34);
+    final metric = path.computeMetrics().first;
+    final drawn = metric.extractPath(0, metric.length * progress.clamp(0.0, 1.0));
+    canvas.drawPath(
+      drawn,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CheckPainter old) =>
+      old.progress != progress || old.color != color;
 }
 
 /// Custom ring painter for progress indicator

@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:location/location.dart' as loc;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../providers/fasting_provider.dart';
 import '../../../providers/display_settings_provider.dart';
@@ -33,8 +34,7 @@ class PrayerAlarmSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _PrayerAlarmSettingsScreenState
-    extends ConsumerState<PrayerAlarmSettingsScreen>
-    with WidgetsBindingObserver {
+    extends ConsumerState<PrayerAlarmSettingsScreen> {
   final _cityController = TextEditingController();
   bool _isLocating = false;
   bool _isSearching = false;
@@ -44,10 +44,6 @@ class _PrayerAlarmSettingsScreenState
   bool _showCalcMethod = false;
   bool _showAsrSchool = false;
   String? _autoDetectedCity;
-  bool? _hasLocationPermission;
-  bool? _hasNotifPermission;
-  bool? _hasExactAlarmPermission;
-  bool? _hasBatteryExempt;
 
   // Date navigation
   DateTime _viewDate = DateTime.now();
@@ -68,8 +64,6 @@ class _PrayerAlarmSettingsScreenState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _checkPermissions();
     _loadFastingModes(); // load persisted Suhoor/Iftar alarm modes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final config = ref.read(prayerAlarmProvider).config;
@@ -79,31 +73,6 @@ class _PrayerAlarmSettingsScreenState
       _loadViewDate(DateTime.now());
       _startCountdown();
     });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Permissions are toggled in system settings (outside the app) — re-read
-    // them whenever the user returns so the inline switches stay truthful.
-    if (state == AppLifecycleState.resumed) _checkPermissions();
-  }
-
-  Future<void> _checkPermissions() async {
-    final loc = await Permission.location.isGranted;
-    final notif = await Permission.notification.isGranted;
-    final exact = await PrayerAlarmService.canScheduleExactAlarms();
-    bool battery = false;
-    try {
-      battery = await Permission.ignoreBatteryOptimizations.isGranted;
-    } catch (_) {}
-    if (mounted) {
-      setState(() {
-        _hasLocationPermission = loc;
-        _hasNotifPermission = notif;
-        _hasExactAlarmPermission = exact;
-        _hasBatteryExempt = battery;
-      });
-    }
   }
 
   // ── FASTING ALARM MODE PERSISTENCE ──
@@ -189,7 +158,6 @@ class _PrayerAlarmSettingsScreenState
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     _cityController.dispose();
     super.dispose();
@@ -220,10 +188,6 @@ class _PrayerAlarmSettingsScreenState
                     _buildDateNavigator(),
                     const SizedBox(height: 10),
                     ..._buildPrayerRows(state, s),
-                    const SizedBox(height: 24),
-                    _sectionLabel('PERMISSIONS', subtitle: 'Tap a switch to enable'),
-                    const SizedBox(height: 10),
-                    _buildPermissionsSection(),
                     const SizedBox(height: 24),
                     _sectionLabel('DISPLAY'),
                     const SizedBox(height: 10),
@@ -291,7 +255,7 @@ class _PrayerAlarmSettingsScreenState
 
   Widget _buildSettingsBar(PrayerAlarmState state) {
     final hasLoc = state.config.locationLabel.isNotEmpty;
-    final locLabel = hasLoc ? state.config.locationLabel : 'Set location';
+    final locLabel = hasLoc ? _shortCity(state.config.locationLabel) : 'Set location';
     final calcName = _calcMethodName(state.config.calculationMethod);
     final asrName = state.config.asrCalculationSchool == 1 ? 'Hanafi' : "Shafi'i";
 
@@ -301,66 +265,79 @@ class _PrayerAlarmSettingsScreenState
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             decoration: BoxDecoration(
               color: kSwCard,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withAlpha(13)),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withAlpha(12)),
             ),
-            child: Row(
-              children: [
-                Expanded(flex: 5, child: SettingsPill(
-                  icon: hasLoc ? Icons.location_on_rounded : Icons.location_off_rounded,
-                  label: locLabel,
-                  active: _showLocationSearch,
-                  iconColor: hasLoc ? kSwActive.withAlpha(180) : kSwTextMuted,
-                  trailing: _isLocating
-                      ? SizedBox(width: 10, height: 10,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 1.2, color: kSwActive.withAlpha(100)))
-                      : GestureDetector(
-                          onTap: _detectLocation,
-                          child: Icon(Icons.my_location_rounded,
-                              size: 12, color: kSwTextMuted.withAlpha(80)),
-                        ),
-                  onTap: () async {
-                    // If device location (GPS) is off, prompt to turn it on
-                    final serviceEnabled = await _isLocationServiceEnabled();
-                    if (!serviceEnabled) {
-                      await _showLocationServiceDialog();
-                      return;
-                    }
-                    setState(() {
-                      _showLocationSearch = !_showLocationSearch;
-                      if (_showLocationSearch) { _showCalcMethod = false; _showAsrSchool = false; }
-                    });
-                  },
-                )),
-                const SettingsDivider(),
-                Expanded(flex: 4, child: SettingsPill(
-                  icon: Icons.calculate_outlined,
-                  label: calcName,
-                  active: _showCalcMethod,
-                  onTap: () {
-                    setState(() {
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _configCell(
+                    flex: 5,
+                    icon: hasLoc
+                        ? Icons.location_on_rounded
+                        : Icons.location_off_rounded,
+                    iconColor: hasLoc ? kSwActive : kSwTextMuted,
+                    label: 'LOCATION',
+                    value: locLabel,
+                    active: _showLocationSearch,
+                    trailing: _isLocating
+                        ? SizedBox(
+                            width: 12, height: 12,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 1.3, color: kSwActive.withAlpha(130)))
+                        : GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _detectLocation,
+                            child: Icon(Icons.gps_fixed_rounded,
+                                size: 14, color: kSwActive.withAlpha(150)),
+                          ),
+                    onTap: () async {
+                      final on = await _ensureLocationOn();
+                      if (!on) return;
+                      setState(() {
+                        _showLocationSearch = !_showLocationSearch;
+                        if (_showLocationSearch) {
+                          _showCalcMethod = false;
+                          _showAsrSchool = false;
+                        }
+                      });
+                    },
+                  ),
+                  _cellDivider(),
+                  _configCell(
+                    flex: 4,
+                    icon: Icons.menu_book_rounded,
+                    label: 'METHOD',
+                    value: calcName,
+                    active: _showCalcMethod,
+                    onTap: () => setState(() {
                       _showCalcMethod = !_showCalcMethod;
-                      if (_showCalcMethod) { _showLocationSearch = false; _showAsrSchool = false; }
-                    });
-                  },
-                )),
-                const SettingsDivider(),
-                Expanded(flex: 3, child: SettingsPill(
-                  icon: Icons.wb_cloudy_outlined,
-                  label: asrName,
-                  active: _showAsrSchool,
-                  onTap: () {
-                    setState(() {
+                      if (_showCalcMethod) {
+                        _showLocationSearch = false;
+                        _showAsrSchool = false;
+                      }
+                    }),
+                  ),
+                  _cellDivider(),
+                  _configCell(
+                    flex: 3,
+                    icon: Icons.brightness_4_rounded,
+                    label: 'MADHAB',
+                    value: asrName,
+                    active: _showAsrSchool,
+                    onTap: () => setState(() {
                       _showAsrSchool = !_showAsrSchool;
-                      if (_showAsrSchool) { _showLocationSearch = false; _showCalcMethod = false; }
-                    });
-                  },
-                )),
-              ],
+                      if (_showAsrSchool) {
+                        _showLocationSearch = false;
+                        _showCalcMethod = false;
+                      }
+                    }),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -369,6 +346,88 @@ class _PrayerAlarmSettingsScreenState
         _animatedPanel(_showCalcMethod, _buildCalcMethodPanel(state)),
         _animatedPanel(_showAsrSchool, _buildAsrSchoolPanel(state)),
       ],
+    );
+  }
+
+  String _shortCity(String s) => s.split(',').first.trim();
+
+  Widget _cellDivider() => Container(
+        width: 1,
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        color: Colors.white.withAlpha(12),
+      );
+
+  // One modern cell of the config strip: small caps label over its value.
+  Widget _configCell({
+    required int flex,
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool active,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Widget? trailing,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          margin: const EdgeInsets.all(4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: active ? kSwActive.withAlpha(20) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(icon,
+                      size: 13,
+                      color: iconColor ?? (active ? kSwActive : kSwTextMuted)),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: kSwTextMuted)),
+                  ),
+                  Icon(
+                      active
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 14,
+                      color: kSwTextMuted.withAlpha(130)),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: active ? kSwTextPrimary : kSwTextSecondary)),
+                  ),
+                  if (trailing != null) ...[const SizedBox(width: 5), trailing],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -778,138 +837,6 @@ class _PrayerAlarmSettingsScreenState
     );
   }
 
-  // ══════════════════════════════════════════════════════
-  //  INLINE PERMISSIONS — toggle each right here, no extra screen
-  // ══════════════════════════════════════════════════════
-
-  Widget _buildPermissionsSection() {
-    final loc = _hasLocationPermission ?? false;
-    final notif = _hasNotifPermission ?? false;
-    final exact = _hasExactAlarmPermission ?? false;
-    final battery = _hasBatteryExempt ?? false;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: kSwCard,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withAlpha(10)),
-      ),
-      child: Column(
-        children: [
-          _permRow(
-            icon: Icons.location_on_rounded,
-            title: 'Location',
-            subtitle: 'Detect your city for accurate times',
-            granted: loc,
-            onEnable: () async {
-              final st = await Permission.location.request();
-              if (st.isPermanentlyDenied) await openAppSettings();
-            },
-          ),
-          _permDivider(),
-          _permRow(
-            icon: Icons.notifications_rounded,
-            title: 'Notifications',
-            subtitle: 'Show alerts at prayer times',
-            granted: notif,
-            onEnable: () async {
-              await PrayerAlarmService.requestNotificationPermission();
-            },
-          ),
-          _permDivider(),
-          _permRow(
-            icon: Icons.alarm_rounded,
-            title: 'Exact Alarms',
-            subtitle: 'Fire precisely at the prayer time',
-            granted: exact,
-            onEnable: () async => openAppSettings(),
-          ),
-          _permDivider(),
-          _permRow(
-            icon: Icons.battery_charging_full_rounded,
-            title: 'Ignore Battery Saver',
-            subtitle: "Stops power-saving from delaying alarms",
-            granted: battery,
-            optional: true,
-            onEnable: () async {
-              await PrayerAlarmService.openBatterySettings();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _permDivider() => Padding(
-        padding: const EdgeInsets.only(left: 62),
-        child: Divider(height: 1, color: Colors.white.withAlpha(10)),
-      );
-
-  Widget _permRow({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool granted,
-    required Future<void> Function() onEnable,
-    bool optional = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      child: Row(
-        children: [
-          Container(
-            width: 34, height: 34,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              color: granted ? kSwActive.withAlpha(26) : Colors.white.withAlpha(10),
-            ),
-            child: Icon(icon, size: 17,
-                color: granted ? kSwActive : kSwTextSecondary),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Flexible(
-                    child: Text(title,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14.5, fontWeight: FontWeight.w600,
-                        color: kSwTextPrimary.withAlpha(230))),
-                  ),
-                  if (optional) ...[
-                    const SizedBox(width: 6),
-                    Text('OPTIONAL', style: TextStyle(
-                      fontSize: 8, fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5, color: kSwTextMuted)),
-                  ],
-                ]),
-                const SizedBox(height: 2),
-                Text(subtitle, style: TextStyle(
-                  fontSize: 11.5, height: 1.25, color: kSwTextMuted)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          CupertinoSwitch(
-            value: granted,
-            activeTrackColor: kSwActive,
-            inactiveTrackColor: Colors.white.withAlpha(20),
-            onChanged: (v) async {
-              if (v && !granted) {
-                await onEnable();
-              } else if (!v && granted) {
-                await openAppSettings();
-              }
-              await _checkPermissions();
-            },
-          ),
-        ],
-      ),
-    );
-  }
 
   // ══════════════════════════════════════════════════════
   //  FASTING FOOTER
@@ -1185,7 +1112,6 @@ class _PrayerAlarmSettingsScreenState
         fullscreenDialog: true,
       ),
     );
-    _checkPermissions();
   }
 
   Future<bool> _isLocationServiceEnabled() async {
@@ -1196,42 +1122,16 @@ class _PrayerAlarmSettingsScreenState
     }
   }
 
-  Future<void> _showLocationServiceDialog() async {
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF161616),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(children: [
-          Icon(Icons.location_off_rounded, color: kSwActive, size: 20),
-          const SizedBox(width: 8),
-          const Text('Location is Off', style: TextStyle(
-            fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFFE8E8E8))),
-        ]),
-        content: Text(
-          'Turn on device location to auto-detect your city for accurate prayer times.',
-          style: TextStyle(fontSize: 12, color: Colors.white.withAlpha(120)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Not Now', style: TextStyle(
-              color: Colors.white.withAlpha(80), fontSize: 12)),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              // Open system Location Settings directly
-              await openAppSettings();
-            },
-            style: TextButton.styleFrom(foregroundColor: kSwActive),
-            child: const Text('Open Settings', style: TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
+  /// Turns the device GPS on with a single system tap (the Google Play
+  /// "Turn on location?" dialog) — no manual trip to Settings. Returns true
+  /// once the location service is enabled.
+  Future<bool> _ensureLocationOn() async {
+    if (await _isLocationServiceEnabled()) return true;
+    try {
+      return await loc.Location().requestService();
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _detectLocation() async {
@@ -1251,6 +1151,8 @@ class _PrayerAlarmSettingsScreenState
       locationStatus = await Permission.location.request();
       if (!locationStatus.isGranted) return;
     }
+    // Turn the GPS service on with one system tap if it's off.
+    if (!await _ensureLocationOn()) return;
     setState(() {
       _isLocating = true;
       _showLocationSearch = true;
