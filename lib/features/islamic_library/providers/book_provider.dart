@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/book_models.dart';
 import 'reader_settings_provider.dart';
@@ -14,6 +15,10 @@ import 'reader_settings_provider.dart';
 /// language changes (English ⇆ Hinglish share identical chapter/topic IDs,
 /// so reading progress carries across a language switch).
 final bookProvider = FutureProvider<BookModel>((ref) async {
+  // KeepAlive: once parsed, the BookModel stays in memory so re-opening
+  // Seerah doesn't re-parse 48 JSON files each time.
+  ref.keepAlive();
+
   final lang = ref.watch(readerLanguageProvider);
   final prefix = lang.assetPrefix; // 'ar_raheeq' or 'ar_raheeq_hi'
 
@@ -28,30 +33,35 @@ final bookProvider = FutureProvider<BookModel>((ref) async {
   // Start with chapter 1
   final allChapters = [...book.chapters];
 
-  // Dynamically load available chapters or yield placeholders
-  for (int i = 2; i <= 48; i++) {
-    try {
-      final chRaw = await rootBundle.loadString('assets/${prefix}_ch$i.json');
-      final chJson = jsonDecode(chRaw) as Map<String, dynamic>;
-      allChapters.add(ChapterModel.fromJson(chJson));
-    } catch (_) {
+  // Load all remaining chapters IN PARALLEL (not sequentially)
+  // I/O is parallelised; JSON decode is offloaded via compute() so the main
+  // thread stays free to paint the DeferredFade placeholder during navigation.
+  final chapterFutures = List.generate(47, (i) {
+    final chNum = i + 2; // chapters 2..48
+    return rootBundle.loadString('assets/${prefix}_ch$chNum.json').then((chRaw) {
+      return compute(_decodeChapter, chRaw);
+    }).catchError((_) {
       // File not found; fallback to placeholder "Coming Soon" chapter
-      allChapters.add(ChapterModel(
-        id: 'ch-$i',
-        title: _placeholderChapterTitle(i, lang),
+      return ChapterModel(
+        id: 'ch-$chNum',
+        title: _placeholderChapterTitle(chNum, lang),
         arabicTitle: '',
-        number: i,
+        number: chNum,
         totalTopics: 0,
         topics: const [],
-      ));
-    }
-  }
+      );
+    });
+  });
 
-  // Renumber all topics sequentially from 1 to N
+  final loadedChapters = await Future.wait(chapterFutures);
+  allChapters.addAll(loadedChapters);
+
+  // Renumber all topics sequentially from 1 to N (pure CPU work, fast enough
+  // after the I/O+parse is done)
   int globalTopicNumber = 1;
   final renumberedChapters = allChapters.map((ch) {
     if (ch.topics.isEmpty) return ch;
-    
+
     final renumberedTopics = ch.topics.map((t) {
       return TopicModel(
         id: t.id,
@@ -63,7 +73,7 @@ final bookProvider = FutureProvider<BookModel>((ref) async {
         quiz: t.quiz,
       );
     }).toList();
-    
+
     return ChapterModel(
       id: ch.id,
       title: ch.title,
@@ -82,6 +92,13 @@ final bookProvider = FutureProvider<BookModel>((ref) async {
     chapters: renumberedChapters,
   );
 });
+
+/// Top-level function required by [compute] — runs JSON decode + model
+/// construction in a background isolate so the main thread isn't blocked.
+ChapterModel _decodeChapter(String raw) {
+  final json = jsonDecode(raw) as Map<String, dynamic>;
+  return ChapterModel.fromJson(json);
+}
 
 /// Placeholder chapter titles for locked ("Coming Soon") chapters.
 /// English titles mirror the authoritative table of contents in

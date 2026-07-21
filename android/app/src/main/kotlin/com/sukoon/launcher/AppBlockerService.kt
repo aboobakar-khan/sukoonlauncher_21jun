@@ -113,27 +113,6 @@ class AppBlockerService : Service() {
             return getPrefs(context).getStringSet(KEY_TIMER_PACKAGES, emptySet()) ?: emptySet()
         }
 
-        // ── Accessibility-driven foreground signal (precise, instant) ──
-        // Set by SukoonAccessibilityService on every window-state change. Kept in
-        // memory only (never persisted/sent). getForegroundPackage() prefers it
-        // while fresh, so enforcement reacts the instant an app opens — no 3s
-        // UsageStats blind spot.
-        @Volatile
-        var a11yForegroundPkg: String? = null
-        @Volatile
-        var a11yForegroundAt: Long = 0L
-
-        /** Called by the accessibility service when the foreground app changes. */
-        fun reportA11yForeground(pkg: String) {
-            a11yForegroundPkg = pkg
-            a11yForegroundAt = System.currentTimeMillis()
-            // Nudge the running service to enforce immediately (event-driven),
-            // instead of waiting for the next adaptive poll tick.
-            val svc = _instance ?: return
-            val h = svc.handler ?: return
-            h.removeCallbacks(svc.pollRunnable)
-            h.post(svc.pollRunnable)
-        }
 
         /** Enable/disable Zen Mode lockdown — also controls DND */
         fun setZenMode(context: Context, active: Boolean) {
@@ -862,22 +841,11 @@ class AppBlockerService : Service() {
     /**
      * Get the foreground package using UsageStatsManager.
      *
-     * Strategy (precision mode):
-     *  1. Query usage EVENTS for the last 10 seconds — look for the most
-     *     recent ACTIVITY_RESUMED / MOVE_TO_FOREGROUND event.
-     *  2. If no event found (user has been in the same app longer than 10s),
-     *     fall back to queryUsageStats() and pick the app with the most
-     *     recent lastTimeUsed — this always returns data even if the user
-     *     hasn't switched apps.
+     * Queries usage EVENTS for the last 10 seconds — looks for the most
+     * recent ACTIVITY_RESUMED / MOVE_TO_FOREGROUND event. This is reliable
+     * and does not require Accessibility permission.
      */
     private fun getForegroundPackage(): String? {
-        // Prefer the accessibility-reported foreground app while it's fresh — it
-        // is instant and precise, and covers the UsageStats 3s blind spot. Falls
-        // back to UsageStats events when accessibility is off or stale.
-        val aPkg = a11yForegroundPkg
-        if (aPkg != null && System.currentTimeMillis() - a11yForegroundAt < 4_000L) {
-            return aPkg
-        }
         try {
             val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val now = System.currentTimeMillis()

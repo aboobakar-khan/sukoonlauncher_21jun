@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../utils/review_helper.dart';
 import '../widgets/calendar_widget.dart';
+import '../widgets/pre_review_dialog.dart';
 import '../widgets/prayer_tracker_widget.dart';
 import '../widgets/dhikr_summary_widget.dart';
 import 'deen_mode_screen.dart';
@@ -13,6 +14,8 @@ import 'saved_verses_screen.dart';
 import 'settings_screen.dart';
 import '../utils/smooth_page_route.dart';
 import '../features/quran/providers/quran_provider.dart';
+import '../features/quran/models/surah.dart';
+import '../features/quran/screens/surah_reader_screen.dart';
 import '../features/quran/widgets/tafseer_bottom_sheet.dart';
 import '../providers/arabic_font_provider.dart';
 import '../providers/saved_verses_provider.dart';
@@ -160,7 +163,7 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
         label: 'Rate',
         color: Colors.white,
         onTap: () async {
-          await requestSukoonReview();
+          await showPreReviewDialog(context, accent);
         },
       ),
       (
@@ -445,7 +448,7 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
                       ),
                     ],
                     const SizedBox(height: 12),
-                    // Footer: surah ref + saved + tafseer
+                    // Footer: surah ref + saved + read + tafseer
                     Row(
                       children: [
                         Text(
@@ -487,7 +490,14 @@ class _WidgetDashboardScreenState extends ConsumerState<WidgetDashboardScreen>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
+                        // ── Read in Quran ──
+                        _DashReadInQuranButton(
+                          surahId: verse['surahId'] as int,
+                          verseNumber: verse['verseNumber'] as int,
+                          accentColor: accent,
+                        ),
+                        const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () {
                             TafseerBottomSheet.show(
@@ -755,6 +765,124 @@ class _EditWidgetsSheet extends ConsumerWidget {
             }),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _DashReadInQuranButton — tap to open that exact ayah in the Quran reader
+// ─────────────────────────────────────────────────────────────────────────────
+class _DashReadInQuranButton extends ConsumerStatefulWidget {
+  final int surahId;
+  final int verseNumber;
+  final Color accentColor;
+
+  const _DashReadInQuranButton({
+    required this.surahId,
+    required this.verseNumber,
+    required this.accentColor,
+  });
+
+  @override
+  ConsumerState<_DashReadInQuranButton> createState() =>
+      _DashReadInQuranButtonState();
+}
+
+class _DashReadInQuranButtonState
+    extends ConsumerState<_DashReadInQuranButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 110),
+      reverseDuration: const Duration(milliseconds: 200),
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.86).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _navigate() async {
+    await _ctrl.forward();
+    await _ctrl.reverse();
+
+    if (!mounted) return;
+
+    final surahsAsync = ref.read(surahsProvider);
+    final surahs = surahsAsync.valueOrNull;
+    if (surahs == null) return;
+
+    Surah? surah;
+    for (final s in surahs) {
+      if (s.id == widget.surahId) {
+        surah = s;
+        break;
+      }
+    }
+    if (surah == null || !mounted) return;
+
+    Navigator.push(
+      context,
+      SmoothForwardRoute(
+        child: SurahReaderScreen(
+          surah: surah,
+          initialAyah: widget.verseNumber,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accentColor;
+    return GestureDetector(
+      onTapDown: (_) => _ctrl.forward(),
+      onTapCancel: () => _ctrl.reverse(),
+      onTap: _navigate,
+      child: ScaleTransition(
+        scale: _scale,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.14),
+              width: 0.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.auto_stories_outlined,
+                size: 12,
+                color: accent.withValues(alpha: 0.7),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'Read',
+                style: TextStyle(
+                  color: accent.withValues(alpha: 0.7),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

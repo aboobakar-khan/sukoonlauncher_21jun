@@ -44,6 +44,10 @@ class _PrayerAlarmSettingsScreenState
   bool _showCalcMethod = false;
   bool _showAsrSchool = false;
   String? _autoDetectedCity;
+  
+  final LayerLink _searchLayerLink = LayerLink();
+  final FocusNode _searchFocusNode = FocusNode();
+  OverlayEntry? _searchOverlay;
 
   // Date navigation
   DateTime _viewDate = DateTime.now();
@@ -73,6 +77,19 @@ class _PrayerAlarmSettingsScreenState
       _loadViewDate(DateTime.now());
       _startCountdown();
     });
+    
+    _searchFocusNode.addListener(() {
+      if (!_searchFocusNode.hasFocus) {
+        _removeSearchOverlay();
+      } else if (_searchResults.isNotEmpty) {
+        _showSearchOverlay();
+      }
+    });
+  }
+
+  void _removeSearchOverlay() {
+    _searchOverlay?.remove();
+    _searchOverlay = null;
   }
 
   // ── FASTING ALARM MODE PERSISTENCE ──
@@ -158,6 +175,8 @@ class _PrayerAlarmSettingsScreenState
 
   @override
   void dispose() {
+    _removeSearchOverlay();
+    _searchFocusNode.dispose();
     _countdownTimer?.cancel();
     _cityController.dispose();
     super.dispose();
@@ -723,11 +742,20 @@ class _PrayerAlarmSettingsScreenState
   Widget _buildNextPrayerHero(PrayerAlarmState state) {
     final times = state.todayTimes;
     if (times == null) {
-      return _heroShell(
-        icon: Icons.location_searching_rounded,
-        title: 'Set your location',
-        subtitle: 'Auto-detect or search a city to load prayer times',
-        accent: kSwTextSecondary,
+      return GestureDetector(
+        onTap: () {
+          setState(() {
+            _showLocationSearch = true;
+            _showCalcMethod = false;
+            _showAsrSchool = false;
+          });
+        },
+        child: _heroShell(
+          icon: Icons.location_searching_rounded,
+          title: 'Set your location',
+          subtitle: 'Auto-detect or search a city to load prayer times',
+          accent: kSwTextSecondary,
+        ),
       );
     }
     if (_nextPrayerName.isEmpty) {
@@ -889,76 +917,105 @@ class _PrayerAlarmSettingsScreenState
             ),
             const SizedBox(height: 8),
           ],
-          TextField(
-            controller: _cityController,
-            style: TextStyle(color: kSwTextPrimary.withAlpha(220), fontSize: 13),
-            decoration: InputDecoration(
-              hintText: 'Search city...',
-              hintStyle: TextStyle(color: kSwTextMuted.withAlpha(80), fontSize: 13),
-              prefixIcon: Icon(Icons.search_rounded, size: 15, color: kSwTextMuted.withAlpha(60)),
-              suffixIcon: _isLocating || _isSearching
-                  ? const Padding(padding: EdgeInsets.all(12),
-                      child: SizedBox(width: 14, height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 1.5)))
-                  : _cityController.text.isNotEmpty
-                      ? IconButton(
-                          icon: Icon(Icons.close_rounded, size: 14, color: kSwTextMuted),
-                          onPressed: () {
-                            _cityController.clear();
-                            setState(() { _searchResults = []; _autoDetectedCity = null; });
-                          },
-                        )
-                      : IconButton(
-                          icon: Icon(Icons.my_location_rounded, size: 16, color: kSwTextMuted),
-                          tooltip: 'Auto-detect location',
-                          onPressed: _detectLocation,
-                        ),
-              filled: true,
-              fillColor: Colors.white.withAlpha(6),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              isDense: true,
+          CompositedTransformTarget(
+            link: _searchLayerLink,
+            child: TextField(
+              controller: _cityController,
+              focusNode: _searchFocusNode,
+              style: TextStyle(color: kSwTextPrimary.withAlpha(220), fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Search city...',
+                hintStyle: TextStyle(color: kSwTextMuted.withAlpha(80), fontSize: 13),
+                prefixIcon: Icon(Icons.search_rounded, size: 15, color: kSwTextMuted.withAlpha(60)),
+                suffixIcon: _isLocating || _isSearching
+                    ? const Padding(padding: EdgeInsets.all(12),
+                        child: SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.5)))
+                    : _cityController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.close_rounded, size: 14, color: kSwTextMuted),
+                            onPressed: () {
+                              _cityController.clear();
+                              setState(() { _searchResults = []; _autoDetectedCity = null; });
+                              _removeSearchOverlay();
+                            },
+                          )
+                        : IconButton(
+                            icon: Icon(Icons.my_location_rounded, size: 16, color: kSwTextMuted),
+                            tooltip: 'Auto-detect location',
+                            onPressed: _detectLocation,
+                          ),
+                filled: true,
+                fillColor: const Color(0xFF131313),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white.withAlpha(15))),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white.withAlpha(15))),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: kSwActive.withAlpha(100))),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                isDense: true,
+              ),
+              onChanged: (v) {
+                if (_autoDetectedCity != null && v != _autoDetectedCity) {
+                  setState(() => _autoDetectedCity = null);
+                }
+                _onCitySearch(v);
+              },
             ),
-            onChanged: (v) {
-              if (_autoDetectedCity != null && v != _autoDetectedCity) {
-                setState(() => _autoDetectedCity = null);
-              }
-              _onCitySearch(v);
-            },
           ),
-          if (_searchResults.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Container(
-              constraints: const BoxConstraints(maxHeight: 130),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0C0C10),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: _searchResults.length,
-                itemBuilder: (_, i) {
-                  final r = _searchResults[i];
-                  return InkWell(
-                    onTap: () => _selectSearchResult(r),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      child: Text(r['name'] as String,
-                        style: TextStyle(fontSize: 12, color: kSwTextPrimary.withAlpha(170)),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
           const SizedBox(height: 6),
         ],
       ),
     );
+  }
+
+  void _showSearchOverlay() {
+    if (_searchOverlay != null || _searchResults.isEmpty) return;
+    _searchOverlay = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          width: MediaQuery.of(context).size.width - 60, // Match panel width minus margins
+          child: CompositedTransformFollower(
+            link: _searchLayerLink,
+            showWhenUnlinked: false,
+            offset: const Offset(0, 48),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 220),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF151515),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withAlpha(25)),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withAlpha(150), blurRadius: 15, offset: const Offset(0, 8))
+                  ],
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  itemCount: _searchResults.length,
+                  itemBuilder: (_, i) {
+                    final r = _searchResults[i];
+                    return InkWell(
+                      onTap: () => _selectSearchResult(r),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Text(r['name'] as String,
+                          style: TextStyle(fontSize: 13, color: kSwTextPrimary.withAlpha(220)),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    Overlay.of(context).insert(_searchOverlay!);
   }
 
   // ══════════════════════════════════════════════════════
@@ -1202,9 +1259,19 @@ class _PrayerAlarmSettingsScreenState
       final results = await LocationService.searchCity(query);
       if (!mounted) return;
       setState(() { _searchResults = results; _isSearching = false; });
+      if (results.isNotEmpty && _searchFocusNode.hasFocus) {
+        if (_searchOverlay == null) {
+          _showSearchOverlay();
+        } else {
+          _searchOverlay!.markNeedsBuild();
+        }
+      } else {
+        _removeSearchOverlay();
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _isSearching = false);
+      _removeSearchOverlay();
     }
   }
 
@@ -1214,6 +1281,7 @@ class _PrayerAlarmSettingsScreenState
     final name = result['name'] as String;
     _cityController.text = name;
     setState(() => _searchResults = []);
+    _removeSearchOverlay();
     FocusScope.of(context).unfocus();
     await PrayerAlarmService.requestNotificationPermission();
     ref.read(prayerAlarmProvider.notifier).updateConfig(

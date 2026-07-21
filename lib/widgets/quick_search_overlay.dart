@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/installed_app.dart';
 import '../providers/installed_apps_provider.dart';
 import '../providers/theme_provider.dart';
@@ -320,52 +321,51 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
   Widget _buildPanel(Color accent, List<InstalledApp> apps, bool isSearching) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 40, 8, 0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Search bar ──────────────────────────────────────────────
-          _buildSearchBar(accent),
-          const SizedBox(height: 30),
+      child: SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Capsule search bar ───────────────────────────────────
+            _buildSearchBar(accent),
 
-          // ── Recent apps / search results as chips ───────────────────
-          if (apps.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.only(left: 10, bottom: 16),
-              child: Text(
-                isSearching ? 'Results' : 'Recent Apps',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.45),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.2,
-                  decoration: TextDecoration.none,
+            // ── "Search on" action strip — only when typing ──────────
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: isSearching
+                  ? _buildSearchOnStrip(accent)
+                  : const SizedBox.shrink(),
+            ),
+
+            const SizedBox(height: 12),
+
+            // ── Search results / recent apps ────────────────────────
+            if (apps.isNotEmpty)
+              _buildResultsCard(apps, accent, isSearching)
+            else if (!isSearching)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                child: Text(
+                  'No recent apps',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.30),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Wrap(
-                spacing: 10,
-                runSpacing: 12,
-                children: [for (final app in apps) _appChip(app, accent)],
-              ),
-            ),
-          ] else ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-              child: Text(
-                _query.isEmpty ? 'No recent apps' : 'No apps found',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.30),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ),
+
+            // ── Search elsewhere: web · Play Store · AI ─────────────
+            if (isSearching) ...[
+              SizedBox(height: apps.isEmpty ? 4 : 16),
+              _buildSearchActions(accent),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -377,17 +377,18 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
       animation: _searchFocus,
       builder: (_, __) {
         final focused = _searchFocus.hasFocus;
+        final hasText = _searchCtrl.text.isNotEmpty;
         return Container(
           margin: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(18),
+            color: Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: focused
-                  ? accent.withValues(alpha: 0.55)
-                  : Colors.white.withValues(alpha: 0.55),
-              width: focused ? 1.5 : 1.3,
+              color: hasText
+                  ? accent.withValues(alpha: 0.40)
+                  : Colors.white.withValues(alpha: focused ? 0.20 : 0.10),
+              width: 1,
             ),
           ),
           child: Row(
@@ -399,40 +400,42 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
-                    fontWeight: FontWeight.w400,
+                    fontWeight: FontWeight.w300,
                     decoration: TextDecoration.none,
                     height: 1.2,
                   ),
-                  cursorColor: accent,
-                  cursorWidth: 1.5,
-                  cursorRadius: const Radius.circular(1),
+                  cursorColor: accent.withValues(alpha: 0.65),
+                  cursorWidth: 1.2,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     hintText: 'Search',
                     hintStyle: TextStyle(
                       color: Colors.white.withValues(alpha: 0.30),
                       fontSize: 16,
-                      fontWeight: FontWeight.w400,
+                      fontWeight: FontWeight.w300,
                     ),
                     isDense: true,
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   onChanged: _onSearchChanged,
                 ),
               ),
-              if (_searchCtrl.text.isNotEmpty)
+              if (hasText)
                 GestureDetector(
                   onTap: () {
                     _searchCtrl.clear();
                     _onSearchChanged('');
                   },
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: Colors.white.withValues(alpha: 0.35),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Colors.white.withValues(alpha: 0.35),
+                    ),
                   ),
                 ),
             ],
@@ -442,40 +445,354 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
     );
   }
 
-  // ── App chip ──────────────────────────────────────────────────────────────
+  // ── "Search on" strip ─────────────────────────────────────────────────────
 
-  Widget _appChip(InstalledApp app, Color accent) {
-    final isBlocked =
-        ref.read(appBlockRuleProvider.notifier).isAppBlocked(app.packageName);
+  Widget _buildSearchOnStrip(Color accent) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.auto_awesome,
+                size: 13,
+                color: accent.withValues(alpha: 0.5),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Search on',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.40),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.5,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _searchOnPill(Icons.language_rounded, 'Web', accent, _searchWeb),
+              _searchOnPill(Icons.contacts_outlined, 'Contacts', accent, () {
+                _dismiss();
+                launchUrl(
+                  Uri.parse('content://com.android.contacts/contacts'),
+                  mode: LaunchMode.externalApplication,
+                );
+              }),
+              _searchOnPill(Icons.map_outlined, 'Map', accent, () {
+                _dismiss();
+                final q = Uri.encodeComponent(_query);
+                launchUrl(
+                  Uri.parse('geo:0,0?q=$q'),
+                  mode: LaunchMode.externalApplication,
+                );
+              }),
+              _searchOnPill(Icons.call_outlined, 'Call', accent, () {
+                _dismiss();
+                launchUrl(
+                  Uri.parse('tel:$_query'),
+                  mode: LaunchMode.externalApplication,
+                );
+              }),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
+  Widget _searchOnPill(IconData icon, String label, Color accent, VoidCallback onTap) {
     return GestureDetector(
-      onTap: () => _launchApp(app),
+      onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
+          color: accent.withValues(alpha: 0.10),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.10),
-            width: 0.8,
+            color: accent.withValues(alpha: 0.30),
+            width: 1,
           ),
         ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: accent.withValues(alpha: 0.75)),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: accent.withValues(alpha: 0.85),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.2,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Vertical results card ─────────────────────────────────────────────────
+
+  Widget _buildResultsCard(List<InstalledApp> apps, Color accent, bool isSearching) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.06),
+          width: 0.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(apps.length, (i) {
+          final app = apps[i];
+          final isBlocked = ref.read(appBlockRuleProvider.notifier).isAppBlocked(app.packageName);
+          final itemColor = isBlocked
+              ? Colors.white.withValues(alpha: 0.15)
+              : accent.withValues(alpha: 0.85);
+
+          return Column(
+            children: [
+              GestureDetector(
+                onTap: () => _launchApp(app),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 15,
+                  ),
+                  child: Text(
+                    app.displayName,
+                    style: TextStyle(
+                      color: itemColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w400,
+                      letterSpacing: 0.1,
+                      decoration: TextDecoration.none,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              if (i < apps.length - 1)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Container(
+                    height: 0.5,
+                    color: Colors.white.withValues(alpha: 0.06),
+                  ),
+                ),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  // ── Search-elsewhere actions ────────────────────────────────────────────────
+  // Shown while the user is typing: escalate from on-device apps to the web,
+  // the Play Store, or an installed AI assistant. Mirrors Spotlight's pattern of
+  // listing apps first, then "search elsewhere" at the bottom.
+
+  static const List<_AiAssistant> _aiAssistants = [
+    _AiAssistant('ChatGPT', 'com.openai.chatgpt'),
+    _AiAssistant('Gemini', 'com.google.android.apps.bard'),
+    _AiAssistant('Claude', 'com.anthropic.claude'),
+  ];
+
+  Widget _buildSearchActions(Color accent) {
+    final allApps = ref.read(installedAppsProvider);
+    final installedAi = _aiAssistants
+        .where((a) => allApps.any((app) => app.packageName == a.package))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 1,
+          margin: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+          color: Colors.white.withValues(alpha: 0.06),
+        ),
+        _searchActionRow(
+          icon: Icons.travel_explore_rounded,
+          label: 'Search the web',
+          onTap: _searchWeb,
+        ),
+        _searchActionRow(
+          icon: Icons.shopping_bag_outlined,
+          label: 'Search Play Store',
+          onTap: _searchPlayStore,
+        ),
+        if (installedAi.isNotEmpty) _aiActionRow(installedAi, accent),
+      ],
+    );
+  }
+
+  Widget _searchActionRow({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 10),
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: Colors.white.withValues(alpha: 0.50)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w400,
+                    decoration: TextDecoration.none,
+                  ),
+                  children: [
+                    TextSpan(text: '$label  '),
+                    TextSpan(
+                      text: '“$_query”',
+                      style:
+                          TextStyle(color: Colors.white.withValues(alpha: 0.40)),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Icon(Icons.north_east_rounded,
+                size: 15, color: Colors.white.withValues(alpha: 0.28)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _aiActionRow(List<_AiAssistant> ai, Color accent) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 10),
+      child: Row(
+        children: [
+          Icon(Icons.auto_awesome_rounded,
+              size: 19, color: accent.withValues(alpha: 0.85)),
+          const SizedBox(width: 14),
+          Text(
+            'Ask',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 15,
+              fontWeight: FontWeight.w400,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final a in ai) _aiChip(a, accent)],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _aiChip(_AiAssistant a, Color accent) {
+    return GestureDetector(
+      onTap: () => _launchPackage(a.package),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: accent.withValues(alpha: 0.28), width: 0.8),
+        ),
         child: Text(
-          app.displayName,
+          a.name,
           style: TextStyle(
-            color: isBlocked
-                ? Colors.white.withValues(alpha: 0.25)
-                : Colors.white.withValues(alpha: 0.92),
-            fontSize: 15,
-            fontWeight: FontWeight.w400,
-            height: 1.1,
+            color: accent.withValues(alpha: 0.95),
+            fontSize: 13.5,
+            fontWeight: FontWeight.w500,
             decoration: TextDecoration.none,
           ),
         ),
       ),
     );
   }
+
+  // ── Action handlers ─────────────────────────────────────────────────────────
+
+  Future<void> _searchWeb() async {
+    final q = _query.trim();
+    if (q.isEmpty) return;
+    _dismiss();
+    try {
+      await launchUrl(
+        Uri.parse(
+            'https://www.google.com/search?q=${Uri.encodeQueryComponent(q)}'),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _searchPlayStore() async {
+    final q = _query.trim();
+    if (q.isEmpty) return;
+    _dismiss();
+    try {
+      final market =
+          Uri.parse('market://search?q=${Uri.encodeQueryComponent(q)}&c=apps');
+      if (await canLaunchUrl(market)) {
+        await launchUrl(market, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(
+          Uri.parse(
+              'https://play.google.com/store/search?q=${Uri.encodeQueryComponent(q)}&c=apps'),
+          mode: LaunchMode.externalApplication,
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _launchPackage(String packageName) async {
+    _searchFocus.unfocus();
+    _dismiss();
+    try {
+      await const MethodChannel('com.sukoon.launcher/apps')
+          .invokeMethod('launchApp', {'packageName': packageName});
+    } catch (_) {}
+  }
+}
+
+/// One supported AI assistant and the Android package used to detect / launch it.
+class _AiAssistant {
+  final String name;
+  final String package;
+  const _AiAssistant(this.name, this.package);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

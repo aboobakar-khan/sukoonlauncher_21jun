@@ -25,6 +25,11 @@ import '../features/quran/screens/surah_list_screen.dart';
 import '../features/hadith_dua/screens/minimalist_hadith_screen.dart';
 import '../features/hadith_dua/screens/minimalist_dua_screen.dart';
 import '../features/islamic_library/screens/book_home_screen.dart';
+// Pre-warm providers — imported for background initialization
+import '../features/quran/providers/quran_provider.dart';
+import '../features/islamic_library/providers/book_provider.dart';
+import '../features/hadith_dua/providers/hadith_dua_provider.dart';
+import '../features/hadith_dua/screens/dua_adhkar_category_screen.dart';
 
 import '../providers/zen_mode_provider.dart';
 import '../providers/launcher_page_provider.dart';
@@ -73,10 +78,20 @@ const double _kPageSlopMultiplier = 1.7; // horizontal page slop = base × this
 /// Slightly overdamped (ratio 1.1 → no overshoot/bounce) and stiffer than the
 /// framework default (stiffness 100), so the page lands quickly and decisively
 /// instead of coasting with a long, loose tail.
+// ── Lawnchair (Launcher3 PagedView) page-swipe constants ──
+// Ported from LawnchairLauncher/lawnchair PagedView.java. Logical px ≈ dp, so
+// the dp/s thresholds map ~1:1 to Flutter's logical px/s.
+const double _kLcFlingThreshold = 500.0; // decisive flick → advance one page
+const double _kLcSoftFling = 80.0; // gentle motion → directional commit
+const double _kLcSignificantMove = 0.40; // drag past 40% of a page → commit
+
+// Crisp, decisive snap matching Launcher3's quintic SCROLL ease-out: a slightly
+// over-damped spring (no overshoot), tuned to settle ~300ms for a full page and
+// shorter for partial snaps — the "fast Lawnchair land".
 final SpringDescription _kPageSnapSpring = SpringDescription.withDampingRatio(
   mass: 0.5,
-  stiffness: 170.0,
-  ratio: 1.1,
+  stiffness: 220.0,
+  ratio: 1.05,
 );
 
 /// Launcher page physics — any horizontal swipe from a non-home page
@@ -104,6 +119,58 @@ class _LauncherPagePhysics extends PageScrollPhysics {
   // position instead of coasting — this kills the "loose / drifty" feel.
   @override
   double get minFlingVelocity => 80.0;
+
+  // ── Lawnchair page selection on release (single page per gesture) ──
+  // Replaces Flutter's velocity-biased rounding with Launcher3's richer commit:
+  //   • decisive flick (>500 px/s) → one page in the FLING direction;
+  //   • gentle drag past 40% of a page → one page in the DRAG direction;
+  //   • a back-flick before that cancels (return-to-original);
+  //   • otherwise snap to the nearest page.
+  // The chosen page is always one of the adjacent pair, so a single gesture can
+  // never skip pages. Settled by the over-damped [spring] (quintic-like, no
+  // bounce). MUST return a real ScrollSpringSimulation so the gesture-arena
+  // release (_killBallisticIfSettling) keeps working — never a plain jump.
+  @override
+  Simulation? createBallisticSimulation(
+      ScrollMetrics position, double velocity) {
+    final tol = toleranceFor(position);
+    final dim = position.viewportDimension;
+    if (dim <= 0) return super.createBallisticSimulation(position, velocity);
+
+    final page = position.pixels / dim;
+    final lower = page.floorToDouble();
+    final upper = lower + 1.0;
+    final f = page - lower; // 0..1 within the current adjacent pair
+
+    final speed = velocity.abs();
+    double target;
+    if (speed > _kLcFlingThreshold) {
+      // Decisive flick → commit one page in the fling direction.
+      target = velocity > 0 ? upper : lower;
+    } else if (velocity > _kLcSoftFling) {
+      // Gentle forward motion → commit forward once dragged past 40%.
+      target = f > _kLcSignificantMove ? upper : lower;
+    } else if (velocity < -_kLcSoftFling) {
+      // Gentle backward motion → commit back once dragged past 40% (f < 0.60).
+      target = f < (1.0 - _kLcSignificantMove) ? lower : upper;
+    } else {
+      // Near-still release → nearest page.
+      target = f >= 0.5 ? upper : lower;
+    }
+
+    // Range clamp (single-page is inherent — target is one of the pair).
+    final minPage = position.minScrollExtent / dim;
+    final maxPage = position.maxScrollExtent / dim;
+    target = target.clamp(minPage, maxPage);
+
+    final targetPixels = target * dim;
+    if ((targetPixels - position.pixels).abs() < tol.distance) {
+      return null; // already there — rest, freeing the gesture arena cleanly
+    }
+    return ScrollSpringSimulation(
+        spring, position.pixels, targetPixels, velocity,
+        tolerance: tol);
+  }
 
   // ── Boundary: hard clamp (zero overscroll at first/last page) ──
   @override
@@ -280,8 +347,29 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
           },
         );
         _checkForUpdate();
+
+        // ── PRE-WARM Islamic Library providers ──
+        // Trigger lazy FutureProviders so their heavy I/O + JSON parsing
+        // runs in the background BEFORE the user taps Quran/Hadith/Dua/Seerah.
+        // By the time they navigate, the data is already cached in memory.
+        _preWarmIslamicProviders();
       });
     });
+  }
+
+  /// Pre-warm Islamic Library providers in the background.
+  /// Called 3s after launch — gives the home screen time to render first,
+  /// then silently parses Quran JSON (2.4 MB, in isolate), Hisnul Muslim,
+  /// Seerah chapters, and daily hadith so opening those screens is instant.
+  void _preWarmIslamicProviders() {
+    // Quran: triggers 2.4 MB JSON parse in background isolate
+    ref.read(surahsProvider);
+    // Dua: triggers 89 KB hisnul_muslim.json parse
+    ref.read(hisnulMuslimProvider);
+    // Seerah: triggers parallel chapter loading
+    ref.read(bookProvider);
+    // Hadith: triggers Hive cache lookup + daily hadith fetch
+    ref.read(dailyHadithProvider);
   }
 
   /// Restore the last active page index from SharedPreferences.
@@ -1036,51 +1124,15 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
 
             // ── 6-dot page indicator ───────────────────────────────────
             // Minimalist 6 dots at top-center. Hidden on home (index 3).
-            // Active dot: filled with accent. Others: ghost white.
-            // Fades out when on home page so the clock screen stays pristine.
+            // Fades in during navigation and auto-hides after 1.5s.
             if (ref.watch(pageIndicatorProvider))
               Positioned(
                 top: MediaQuery.of(context).padding.top + 16,
                 right: 20,
-                child: IgnorePointer(
-                  child: AnimatedBuilder(
-                    animation: _pageController,
-                    builder: (_, __) {
-                      final page = _pageController.hasClients
-                          ? (_pageController.page ?? _homeIndex.toDouble())
-                          : _homeIndex.toDouble();
-                      // Fade out as user approaches or is on the home page
-                      final distFromHome = (page - _homeIndex).abs();
-                      final opacity = (distFromHome.clamp(0.0, 1.0));
-                      if (opacity < 0.01) return const SizedBox.shrink();
-                      return Opacity(
-                        opacity: opacity,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                            children: List.generate(6, (i) {
-                              // Distance of this dot from current page position
-                              final dist = (page - i).abs();
-                              final isActive = dist < 0.5;
-                              final dotOpacity = isActive
-                                  ? 1.0
-                                  : (1.0 - dist.clamp(0.0, 1.0)) * 0.25 + 0.12;
-                              return AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                margin: const EdgeInsets.symmetric(horizontal: 3),
-                                width: isActive ? 6 : 5,
-                                height: isActive ? 6 : 5,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: isActive
-                                      ? const Color(0xFF4ADE80) // Fresh green
-                                      : Colors.white.withValues(alpha: dotOpacity * 0.8),
-                                ),
-                              );
-                            }),
-                          ),
-                        );
-                    },
-                  ),
+                child: _TransientPageIndicator(
+                  pageController: _pageController,
+                  homeIndex: _homeIndex,
+                  accentColor: ref.watch(islamicThemeColorsProvider).accent,
                 ),
               ),
 
@@ -1340,29 +1392,39 @@ class IslamicHubScreen extends ConsumerStatefulWidget {
 
 class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
 
-
-
-  /// Returns an English phrase meaningful for the current prayer time.
   String _prayerContextLabel() {
     final h = DateTime.now().hour;
     if (h >= 4  && h < 6)  return 'Fajr — the hour of the devoted';
     if (h >= 6  && h < 12) return 'Begin your day with His name';
-    if (h >= 12 && h < 13) return 'Dhuhr time — pause & pray';
+    if (h >= 12 && h < 13) return 'Dhuhr — pause & pray';
     if (h >= 13 && h < 16) return 'Afternoon — stay connected';
     if (h >= 16 && h < 18) return 'Asr — the middle prayer';
     if (h >= 18 && h < 20) return 'Maghrib — sunset, gratitude';
-    if (h >= 20 && h < 22) return 'Isha time — close with prayer';
+    if (h >= 20 && h < 22) return 'Isha — close with prayer';
     return 'Night — the hour of sincere dua';
   }
 
   @override
   Widget build(BuildContext context) {
-    const green = Color(0xFF4CAF50); // fresh leaf green branding
+    // ── Theme-aware colors (accent follows the selected Islamic palette) ──
+    // The hub sits over the launcher wallpaper — always dark backdrop.
+    // We always pull from the DARK variant of the selected palette so the
+    // accent color correctly reflects the theme (e.g. Catppuccin → purple,
+    // Tokyo Night → blue) regardless of the light/dark reading mode.
+    final master = ref.watch(masterThemeProvider);
+    final mode   = ref.watch(islamicThemeProvider);
+    final darkColors = master.colorsFor(IslamicThemeMode.dark);
+    final accent = darkColors.accent;
+    final hubGreen = darkColors.green; // palette's primary hue
+
+    // Light mode adds a slightly warmer, lighter overlay on the wallpaper;
+    // dark mode keeps the deep translucent scrim.
+    final overlayAlpha = mode == IslamicThemeMode.light ? 0.28 : 0.18;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
-        color: Colors.black.withValues(alpha: 0.22),
+        color: Colors.black.withValues(alpha: overlayAlpha),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -1370,66 +1432,96 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
 
-                // ── Header: time-contextual greeting only ──
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 28, 0, 28),
-                  child: Text(
-                    _prayerContextLabel(),
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      fontSize: 22,
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: -0.6,
-                      height: 1.2,
+                  // ── Header ──────────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(0, 24, 0, 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _prayerContextLabel(),
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.82),
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w300,
+                                  letterSpacing: -0.5,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Arabic ligature — decorative, matches palette accent
+                        Text(
+                          'بِسْمِ اللَّهِ',
+                          style: TextStyle(
+                            color: hubGreen.withValues(alpha: 0.45),
+                            fontSize: 15,
+                            fontFamily: 'Amiri',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: () => _showThemePicker(context, ref, accent, hubGreen, master, mode),
+                          behavior: HitTestBehavior.opaque,
+                          child: Icon(
+                            Icons.palette_rounded,
+                            size: 20,
+                            color: Colors.white.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
 
-                // ── Today's Wisdom — moves to TOP ──
-                _WisdomWidget(accentColor: green),
+                const SizedBox(height: 14),
 
-                const SizedBox(height: 20),
+                // ── Today's Wisdom ──────────────────────────────────────
+                const _WisdomWidget(),
 
-                // ── Section label ──
+                const SizedBox(height: 18),
+
+                // ── Section label ───────────────────────────────────────
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.only(bottom: 10),
                   child: Row(
                     children: [
                       Text(
-                        'ISLAMIC LIBRARY',
+                        'LIBRARY',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.28),
+                          color: Colors.white.withValues(alpha: 0.25),
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
-                          letterSpacing: 1.5,
+                          letterSpacing: 1.8,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 4, height: 4,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: green.withValues(alpha: 0.55),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          height: 0.5,
+                          color: Colors.white.withValues(alpha: 0.08),
                         ),
                       ),
                     ],
                   ),
                 ),
 
-                // ── Quran hero card ──
+                // ── Quran hero card ─────────────────────────────────────
                 _QuranHeroCard(
-                  accentColor: green,
-                  onTap: () => Navigator.push(context, _SmoothForwardRoute(
-                      child: const _IslamicSubScreen(
-                          title: 'Quran', child: SurahListScreen()))),
+                  accentColor: hubGreen,
+                  onTap: () => Navigator.push(
+                    context,
+                    _SmoothForwardRoute(
+                        child: const _IslamicSubScreen(
+                            title: 'Quran', child: SurahListScreen()))),
                 ),
                 const SizedBox(height: 8),
 
-                // ── Dua · Hadith · Seerah — equal tiles, one shared accent ──
-                // All three share the section's green accent so the group reads
-                // as one cohesive set; the icon alone distinguishes each item.
-                // stretch keeps every tile the same height even if a sublabel
-                // wraps differently.
+                // ── Dua · Hadith · Seerah ───────────────────────────────
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -1438,10 +1530,13 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
                         icon: Icons.spa_rounded,
                         label: 'Dua',
                         sublabel: 'Adhkar',
-                        accentColor: green,
-                        onTap: () => Navigator.push(context, _SmoothForwardRoute(
-                            child: const _IslamicSubScreen(
-                                title: 'Dua & Adhkar', child: MinimalistDuaScreen()))),
+                        accentColor: hubGreen,
+                        onTap: () => Navigator.push(
+                            context,
+                            _SmoothForwardRoute(
+                                child: const _IslamicSubScreen(
+                                    title: 'Dua & Adhkar',
+                                    child: MinimalistDuaScreen()))),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1450,12 +1545,15 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
                         icon: Icons.brightness_4_rounded,
                         label: 'Hadith',
                         sublabel: 'Collections',
-                        accentColor: green,
+                        accentColor: hubGreen,
                         onTap: () {
                           ref.read(hadithNavDepthProvider.notifier).state = 0;
-                          Navigator.push(context, _SmoothForwardRoute(
-                              child: _IslamicSubScreen(
-                                  title: 'Hadith', child: MinimalistHadithScreen())));
+                          Navigator.push(
+                              context,
+                              _SmoothForwardRoute(
+                                  child: _IslamicSubScreen(
+                                      title: 'Hadith',
+                                      child: MinimalistHadithScreen())));
                         },
                       ),
                     ),
@@ -1465,14 +1563,13 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
                         icon: Icons.auto_stories_rounded,
                         label: 'Seerah',
                         sublabel: 'Sealed Nectar',
-                        accentColor: green,
+                        accentColor: hubGreen,
                         onTap: () => Navigator.push(
                             context,
                             _SmoothForwardRoute(
                                 child: DeferredFade(
-                                    background: ref
-                                        .read(islamicThemeColorsProvider)
-                                        .background,
+                                    background:
+                                        ref.read(islamicThemeColorsProvider).background,
                                     child: const BookHomeScreen()))),
                       ),
                     ),
@@ -1487,20 +1584,191 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen> {
       ),
     );
   }
+
+  void _showThemePicker(BuildContext context, WidgetRef ref, Color accent, Color hubGreen, MasterTheme currentMaster, IslamicThemeMode currentMode) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF121212),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Library Theme',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Customize colors and reading mode for the Islamic Library',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Consumer(builder: (context, ref, _) {
+                final master = ref.watch(masterThemeProvider);
+                final mode = ref.watch(islamicThemeProvider);
+                final darkColors = master.colorsFor(IslamicThemeMode.dark);
+                final accent = darkColors.accent;
+                return _ThemePickerRow(
+                  accent: accent,
+                  hubGreen: darkColors.green,
+                  currentMaster: master,
+                  currentMode: mode,
+                  onSelectMaster: (t) => ref.read(masterThemeProvider.notifier).select(t),
+                  onToggleMode: () => ref.read(islamicThemeProvider.notifier).toggle(),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
+
+
+// ── Inline Theme Picker Row ───────────────────────────────────────────────────
+// Shows palette dots (one per MasterTheme) + a light/dark segmented toggle
+// inline in the Islamic Hub — no need to dig into settings.
+
+class _ThemePickerRow extends StatelessWidget {
+  final Color accent;
+  final Color hubGreen;
+  final MasterTheme currentMaster;
+  final IslamicThemeMode currentMode;
+  final ValueChanged<MasterTheme> onSelectMaster;
+  final VoidCallback onToggleMode;
+
+  const _ThemePickerRow({
+    required this.accent,
+    required this.hubGreen,
+    required this.currentMaster,
+    required this.currentMode,
+    required this.onSelectMaster,
+    required this.onToggleMode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 2),
+      child: Row(
+        children: [
+          // ── Palette dots ──────────────────────────────────────
+          Expanded(
+            child: Row(
+              children: MasterTheme.values.map((theme) {
+                final def = kMasterThemes[theme]!;
+                final isSelected = theme == currentMaster;
+                return GestureDetector(
+                  onTap: () => onSelectMaster(theme),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: isSelected ? 28 : 20,
+                      height: isSelected ? 28 : 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [def.dots[0], def.dots[1]],
+                        ),
+                        border: isSelected
+                            ? Border.all(
+                                color: Colors.white.withValues(alpha: 0.60),
+                                width: 2,
+                              )
+                            : Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                width: 1,
+                              ),
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: def.dots[0].withValues(alpha: 0.45),
+                                  blurRadius: 8,
+                                  spreadRadius: 1,
+                                ),
+                              ]
+                            : [],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
+          // ── Light / Dark toggle pill ───────────────────────────
+          GestureDetector(
+            onTap: onToggleMode,
+            behavior: HitTestBehavior.opaque,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                color: accent.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: accent.withValues(alpha: 0.25),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    currentMode == IslamicThemeMode.light
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
+                    size: 14,
+                    color: accent.withValues(alpha: 0.75),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    currentMode == IslamicThemeMode.light ? 'Light' : 'Dark',
+                    style: TextStyle(
+                      color: accent.withValues(alpha: 0.75),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // ── Wisdom Widget ────────────────────────────────────────────────────
 
-class _WisdomWidget extends StatefulWidget {
-  final Color accentColor;
-  const _WisdomWidget({required this.accentColor});
+class _WisdomWidget extends ConsumerStatefulWidget {
+  const _WisdomWidget();
 
   @override
-  State<_WisdomWidget> createState() => _WisdomWidgetState();
+  ConsumerState<_WisdomWidget> createState() => _WisdomWidgetState();
 }
 
-class _WisdomWidgetState extends State<_WisdomWidget> {
+class _WisdomWidgetState extends ConsumerState<_WisdomWidget> {
   WisdomEntry? _entry;
 
   @override
@@ -1511,8 +1779,10 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
     });
   }
 
-  void _showDetail(BuildContext ctx, WisdomEntry e) {
-    final accent = widget.accentColor;
+  void _showDetail(BuildContext ctx, WisdomEntry e, IslamicThemeColors tc, IslamicThemeMode mode) {
+    final accent = tc.accent;
+    final isLight = mode == IslamicThemeMode.light;
+    
     showModalBottomSheet(
       context: ctx,
       isScrollControlled: true,
@@ -1523,9 +1793,9 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
         maxChildSize: 0.92,
         expand: false,
         builder: (_, ctrl) => Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF101010),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: tc.background,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -1565,9 +1835,9 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
                     Text(
                       '\u201c${e.wisdom}\u201d',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.90),
+                        color: tc.text,
                         fontSize: 18,
-                        fontWeight: FontWeight.w400,
+                        fontWeight: FontWeight.w500,
                         height: 1.55,
                         letterSpacing: -0.2,
                       ),
@@ -1590,17 +1860,17 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    _detailSection('Related Ayah', e.detail.relatedAyah, accent, isAyah: true),
-                    _detailSection('Lesson', e.detail.lesson, accent),
-                    _detailSection('Context', e.detail.context, accent),
-                    _detailSection('Deed & Reward', e.detail.deedOrReward, accent),
-                    _detailSection('About', e.detail.biography, accent),
+                    _detailSection('Related Ayah', e.detail.relatedAyah, tc),
+                    _detailSection('Lesson', e.detail.lesson, tc),
+                    _detailSection('Context', e.detail.context, tc),
+                    _detailSection('Deed & Reward', e.detail.deedOrReward, tc),
+                    _detailSection('About', e.detail.biography, tc),
                     const SizedBox(height: 20),
                     Center(
                       child: Text(
                         'Allah knows best',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.15),
+                          color: tc.textTertiary,
                           fontSize: 10,
                           fontStyle: FontStyle.italic,
                         ),
@@ -1629,7 +1899,7 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
         )),
       );
 
-  Widget _detailSection(String title, String body, Color accent, {bool isAyah = false}) {
+  Widget _detailSection(String title, String body, IslamicThemeColors tc) {
     if (body.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
@@ -1637,16 +1907,14 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title.toUpperCase(), style: TextStyle(
-            color: accent.withValues(alpha: 0.40),
-            fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.2,
+            color: tc.accent,
+            fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.2,
           )),
           const SizedBox(height: 6),
           Text(body, style: TextStyle(
-            color: Colors.white.withValues(alpha: isAyah ? 0.80 : 0.55),
-            fontSize: isAyah ? 15 : 14.5,
-            fontStyle: isAyah ? FontStyle.italic : FontStyle.normal,
+            color: tc.textSecondary,
+            fontSize: 14.5,
             height: 1.6,
-            letterSpacing: isAyah ? 0.1 : 0,
           )),
         ],
       ),
@@ -1655,7 +1923,10 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = widget.accentColor;
+    final tc = ref.watch(islamicThemeColorsProvider);
+    final mode = ref.watch(islamicThemeProvider);
+    final accent = tc.accent;
+    final isLight = mode == IslamicThemeMode.light;
     final e = _entry;
 
     // Skeleton shown while loading
@@ -1705,9 +1976,8 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
       );
     }
 
-    // Loaded — minimalist: wisdom text big, attribution small below
     return GestureDetector(
-      onTap: () => _showDetail(context, e),
+      onTap: () => _showDetail(context, e, tc, mode),
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
@@ -1724,7 +1994,7 @@ class _WisdomWidgetState extends State<_WisdomWidget> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.auto_awesome_rounded, size: 12, color: accent.withValues(alpha: 0.7)),
+                    Icon(Icons.auto_awesome_rounded, size: 12, color: accent),
                     const SizedBox(width: 6),
                     Text(
                       "TODAY'S WISDOM",
@@ -1796,26 +2066,33 @@ class _QuranHeroCardState extends State<_QuranHeroCard> {
         opacity: _pressed ? 0.65 : 1.0,
         duration: const Duration(milliseconds: 100),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 28, 18, 28),
+          padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: accent.withValues(alpha: 0.06),
-            border: Border.all(color: accent.withValues(alpha: 0.22)),
+            borderRadius: BorderRadius.circular(20),
+            color: accent.withValues(alpha: 0.08),
+            border: Border.all(color: accent.withValues(alpha: 0.25), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.05),
+                blurRadius: 15,
+                spreadRadius: 2,
+              )
+            ]
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Icon
               Container(
-                width: 44, height: 44,
+                width: 52, height: 52,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: accent.withValues(alpha: 0.12),
+                  color: accent.withValues(alpha: 0.15),
                 ),
-                child: Icon(Icons.menu_book_rounded, size: 20,
-                    color: accent.withValues(alpha: 0.85)),
+                child: Icon(Icons.menu_book_rounded, size: 24,
+                    color: accent.withValues(alpha: 0.95)),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 18),
               // Text block
               Expanded(
                 child: Column(
@@ -1824,18 +2101,18 @@ class _QuranHeroCardState extends State<_QuranHeroCard> {
                     Text(
                       'Quran',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.88),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w400,
+                        color: Colors.white.withValues(alpha: 0.95),
+                        fontSize: 19,
+                        fontWeight: FontWeight.w500,
                         letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Text(
                       'Read · Listen · Reflect · Tafseer',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.35),
+                        fontSize: 12,
                         letterSpacing: 0.1,
                       ),
                     ),
@@ -1895,41 +2172,41 @@ class _SmallHubCardState extends State<_SmallHubCard> {
         opacity: _pressed ? 0.65 : 1.0,
         duration: const Duration(milliseconds: 100),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 26, 14, 26),
+          padding: const EdgeInsets.fromLTRB(16, 28, 16, 28),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Colors.white.withValues(alpha: 0.03),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            borderRadius: BorderRadius.circular(18),
+            color: Colors.white.withValues(alpha: 0.04),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.2),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Icon circle
               Container(
-                width: 34, height: 34,
+                width: 40, height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: accent.withValues(alpha: 0.10),
+                  color: accent.withValues(alpha: 0.12),
                 ),
-                child: Icon(widget.icon, size: 15,
-                    color: accent.withValues(alpha: 0.75)),
+                child: Icon(widget.icon, size: 18,
+                    color: accent.withValues(alpha: 0.85)),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Text(widget.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w400,
+                      color: Colors.white.withValues(alpha: 0.95),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
                       letterSpacing: -0.2)),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(widget.sublabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.20),
-                      fontSize: 10,
+                      color: Colors.white.withValues(alpha: 0.35),
+                      fontSize: 11,
                       letterSpacing: 0.1)),
             ],
           ),
@@ -2037,6 +2314,105 @@ class _IslamicSubScreen extends ConsumerWidget {
               Expanded(child: DeferredFade(background: colors.background, child: child)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Transient Page Indicator ──────────────────────────────────────────
+
+class _TransientPageIndicator extends StatefulWidget {
+  final PageController pageController;
+  final int homeIndex;
+  final Color accentColor;
+
+  const _TransientPageIndicator({
+    required this.pageController,
+    required this.homeIndex,
+    required this.accentColor,
+  });
+
+  @override
+  State<_TransientPageIndicator> createState() => _TransientPageIndicatorState();
+}
+
+class _TransientPageIndicatorState extends State<_TransientPageIndicator> {
+  Timer? _hideTimer;
+  bool _isVisible = false;
+  double _lastPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastPage = widget.homeIndex.toDouble();
+    widget.pageController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    widget.pageController.removeListener(_onScroll);
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!widget.pageController.hasClients) return;
+    
+    final page = widget.pageController.page ?? widget.homeIndex.toDouble();
+    
+    // Only show if actually moving (more than a tiny jitter) and not strictly on the home page
+    final distFromHome = (page - widget.homeIndex).abs();
+    if ((page - _lastPage).abs() > 0.005 && distFromHome > 0.05) {
+      if (!_isVisible) {
+        setState(() => _isVisible = true);
+      }
+      
+      _hideTimer?.cancel();
+      _hideTimer = Timer(const Duration(milliseconds: 1500), () {
+        if (mounted) setState(() => _isVisible = false);
+      });
+    }
+    _lastPage = page;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedOpacity(
+        opacity: _isVisible ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 400),
+        child: AnimatedBuilder(
+          animation: widget.pageController,
+          builder: (_, __) {
+            final page = widget.pageController.hasClients
+                ? (widget.pageController.page ?? widget.homeIndex.toDouble())
+                : widget.homeIndex.toDouble();
+                
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(5, (i) {
+                final dist = (page - i).abs();
+                final isActive = dist < 0.5;
+                final dotOpacity = isActive
+                    ? 1.0
+                    : (1.0 - dist.clamp(0.0, 1.0)) * 0.25 + 0.12;
+                    
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: isActive ? 6 : 5,
+                  height: isActive ? 6 : 5,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isActive
+                        ? widget.accentColor
+                        : Colors.white.withValues(alpha: dotOpacity * 0.8),
+                  ),
+                );
+              }),
+            );
+          },
         ),
       ),
     );

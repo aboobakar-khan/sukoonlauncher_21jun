@@ -808,18 +808,8 @@ class MainActivity : FlutterActivity() {
                             mode == android.app.AppOpsManager.MODE_ALLOWED
                         }
                         "accessibility" -> {
-                            // Our service is enabled if its flattened component is
-                            // in the system's enabled-accessibility-services list.
-                            val cn = android.content.ComponentName(
-                                this, SukoonAccessibilityService::class.java)
-                            val full = cn.flattenToString()
-                            val short = cn.flattenToShortString()
-                            val enabled = Settings.Secure.getString(
-                                contentResolver,
-                                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
-                            enabled.split(':').any {
-                                it.equals(full, true) || it.equals(short, true)
-                            }
+                            // Accessibility service removed — no longer required
+                            false
                         }
                         else -> false
                     }

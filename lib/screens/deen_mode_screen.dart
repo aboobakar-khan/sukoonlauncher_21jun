@@ -10,6 +10,8 @@ import '../providers/islamic_theme_provider.dart';
 import '../providers/theme_provider.dart';
 import '../features/quran/providers/quran_provider.dart';
 import '../features/quran/screens/surah_list_screen.dart';
+import '../features/quran/screens/surah_reader_screen.dart';
+import '../features/quran/models/surah.dart';
 import '../features/quran/widgets/tafseer_bottom_sheet.dart';
 import '../features/hadith_dua/screens/minimalist_hadith_screen.dart';
 import '../features/hadith_dua/screens/minimalist_dua_screen.dart';
@@ -703,37 +705,50 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen>
                             ),
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () {
-                            TafseerBottomSheet.show(
-                              context,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // ── Read in Quran button ──
+                            _ReadInQuranButton(
                               surahId: verse['surahId'] as int,
-                              ayahId: verse['verseNumber'] as int,
-                              surahName: verse['surahTransliteration'] as String,
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _green.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(20),
+                              verseNumber: verse['verseNumber'] as int,
+                              accentColor: _gold,
+                              accentDark: _goldDark,
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.menu_book_outlined, size: 12, color: _greenDark),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Tafseer',
-                                  style: TextStyle(
-                                    color: _greenDark,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () {
+                                TafseerBottomSheet.show(
+                                  context,
+                                  surahId: verse['surahId'] as int,
+                                  ayahId: verse['verseNumber'] as int,
+                                  surahName: verse['surahTransliteration'] as String,
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _green.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
-                              ],
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.menu_book_outlined, size: 12, color: _greenDark),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Tafseer',
+                                      style: TextStyle(
+                                        color: _greenDark,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ],
                     ),
@@ -1527,6 +1542,123 @@ class _ExitButtonState extends State<_ExitButton> {
               fontSize: 13.5,
               fontWeight: FontWeight.w500,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _ReadInQuranButton — minimalist pill that jumps straight to the verse
+// ─────────────────────────────────────────────────────────────────────────────
+class _ReadInQuranButton extends ConsumerStatefulWidget {
+  final int surahId;
+  final int verseNumber;
+  final Color accentColor;
+  final Color accentDark;
+
+  const _ReadInQuranButton({
+    required this.surahId,
+    required this.verseNumber,
+    required this.accentColor,
+    required this.accentDark,
+  });
+
+  @override
+  ConsumerState<_ReadInQuranButton> createState() => _ReadInQuranButtonState();
+}
+
+class _ReadInQuranButtonState extends ConsumerState<_ReadInQuranButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 120),
+      reverseDuration: const Duration(milliseconds: 200),
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.88).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _navigate() async {
+    await _ctrl.forward();
+    await _ctrl.reverse();
+
+    if (!mounted) return;
+
+    final surahsAsync = ref.read(surahsProvider);
+    final surahs = surahsAsync.valueOrNull;
+    if (surahs == null) return;
+
+    Surah? surah;
+    for (final s in surahs) {
+      if (s.id == widget.surahId) {
+        surah = s;
+        break;
+      }
+    }
+    if (surah == null || !mounted) return;
+
+    Navigator.push(
+      context,
+      SmoothForwardRoute(
+        child: SurahReaderScreen(
+          surah: surah,
+          initialAyah: widget.verseNumber,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _ctrl.forward(),
+      onTapCancel: () => _ctrl.reverse(),
+      onTap: _navigate,
+      child: ScaleTransition(
+        scale: _scale,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: widget.accentColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: widget.accentColor.withValues(alpha: 0.15),
+              width: 0.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.auto_stories_outlined,
+                size: 12,
+                color: widget.accentDark,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'Read',
+                style: TextStyle(
+                  color: widget.accentDark,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),

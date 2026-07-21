@@ -30,7 +30,7 @@ class _AppTimerScreenState extends ConsumerState<AppTimerScreen>
 
   // Live permission status (rechecked on resume — no fixed-delay races)
   bool? _usage; // required
-  bool _a11y = false; // precise detection
+
   bool _overlay = false; // reliable nudge
   bool _notif = true; // background notification (A13+)
 
@@ -58,13 +58,11 @@ class _AppTimerScreenState extends ConsumerState<AppTimerScreen>
 
   Future<void> _refreshPerms({bool initialLoad = false}) async {
     final usage = await NativeAppBlockerService.hasUsageStatsPermission();
-    final a11y = await NativeAppBlockerService.hasAccessibilityPermission();
     final overlay = await NativeAppBlockerService.hasOverlayPermission();
     final notif = await NativeAppBlockerService.hasNotificationPermission();
     if (!mounted) return;
     setState(() {
       _usage = usage;
-      _a11y = a11y;
       _overlay = overlay;
       _notif = notif;
     });
@@ -229,16 +227,7 @@ class _AppTimerScreenState extends ConsumerState<AppTimerScreen>
             await NativeAppBlockerService.requestUsageStatsPermission();
           },
         ),
-        _permRow(
-          accent: accent,
-          icon: Icons.accessibility_new_rounded,
-          title: 'Accessibility',
-          tag: 'Precise',
-          subtitle:
-              'Detect the open app instantly so limits trigger right on time.',
-          granted: _a11y,
-          onEnable: NativeAppBlockerService.requestAccessibilityPermission,
-        ),
+
         _permRow(
           accent: accent,
           icon: Icons.layers_rounded,
@@ -760,7 +749,7 @@ class _AppTimerScreenState extends ConsumerState<AppTimerScreen>
     final configs = st.appConfigs.entries.toList()
       ..sort((a, b) => _nameFor(a.key).toLowerCase()
           .compareTo(_nameFor(b.key).toLowerCase()));
-    final needReliability = st.featureEnabled && (!_a11y || !_overlay);
+    final needReliability = st.featureEnabled && !_overlay;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -868,17 +857,10 @@ class _AppTimerScreenState extends ConsumerState<AppTimerScreen>
   }
 
   Widget _reliabilityNudge(Color accent) {
-    final missing = <String>[];
-    if (!_a11y) missing.add('Accessibility');
-    if (!_overlay) missing.add('Appear-on-top');
     return GestureDetector(
       onTap: () async {
         HapticFeedback.selectionClick();
-        if (!_a11y) {
-          await NativeAppBlockerService.requestAccessibilityPermission();
-        } else if (!_overlay) {
-          await NativeAppBlockerService.requestOverlayPermission();
-        }
+        await NativeAppBlockerService.requestOverlayPermission();
       },
       behavior: HitTestBehavior.opaque,
       child: Container(
@@ -893,7 +875,7 @@ class _AppTimerScreenState extends ConsumerState<AppTimerScreen>
           const SizedBox(width: 11),
           Expanded(
             child: Text(
-              'For on-time, in-place reminders, enable ${missing.join(' & ')}.',
+              'For on-time, in-place reminders, enable Appear-on-top.',
               style: const TextStyle(
                   color: Color(0xFFEAC18A), fontSize: 12, height: 1.4),
             ),

@@ -11,10 +11,16 @@ class QuranService {
 
   static List<dynamic>? _cachedQuranJson;
 
+  /// Top-level function for compute() — must be static/top-level
+  static List<dynamic> _parseJson(String jsonString) {
+    return json.decode(jsonString) as List<dynamic>;
+  }
+
   Future<List<dynamic>> _getQuranJson() async {
     if (_cachedQuranJson != null) return _cachedQuranJson!;
     final String jsonString = await rootBundle.loadString('assets/quran/quran_en.json');
-    _cachedQuranJson = json.decode(jsonString) as List<dynamic>;
+    // Parse 2.4MB JSON in a background isolate to avoid blocking the UI thread
+    _cachedQuranJson = await compute(_parseJson, jsonString);
     return _cachedQuranJson!;
   }
 
@@ -116,10 +122,8 @@ class QuranService {
 
   Future<Map<String, dynamic>?> getRandomVerse({String lang = 'en'}) async {
     try {
-      final String jsonString = await rootBundle.loadString(
-        'assets/quran/quran_en.json',
-      );
-      final List<dynamic> jsonList = json.decode(jsonString) as List<dynamic>;
+      // Use the shared cache instead of re-loading the 2.4 MB file
+      final jsonList = await _getQuranJson();
 
       // Pick a random surah
       final random = Random();

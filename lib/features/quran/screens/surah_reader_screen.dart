@@ -166,13 +166,35 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
 
   Widget _buildBody(List verses, dynamic arabicFont, IslamicThemeColors tc,
       QuranSettings settings, WordByWordService? wbw, String mode) {
+    Widget content;
     if (mode == 'focus') {
-      return _buildFocusView(verses, arabicFont, tc, settings);
+      content = _buildFocusView(verses, arabicFont, tc, settings);
+    } else if (mode == 'mushaf') {
+      content = _buildMushafView(verses, arabicFont, tc);
+    } else {
+      content = _buildClassicList(verses, arabicFont, tc, settings, wbw);
     }
-    if (mode == 'mushaf') {
-      return _buildMushafView(verses, arabicFont, tc);
-    }
-    return _buildClassicList(verses, arabicFont, tc, settings, wbw);
+
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity == null) return;
+        final modes = ['classic', 'focus', 'mushaf'];
+        final currentIndex = modes.indexOf(mode);
+        
+        if (details.primaryVelocity! < -300) {
+          // Swiped left (next mode)
+          if (currentIndex < modes.length - 1) {
+            ref.read(quranReaderModeProvider.notifier).set(modes[currentIndex + 1]);
+          }
+        } else if (details.primaryVelocity! > 300) {
+          // Swiped right (previous mode)
+          if (currentIndex > 0) {
+            ref.read(quranReaderModeProvider.notifier).set(modes[currentIndex - 1]);
+          }
+        }
+      },
+      child: content,
+    );
   }
 
   // ── Classic: scrolling word-by-word list ──
@@ -409,19 +431,20 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
           children: [
             _buildMushafHeader(tc),
             if (showBismillah) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
               Text(
                 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
                 textDirection: TextDirection.rtl,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     color: tc.arabicText,
-                    fontSize: 23,
-                    height: 2.0,
+                    fontSize: 25,
+                    height: 2.2,
+                    wordSpacing: 1.2,
                     fontFamily: arabicFont.fontFamily),
               ),
             ],
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             Text.rich(
               TextSpan(
                 children: [
@@ -431,7 +454,8 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
                       style: TextStyle(
                         color: tc.arabicText,
                         fontSize: 27,
-                        height: 2.15,
+                        height: 2.35,
+                        wordSpacing: 2.5,
                         fontWeight: FontWeight.w400,
                         fontFamily: arabicFont.fontFamily,
                       ),
@@ -496,20 +520,20 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
 
   Widget _mushafMarker(int n, IslamicThemeColors tc) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 1),
-      width: 27,
-      height: 27,
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      width: 32,
+      height: 32,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: tc.green.withValues(alpha: 0.10),
-        border: Border.all(color: tc.accent.withValues(alpha: 0.4), width: 1),
+        color: tc.green.withValues(alpha: 0.12),
+        border: Border.all(color: tc.accent.withValues(alpha: 0.5), width: 1.2),
       ),
       alignment: Alignment.center,
       child: Text(
         _toArabicNumber(n),
         style: TextStyle(
-            color: tc.accent.withValues(alpha: 0.9),
-            fontSize: 11,
+            color: tc.accent.withValues(alpha: 0.95),
+            fontSize: 13,
             fontWeight: FontWeight.w600),
       ),
     );
@@ -1200,14 +1224,17 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
       runSpacing: 13,
       children: [
         for (final w in pairs)
-          IntrinsicWidth(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 3),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  decoration: BoxDecoration(
+                    border: Border(bottom: BorderSide(color: tc.accent.withValues(alpha: 0.18), width: 0.8)),
+                  ),
+                  child: Text(
                     w.arabic,
                     textAlign: TextAlign.center,
                     textDirection: TextDirection.rtl,
@@ -1219,21 +1246,18 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
                       fontFamily: arabicFont.fontFamily,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Container(
-                      height: 0.8, color: tc.accent.withValues(alpha: 0.18)),
-                  const SizedBox(height: 4),
-                  Text(
-                    w.english.isEmpty ? '·' : w.english,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: tc.textSecondary.withValues(alpha: 0.75),
-                      fontSize: 10.5,
-                      height: 1.2,
-                    ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  w.english.isEmpty ? '·' : w.english,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: tc.textSecondary.withValues(alpha: 0.75),
+                    fontSize: 10.5,
+                    height: 1.2,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         // Ayah-number marker as the trailing cell

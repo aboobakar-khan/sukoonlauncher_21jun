@@ -22,12 +22,16 @@ class SwipeGestureState {
   final SwipeAction swipeUp;
   final String? swipeDownApp; // package name for openApp
   final String? swipeUpApp;   // package name for openApp
+  final bool hasPromptedSwipeDown;
+  final bool hasPromptedSwipeUp;
 
   const SwipeGestureState({
     this.swipeDown = SwipeAction.notifications,
     this.swipeUp = SwipeAction.quickAccess,
     this.swipeDownApp,
     this.swipeUpApp,
+    this.hasPromptedSwipeDown = false,
+    this.hasPromptedSwipeUp = false,
   });
 
   SwipeGestureState copyWith({
@@ -35,12 +39,16 @@ class SwipeGestureState {
     SwipeAction? swipeUp,
     String? swipeDownApp,
     String? swipeUpApp,
+    bool? hasPromptedSwipeDown,
+    bool? hasPromptedSwipeUp,
   }) {
     return SwipeGestureState(
       swipeDown: swipeDown ?? this.swipeDown,
       swipeUp: swipeUp ?? this.swipeUp,
       swipeDownApp: swipeDownApp ?? this.swipeDownApp,
       swipeUpApp: swipeUpApp ?? this.swipeUpApp,
+      hasPromptedSwipeDown: hasPromptedSwipeDown ?? this.hasPromptedSwipeDown,
+      hasPromptedSwipeUp: hasPromptedSwipeUp ?? this.hasPromptedSwipeUp,
     );
   }
 }
@@ -64,6 +72,8 @@ class SwipeGestureNotifier extends StateNotifier<SwipeGestureState> {
       final upStr = _box?.get(_keyUp, defaultValue: SwipeAction.quickAccess.name) as String?;
       final downApp = _box?.get(_keyDownApp) as String?;
       final upApp = _box?.get(_keyUpApp) as String?;
+      final promptedDown = _box?.get('swipe_down_prompted', defaultValue: false) as bool;
+      final promptedUp = _box?.get('swipe_up_prompted', defaultValue: false) as bool;
       state = SwipeGestureState(
         swipeDown: SwipeAction.values.firstWhere(
           (a) => a.name == downStr,
@@ -75,11 +85,25 @@ class SwipeGestureNotifier extends StateNotifier<SwipeGestureState> {
         ),
         swipeDownApp: downApp,
         swipeUpApp: upApp,
+        hasPromptedSwipeDown: promptedDown,
+        hasPromptedSwipeUp: promptedUp,
       );
     } catch (e) {
       // Use defaults on error
       state = const SwipeGestureState();
     }
+  }
+
+  Future<void> markSwipeDownPrompted() async {
+    state = state.copyWith(hasPromptedSwipeDown: true);
+    _box ??= await HiveBoxManager.get(_boxName);
+    await _box?.put('swipe_down_prompted', true);
+  }
+
+  Future<void> markSwipeUpPrompted() async {
+    state = state.copyWith(hasPromptedSwipeUp: true);
+    _box ??= await HiveBoxManager.get(_boxName);
+    await _box?.put('swipe_up_prompted', true);
   }
 
   Future<void> setSwipeDown(SwipeAction action, {String? appPackage}) async {
