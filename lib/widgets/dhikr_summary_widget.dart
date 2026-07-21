@@ -54,7 +54,7 @@ class DhikrSummaryWidget extends ConsumerWidget {
           color: Colors.white.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.06),
+            color: Colors.white.withValues(alpha: 0.12),
           ),
         ),
         child: Column(

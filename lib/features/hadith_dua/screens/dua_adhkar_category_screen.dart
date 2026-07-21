@@ -135,6 +135,21 @@ class DuaTheme {
     required this.divider,
   });
 
+  /// Bridge: derive Dua/Adhkar colors from the active master palette
+  /// (islamicThemeColorsProvider) so this section follows the same themes as
+  /// the Quran — Makhtut, Catppuccin, Tokyo Night, Rose Pine, Gruvbox, One Dark.
+  factory DuaTheme.from(IslamicThemeColors tc) => DuaTheme(
+        bg: tc.background,
+        card: tc.surface,
+        textPrimary: tc.text,
+        textSecondary: tc.textSecondary,
+        accent: tc.accent,
+        leafGreen: tc.green,
+        badgeBg: tc.green.withValues(alpha: 0.12),
+        shadow: const Color(0x00000000),
+        divider: tc.border,
+      );
+
   // ── Light: warm cream + fresh green ───────────────────────────────
   static const light = DuaTheme(
     bg:            Color(0xFFF5EFE4),  // warm parchment — softer than before
@@ -171,8 +186,7 @@ class DuaAdhkarCategoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = ref.watch(islamicThemeProvider) == IslamicThemeMode.dark;
-    final t = isDark ? DuaTheme.dark : DuaTheme.light;
+    final t = DuaTheme.from(ref.watch(islamicThemeColorsProvider));
     final dataAsync = ref.watch(hisnulMuslimProvider);
     final bookmarks = ref.watch(duaBookmarkIdsProvider);
     final mq = MediaQuery.of(context);

@@ -113,6 +113,7 @@ class AppBlockerService : Service() {
             return getPrefs(context).getStringSet(KEY_TIMER_PACKAGES, emptySet()) ?: emptySet()
         }
 
+
         /** Enable/disable Zen Mode lockdown — also controls DND */
         fun setZenMode(context: Context, active: Boolean) {
             getPrefs(context).edit().putBoolean(KEY_ZEN_MODE, active).apply()
@@ -840,13 +841,9 @@ class AppBlockerService : Service() {
     /**
      * Get the foreground package using UsageStatsManager.
      *
-     * Strategy (precision mode):
-     *  1. Query usage EVENTS for the last 10 seconds — look for the most
-     *     recent ACTIVITY_RESUMED / MOVE_TO_FOREGROUND event.
-     *  2. If no event found (user has been in the same app longer than 10s),
-     *     fall back to queryUsageStats() and pick the app with the most
-     *     recent lastTimeUsed — this always returns data even if the user
-     *     hasn't switched apps.
+     * Queries usage EVENTS for the last 10 seconds — looks for the most
+     * recent ACTIVITY_RESUMED / MOVE_TO_FOREGROUND event. This is reliable
+     * and does not require Accessibility permission.
      */
     private fun getForegroundPackage(): String? {
         try {

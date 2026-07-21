@@ -2,20 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math';
 import '../models/book_models.dart';
-import 'reader_palette.dart';
+import '../providers/reader_settings_provider.dart';
 
-/// Full-card chapter tile — premium ebook style.
+/// Full-card chapter tile — premium ebook style, themed by the [ReaderPalette].
 /// Every chapter (including locked/coming-soon) is tappable.
+/// No read/unread status display.
 class ChapterCard extends StatefulWidget {
   final ChapterModel chapter;
-  final ReaderPalette p;
+  final ReaderPalette palette;
   final VoidCallback onTap;
   final int index; // 0-based position for display number
 
   const ChapterCard({
     super.key,
     required this.chapter,
-    required this.p,
+    required this.palette,
     required this.onTap,
     required this.index,
   });
@@ -30,60 +31,71 @@ class _ChapterCardState extends State<ChapterCard> {
   @override
   Widget build(BuildContext context) {
     final ch = widget.chapter;
-    final p = widget.p;
+    final p = widget.palette;
     final locked = !ch.hasContent;
 
+    final gold = p.accent;
+    final textColor = p.text;
+    final mutedText = p.textMuted;
+    final cardBg = p.surface;
+    final cardBorder = p.divider;
+
     final int minutes = _estimateMinutes(ch);
-    final String chapterNum = (widget.index + 1).toString().padLeft(2, '0');
+    final String chapterNum =
+        (widget.index + 1).toString().padLeft(2, '0');
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) {
         setState(() => _pressed = false);
-        widget.onTap();
+        widget.onTap(); // Always fire — locked chapters handled by caller
       },
       onTapCancel: () => setState(() => _pressed = false),
       child: AnimatedScale(
-        scale: _pressed ? 0.975 : 1.0,
+        scale: _pressed ? 0.97 : 1.0,
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOutCubic,
         child: AnimatedOpacity(
-          opacity: locked ? 0.55 : 1.0,
+          opacity: locked ? 0.50 : (_pressed ? 0.85 : 1.0),
           duration: const Duration(milliseconds: 120),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
             decoration: BoxDecoration(
-              color: p.surface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: p.border, width: 0.8),
+              color: cardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cardBorder, width: 0.8),
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Chapter number badge ──
+                // ── Chapter number badge ──────────────────────────────
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
                     color: locked
-                        ? p.textTertiary.withValues(alpha: 0.10)
-                        : p.accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
+                        ? mutedText.withValues(alpha: 0.08)
+                        : gold.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   alignment: Alignment.center,
                   child: Text(
                     chapterNum,
                     style: GoogleFonts.literata(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: locked ? p.textTertiary : p.accent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: locked
+                          ? mutedText.withValues(alpha: 0.5)
+                          : gold.withValues(alpha: 0.85),
                       height: 1,
                     ),
                   ),
                 ),
+
                 const SizedBox(width: 14),
-                // ── Title + meta ──
+
+                // ── Title + meta ──────────────────────────────────────
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,10 +103,10 @@ class _ChapterCardState extends State<ChapterCard> {
                       Text(
                         ch.title,
                         style: GoogleFonts.literata(
-                          fontSize: 16,
+                          fontSize: 15.5,
                           fontWeight: FontWeight.w600,
-                          color: p.text,
-                          height: 1.32,
+                          color: textColor,
+                          height: 1.35,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -104,24 +116,27 @@ class _ChapterCardState extends State<ChapterCard> {
                         Text(
                           '${ch.totalTopics} unit${ch.totalTopics != 1 ? 's' : ''}  ·  $minutes min read',
                           style: GoogleFonts.nunitoSans(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: p.textTertiary,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            color: mutedText,
                             letterSpacing: 0.1,
                           ),
                         )
                       else
                         Row(
                           children: [
-                            Icon(Icons.lock_outline_rounded,
-                                size: 12, color: p.textTertiary),
-                            const SizedBox(width: 5),
+                            Icon(
+                              Icons.lock_outline_rounded,
+                              size: 11,
+                              color: mutedText.withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(width: 4),
                             Text(
                               'Coming soon',
                               style: GoogleFonts.nunitoSans(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: p.textTertiary,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                color: mutedText.withValues(alpha: 0.6),
                               ),
                             ),
                           ],
@@ -129,13 +144,17 @@ class _ChapterCardState extends State<ChapterCard> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: locked
-                      ? p.textTertiary.withValues(alpha: 0.4)
-                      : p.textTertiary,
+
+                // ── Chevron ───────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: locked
+                        ? mutedText.withValues(alpha: 0.2)
+                        : mutedText.withValues(alpha: 0.45),
+                  ),
                 ),
               ],
             ),

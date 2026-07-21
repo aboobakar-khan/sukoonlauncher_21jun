@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -98,6 +99,12 @@ void main() async {
     HiveBoxManager.get('prayer_alarm_config'),
     HiveBoxManager.get<DailyPrayerTimes>('prayer_alarm_times'),
     HiveBoxManager.get('prayer_reminder_settings'),
+    // Islamic Library — pre-open Hadith/Dua boxes to eliminate first-open lag
+    HiveBoxManager.get<String>('hadith_dua_cache'),
+    HiveBoxManager.get<String>('hadith_settings'),
+    HiveBoxManager.get<String>('read_hadiths'),
+    HiveBoxManager.get<String>('hadith_dua_bookmarks'),
+    HiveBoxManager.get<String>('quran_reading_progress'),
   ]);
 
   // Initialize prayer alarm service (exact alarms + notifications)
@@ -190,7 +197,7 @@ class SukoonLauncherApp extends ConsumerWidget {
         // This gives every push/pop the smooth Apple slide animation with
         // interactive swipe-back on both Android and iOS — no more janky
         // Android zoom transitions.
-        pageTransitionsTheme: const PageTransitionsTheme(
+        pageTransitionsTheme: PageTransitionsTheme(
           builders: {
             TargetPlatform.android: CupertinoPageTransitionsBuilder(),
             TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),

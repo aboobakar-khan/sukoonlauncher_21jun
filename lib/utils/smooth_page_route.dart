@@ -37,3 +37,72 @@ class SmoothForwardRoute<T> extends CupertinoPageRoute<T> {
       ? const Duration(milliseconds: 1)
       : const Duration(milliseconds: 300);
 }
+
+/// Keeps a push transition buttery when the destination has a heavy first build
+/// (large lists, glass blur, JSON-backed providers). During the incoming slide
+/// it paints only a cheap [background] placeholder — so the heavy widget tree
+/// can't stutter the animation — then fades the real [child] in the moment the
+/// slide settles. Wrap a screen's body (not its Scaffold) with this.
+class DeferredFade extends StatefulWidget {
+  final Widget child;
+  final Color background;
+  const DeferredFade({
+    super.key,
+    required this.child,
+    this.background = Colors.transparent,
+  });
+
+  @override
+  State<DeferredFade> createState() => _DeferredFadeState();
+}
+
+class _DeferredFadeState extends State<DeferredFade> {
+  bool _show = false;
+  Animation<double>? _anim;
+
+  void _tick() {
+    if (_show) return;
+    final a = _anim;
+    if (a != null && a.value >= 0.95) {
+      a.removeListener(_tick);
+      if (mounted) setState(() => _show = true);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final a = ModalRoute.of(context)?.animation;
+    if (!identical(a, _anim)) {
+      _anim?.removeListener(_tick);
+      _anim = a;
+      if (a == null || a.value >= 0.95) {
+        _show = true;
+      } else {
+        a.addListener(_tick);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _anim?.removeListener(_tick);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) {
+      return ColoredBox(
+          color: widget.background, child: const SizedBox.expand());
+    }
+    return TweenAnimationBuilder<double>(
+      key: const ValueKey('deferred-shown'),
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      builder: (_, v, child) => Opacity(opacity: v, child: child),
+      child: widget.child,
+    );
+  }
+}

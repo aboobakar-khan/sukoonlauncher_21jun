@@ -16,7 +16,7 @@ import '../services/native_app_blocker_service.dart';
 import '../widgets/swipe_back_wrapper.dart';
 import '../widgets/edge_to_edge.dart';
 import 'zen_mode_entry_screen.dart';
-import 'screen_time_settings_screen.dart';
+import 'app_timer_screen.dart';
 import 'notification_feed_screen.dart';
 import '../providers/screen_time_provider.dart';
 import '../providers/notification_filter_provider.dart';
@@ -37,7 +37,7 @@ final Color _ftCard = Colors.white.withValues(alpha: 0.04);       // semi-transp
 final Color _ftCardLight = Colors.white.withValues(alpha: 0.06);  // slightly lighter card variant
 const Color _ftText = Color(0xFFE8E8E8);       // light text on dark
 const Color _ftTextSoft = Color(0xFF8A8A8A);   // muted text
-final Color _ftBorder = Colors.white.withValues(alpha: 0.08);     // subtle border
+final Color _ftBorder = Colors.white.withValues(alpha: 0.12);     // subtle border
 const Color _ftGold = Color(0xFFBFA76A);       // gold accent for streaks
 
 // ─── Shadow Systems ─────────────────────────────────────────────────────────
@@ -567,71 +567,59 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
                   ),
                   const SizedBox(height: 8),
 
-                  // ── 2×2 grid ──
-                  Row(
+                  // ── Premium Wallet-Style List ──
+                  Column(
                     children: [
-                      Expanded(
-                        child: _wellbeingTile(
-                          icon: zen.isActive
-                              ? Icons.self_improvement_rounded
-                              : Icons.phone_android_rounded,
-                          label: 'Kahf Mode',
-                          value: zen.isActive ? 'Active' : 'Off',
-                          isActive: zen.isActive,
-                          onTap: () {
-                            if (zen.isActive) {
-                              ref.read(zenModeProvider.notifier).endZenMode();
-                            } else {
-                              Navigator.push(context, SmoothForwardRoute(
-                                child: const ZenModeEntryScreen()));
-                            }
-                          },
-                        ),
+                      _wellbeingTile(
+                        icon: zen.isActive
+                            ? Icons.self_improvement_rounded
+                            : Icons.phone_android_rounded,
+                        label: 'Kahf Mode',
+                        value: zen.isActive ? 'Active' : 'Off',
+                        isActive: zen.isActive,
+                        onTap: () {
+                          if (zen.isActive) {
+                            ref.read(zenModeProvider.notifier).endZenMode();
+                          } else {
+                            Navigator.push(context, SmoothForwardRoute(
+                              child: const ZenModeEntryScreen()));
+                          }
+                        },
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _wellbeingTile(
-                          icon: Icons.notifications_outlined,
-                          label: 'Notifs',
-                          value: isNotifActive
-                              ? '${nf.totalCount} queued'
-                              : 'Off',
-                          isActive: isNotifActive,
-                          badge: isNotifActive && nf.totalCount > 0
-                              ? nf.totalCount : null,
-                          onTap: () => Navigator.push(context, SmoothForwardRoute(
-                              child: const NotificationFeedScreen())),
-                        ),
+                      const SizedBox(height: 10),
+                      _wellbeingTile(
+                        icon: Icons.notifications_outlined,
+                        label: 'Notification Filter',
+                        value: isNotifActive
+                            ? '${nf.totalCount} queued'
+                            : 'Off',
+                        isActive: isNotifActive,
+                        badge: isNotifActive && nf.totalCount > 0
+                            ? nf.totalCount : null,
+                        onTap: () => Navigator.push(context, SmoothForwardRoute(
+                            child: const NotificationFeedScreen())),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _wellbeingTile(
-                          icon: Icons.shield_rounded,
-                          label: 'App Blocker',
-                          value: hasActiveBlocker
-                              ? '$activeBlockedCount blocked'
-                              : 'Off',
-                          isActive: hasActiveBlocker,
-                          onTap: () => Navigator.push(context, SmoothForwardRoute(
-                              child: _ProductivitySubScreen(
-                                title: 'App Blocker',
-                                child: _BlockerTab()))),
-                        ),
+                      const SizedBox(height: 10),
+                      _wellbeingTile(
+                        icon: Icons.shield_rounded,
+                        label: 'App Blocker',
+                        value: hasActiveBlocker
+                            ? '$activeBlockedCount blocked'
+                            : 'Off',
+                        isActive: hasActiveBlocker,
+                        onTap: () => Navigator.push(context, SmoothForwardRoute(
+                            child: _ProductivitySubScreen(
+                              title: 'App Blocker',
+                              child: _BlockerTab()))),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: _wellbeingTile(
-                          icon: Icons.timer_outlined,
-                          label: 'App Timer',
-                          value: isScreenTimeActive ? stLabel : 'Off',
-                          isActive: isScreenTimeActive,
-                          onTap: () => Navigator.push(context, SmoothForwardRoute(
-                              child: const ScreenTimeSettingsScreen())),
-                        ),
+                      const SizedBox(height: 10),
+                      _wellbeingTile(
+                        icon: Icons.timer_outlined,
+                        label: 'App Timer',
+                        value: isScreenTimeActive ? stLabel : 'Off',
+                        isActive: isScreenTimeActive,
+                        onTap: () => Navigator.push(context, SmoothForwardRoute(
+                            child: const AppTimerScreen())),
                       ),
                     ],
                   ),
@@ -704,80 +692,105 @@ class _ProductivityHubScreenState extends ConsumerState<ProductivityHubScreen>
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-          color: isActive ? color.withValues(alpha: 0.06) : _card,
-          borderRadius: BorderRadius.circular(18),
+          color: isActive ? color.withValues(alpha: 0.04) : _card,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isActive ? color.withValues(alpha: 0.20) : _border,
-            width: 0.9,
+            color: isActive ? color.withValues(alpha: 0.25) : _border,
+            width: isActive ? 1.0 : 0.8,
           ),
+          boxShadow: isActive ? [
+            BoxShadow(
+              color: color.withValues(alpha: 0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            )
+          ] : [],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            // Top row: icon + status dot
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 34, height: 34,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isActive
-                        ? color.withValues(alpha: 0.15)
-                        : _textSoft.withValues(alpha: 0.07),
-                  ),
-                  child: Icon(icon, size: 16,
-                    color: isActive
-                        ? color.withValues(alpha: 0.90)
-                        : _textSoft.withValues(alpha: 0.35)),
-                ),
-                const Spacer(),
-                // Active status dot
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 6, height: 6,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isActive
-                        ? color.withValues(alpha: 0.75)
-                        : Colors.transparent,
-                  ),
-                ),
-              ],
+            // Icon Container
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isActive
+                    ? color.withValues(alpha: 0.12)
+                    : _textSoft.withValues(alpha: 0.06),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: isActive
+                    ? color.withValues(alpha: 0.95)
+                    : _textSoft.withValues(alpha: 0.45),
+              ),
             ),
-            const SizedBox(height: 8),
-            // Label
-            Text(label, style: TextStyle(
-              color: isActive
-                  ? _text.withValues(alpha: 0.90)
-                  : _text.withValues(alpha: 0.55),
-              fontSize: 13.5,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-              letterSpacing: -0.2,
-            )),
-            const SizedBox(height: 3),
-            // Value or badge
-            badge != null
-                ? Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text('$badge', style: TextStyle(
-                      color: color, fontSize: 10, fontWeight: FontWeight.w700,
-                    )),
-                  )
-                : Text(value, style: TextStyle(
+            const SizedBox(width: 16),
+            
+            // Text Content
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(label, style: TextStyle(
+                        color: isActive
+                            ? _text.withValues(alpha: 0.95)
+                            : _text.withValues(alpha: 0.65),
+                        fontSize: 15.5,
+                        fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                        letterSpacing: -0.3,
+                      )),
+                      if (isActive) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 6, height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: color.withValues(alpha: 0.85),
+                            boxShadow: [
+                              BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 4),
+                            ]
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(value, style: TextStyle(
                     color: isActive
-                        ? color.withValues(alpha: 0.60)
-                        : _textSoft.withValues(alpha: 0.35),
-                    fontSize: 12,
+                        ? color.withValues(alpha: 0.70)
+                        : _textSoft.withValues(alpha: 0.45),
+                    fontSize: 13,
                     fontWeight: FontWeight.w400,
                   )),
+                ],
+              ),
+            ),
+            
+            // Badge & Chevron
+            if (badge != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('$badge', style: TextStyle(
+                  color: color, fontSize: 11, fontWeight: FontWeight.w700,
+                )),
+              ),
+              const SizedBox(width: 12),
+            ],
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: _textSoft.withValues(alpha: 0.3),
+            ),
           ],
         ),
       ),

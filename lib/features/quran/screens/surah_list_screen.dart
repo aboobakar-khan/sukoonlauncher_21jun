@@ -30,6 +30,20 @@ class SurahListScreen extends ConsumerStatefulWidget {
 }
 
 class _SurahListScreenState extends ConsumerState<SurahListScreen> {
+  bool _isTransitioning = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 350), () {
+      if (mounted) {
+        setState(() {
+          _isTransitioning = false;
+        });
+      }
+    });
+  }
+
   void _navigateToSurah(Surah surah, {int? ayah}) {
     ref.read(recentReadsProvider.notifier).add(surah.id, ayah ?? 1);
     ref.read(selectedSurahProvider.notifier).state = surah;
@@ -74,25 +88,26 @@ class _SurahListScreenState extends ConsumerState<SurahListScreen> {
               return Stack(
                 children: [
                   // ── Scrolling content (flows under the glass bar) ──
-                  ListView(
-                    padding: const EdgeInsets.fromLTRB(0, 132, 0, 28),
-                    physics: const BouncingScrollPhysics(),
-                    children: [
-                      _buildReadHistory(tc, surahs, recentReads),
-                      _buildFrequentlyRead(tc, surahs),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-                        child: Text('All Surahs',
-                            style: GoogleFonts.inter(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                                color: tc.text,
-                                letterSpacing: -0.3)),
-                      ),
-                      for (int i = 0; i < surahs.length; i++)
-                        _surahRow(tc, surahs[i], i == surahs.length - 1),
-                    ],
-                  ),
+                  if (!_isTransitioning)
+                    ListView(
+                      padding: const EdgeInsets.fromLTRB(0, 132, 0, 28),
+                      physics: const BouncingScrollPhysics(),
+                      children: [
+                        _buildReadHistory(tc, surahs, recentReads),
+                        _buildFrequentlyRead(tc, surahs),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                          child: Text('All Surahs',
+                              style: GoogleFonts.inter(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: tc.text,
+                                  letterSpacing: -0.3)),
+                        ),
+                        for (int i = 0; i < surahs.length; i++)
+                          _surahRow(tc, surahs[i], i == surahs.length - 1),
+                      ],
+                    ),
 
                   // ── Pinned header + glassmorphic search bar ──
                   Positioned(

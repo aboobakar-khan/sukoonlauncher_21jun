@@ -16,6 +16,8 @@ final tafseerServiceProvider = Provider((ref) => TafseerService());
 
 // Surahs provider — language-aware
 final surahsProvider = FutureProvider<List<Surah>>((ref) async {
+  // Keep the parsed Quran in memory — 2.4 MB JSON only parsed once per session.
+  ref.keepAlive();
   final service = ref.read(quranServiceProvider);
   final settings = ref.watch(quranSettingsProvider);
   return await service.loadSurahs(lang: settings.translationLang);

@@ -95,8 +95,7 @@ class _DuaAdhkarDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final isDark = ref.watch(islamicThemeProvider) == IslamicThemeMode.dark;
-    final t = isDark ? DuaTheme.dark : DuaTheme.light;
+    final t = DuaTheme.from(ref.watch(islamicThemeColorsProvider));
     final dataAsync = ref.watch(hisnulMuslimProvider);
     final bookmarks = ref.watch(duaBookmarkIdsProvider);
 

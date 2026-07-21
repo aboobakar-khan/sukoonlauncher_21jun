@@ -1,0 +1,198 @@
+{
+  "book": {
+    "id": "ar-raheeq-al-makhtum",
+    "title": "Ar-Raheequl Makhtoom",
+    "subtitle": "Seerat-un-Nabi ﷺ",
+    "author": "Safiur-Rahman Mubarakpuri",
+    "chapters": [
+      {
+        "id": "ch-1",
+        "number": 1,
+        "title": "Arab Qabail ki Jaghah aur unki Fitrat",
+        "arabicTitle": "موقع العرب وطبيعة قبائلهم",
+        "totalTopics": 2,
+        "topics": [
+          {
+            "id": "ch-1-t-1",
+            "number": 1,
+            "title": "Arabon ki Jaghah (Mauqa)",
+            "paragraphs": [
+              {
+                "id": "ch-1-t-1-p-1",
+                "text": "Lughvi taur par lafz \"Arab\" ka matlab hai registan aur aisi banjar bekaar zameen jo qareeb qareeb paani aur darakhton se khaali ho. Tareekh ke aaghaz hi se Jazeera-numa-e-Arab aur uske bashindon ko isi naam se pukaara jaata raha hai."
+              },
+              {
+                "id": "ch-1-t-1-p-2",
+                "text": "Jazeera-numa-e-Arab maghrib (west) ki taraf Bahr-e-Ahmar (Red Sea) aur Sina se, mashriq (east) ki taraf Khaleej-e-Arab (Arabian Gulf) se, junoob (south) ki taraf Bahr-e-Arab (Arabian Sea) se — jo Bahr-e-Hind (Indian Ocean) ka hi ek silsila hai — aur shumaal (north) ki taraf qadeem Syria aur Iraq ke kuch hisse se ghira hua hai. Iska rakba taqreeban das laakh se sava das laakh murabba meel ke darmiyaan andaaza kiya gaya hai."
+              },
+              {
+                "id": "ch-1-t-1-p-3",
+                "text": "Apni jughraafiyaai (geographical) jaghah ki badaulat is Jazeera-numa ne hamesha bahut badi ahmiyat barqaraar rakhi hai. Iski andaruni saakht ko dekhein to ye zyaadatar registan aur reteele ilaaqe hain, jisne ise gharon (foreigners) aur hamlaa-aawaron ke liye naaqaabil-e-rasaai bana diya, aur zamaano ke guzarne ke baawajood — do padosi badi saltanaton ki maujoodgi ke bawajood — iske bashindon ko mukammal aazaadi aur khudmukhtaari ataa ki."
+              },
+              {
+                "id": "ch-1-t-1-p-4",
+                "text": "Doosri taraf, iski bairuni saakht ki wajah se ye qadeem duniya ka markaz ban gaya aur usne ise us waqt ki zyaadatar qaumon ke saath samundri aur khushki ke raaston ka rabt faraaham kiya. Is hikmat-amez (strategic) jaghah ki badaulat Jazeera-numa-e-Arab tijaarat, tehzeeb, mazhab aur fun (art) ka markaz ban gaya."
+              }
+            ],
+            "topicSummary": "Jazeera-numa-e-Arab, jiski lughvi jad banjar registan ke lafz mein hai, ek nihaayat khaas hikmat-amez (strategic) jaghah par waaqe tha — itna alag-thalag ke usne apne logon ki aazaadi mehfooz rakhi, magar itna markazi ke usne qadeem duniya ki tijaarat, tehzeeb aur mazhab ko aapas mein joda.",
+            "keyPoints": [
+              "Lafz 'Arab' ka lughvi matlab hai banjar, paani se khaali registani zameen",
+              "Jazeera-numa Bahr-e-Ahmar (maghrib), Khaleej-e-Arab (mashriq), Bahr-e-Arab (junoob), aur Syria/Iraq (shumaal) se ghira hua hai",
+              "Iska rakba das laakh se sava das laakh murabba meel ke darmiyaan hai",
+              "Iski andaruni registani zameen ne ise bairuni hamle aur fatah se mehfooz rakha",
+              "Iski bairuni jaghah ne ise tijaarat, tehzeeb, mazhab aur fun ka aalmi markaz bana diya"
+            ],
+            "quiz": [
+              {
+                "id": "ch-1-t-1-q-1",
+                "question": "Lafz 'Arab' ka lughvi matlab kya hai?",
+                "options": [
+                  "Daryaaon waali zarkhez (fertile) zameen",
+                  "Registan aur aisi banjar bekaar zameen jo qareeb qareeb paani aur darakhton se khaali ho",
+                  "Bahut se qabail ki zameen",
+                  "Saudaagaron aur tajiron ki zameen"
+                ],
+                "answer": "Registan aur aisi banjar bekaar zameen jo qareeb qareeb paani aur darakhton se khaali ho"
+              },
+              {
+                "id": "ch-1-t-1-q-2",
+                "question": "Jazeera-numa-e-Arab ke junoob (south) mein kya tha?",
+                "options": [
+                  "Bahr-e-Ahmar (Red Sea)",
+                  "Khaleej-e-Arab (Arabian Gulf)",
+                  "Bahr-e-Arab (Arabian Sea)",
+                  "Qadeem Syria"
+                ],
+                "answer": "Bahr-e-Arab (Arabian Sea)"
+              },
+              {
+                "id": "ch-1-t-1-q-3",
+                "question": "Kis cheez ne Jazeera-numa-e-Arab ko bairuni hamla-aawaron ke liye naaqaabil-e-rasaai bana diya?",
+                "options": [
+                  "Iski taaqatwar fauj",
+                  "Iska zyaadatar registani aur reteela andaruni ilaaqa",
+                  "Har taraf se iske gird mojood samundar",
+                  "Padosi saltanaton ke saath iska ittehaad"
+                ],
+                "answer": "Iska zyaadatar registani aur reteela andaruni ilaaqa"
+              }
+            ]
+          },
+          {
+            "id": "ch-1-t-2",
+            "number": 2,
+            "title": "Arab Qabail",
+            "paragraphs": [
+              {
+                "id": "ch-1-t-2-p-1",
+                "text": "Arab khaandanon ko nasab ke aitbaar se teen guroohon mein taqseem kiya gaya hai: Baa'ida Arab (Perishing Arabs): Qadeem tareen Arab, jinki tareekh ke baare mein bahut kam maaloom hai, aur jin mein 'Aad, Thamud, Tasam, Jadis, Emlaq, aur doosre log the. Khaalis Arab (Pure Arabs): Jo Ya'rub bin Yashjub bin Qahtan ki nasl se the. Inhein Qahtani Arab bhi kaha jaata tha. Musta'rib Arab (Arabized Arabs): Jo Ismail (AS) ki nasl se the. Inhein 'Adnani Arab bhi kaha jaata tha."
+              },
+              {
+                "id": "ch-1-t-2-p-2",
+                "text": "Khaalis Arab — Qahtan ke log — asal mein Yemen mein rehte the aur bahut se qabail par mushtamil the, jin mein se do bahut mash-hoor the: Himyar: Jiski sab se mash-hoor shaakhein Zaid Al-Jamhur, Quda'a aur Sakasic theen. Kahlan: Jiski sab se mash-hoor shaakhein Hamdan, Anmar, Tai', Mudhhij, Kinda, Lakhm, Judham, Azd, Aws, Khazraj aur Jafna ki aulaad — qadeem Syria ke baadshaah — theen."
+              },
+              {
+                "id": "ch-1-t-2-p-3",
+                "text": "Kahlan ki shaakhon ne Sail-e-'Arim (Ma'rib Dam ka tooti hua band, yaani Bade Sailaab) se pehle Yemen se hijrat karke Jazeera-numa-e-Arab ke mukhtalif hisson mein sukoonat ikhtiyaar ki, kyunki Roomiyon (Romans) ke dabaao aur samundar wa khushki ke tijaarati raaston par unke ghalbe ki wajah se — Misr aur Syria par Roomi qabze ke baad — tijaarat naakaam ho gayi thi. Qudrati taur par, Kahlan aur Himyar ke darmiyaan muqaabla pehle (Kahlan) ke nikalne aur doosre (Himyar) ke Yemen mein bas jaane par muntij hua."
+              },
+              {
+                "id": "ch-1-t-2-p-4",
+                "text": "Kahlan ki hijrat karne waali shaakhon ko chaar guroohon mein taqseem kiya jaa sakta hai: Azd: Jinhone 'Imran bin 'Amr Muzaiqba' ki qiyaadat mein Yemen mein safar kiya, harkaare (pioneers) bheje aur aakhirkaar shumaal ki taraf rukh kiya."
+              },
+              {
+                "id": "ch-1-t-2-p-5",
+                "text": "Unki hijrat ki tafseelaat is tarah bayaan ki jaa sakti hain: Tha'labah bin 'Amr ne apne qabeele Al-Azd ko chhoda aur Hijaz ki taraf gaya aur Tha'labiyah aur Dhi Qar ke darmiyaan basa. Jab usne taaqat haasil ki to Madinah ki taraf rukh kiya jahaan wo theher gaya. Uski nasl se Aws aur Khazraj hain, jo Haritha bin Tha'labah ke bete the. Haritha bin 'Amr, jo Khuza'a ke naam se jaana jaata hai, apne logon ke saath Hijaz mein safar karta raha yahaan tak ke wo Mar Az-Zahran pahunche. Baad mein, unhone Haram ko fatah kiya, aur wahaan ke logon — qabeela Jurhum — ko nikaal kar Makkah mein bas gaye. 'Imran bin 'Amr aur uske log 'Oman gaye jahaan unhone qabeela Azd qaaim kiya jinki aulaad Tihama mein aabaad hui aur Azd-of-Shanu'a ke naam se jaani gayi. Jafna bin 'Amr aur uska khaandan Syria ki taraf gaya jahaan wo bas gaya aur usne Ghassan ki saltanat ki bunyaad rakhi, jiska naam Hijaz mein paani ke ek chashme par rakha gaya jahaan unhone Syria ke raaste mein qayaam kiya tha."
+              },
+              {
+                "id": "ch-1-t-2-p-6",
+                "text": "Lakhm aur Judham: Jin mein se Nasr bin Rabi'a tha, jo Manadhira — Heerah ke baadshaahon — ka baap tha. Banu Tai': Jinhone bhi shumaal ki taraf hijrat ki taaki naam-nihaad Aja aur Salma pahaadon ke paas basein, jo natije mein Tai' Pahaadon ke naam se jaane gaye. Kinda: Jo Bahrain mein rehte the magar Hadramout aur Najd ki taraf nikaal diye gaye jahaan unhone ek taaqatwar hukoomat qaaim ki magar zyaada dair tak nahin, kyunki poora qabeela jald hi mit gaya."
+              },
+              {
+                "id": "ch-1-t-2-p-7",
+                "text": "Himyar ka ek aur qabeela, jo Quda'a ke naam se jaana jaata hai, bhi Yemen se nikla aur Iraq ki sarhadon par Samawa nim-registan (semi-desert) mein basa."
+              },
+              {
+                "id": "ch-1-t-2-p-8",
+                "text": "Musta'rib Arab apne nasab mein apne bade dada Ibrahim [AWS] tak jaate hain, jo Iraq mein Furat (Euphrates) ke maghribi kinaare par Kufa ke qareeb \"Ar\" naami ek shehar se the. Khudaai (excavations) ne us shehar, Ibrahim ke khaandan, aur us zamaane ke raaij mazaahib aur samaaji haalaat ki badi tafseelaat roshan mein laayi hain. [Tafheem-ul-Qur'an, 1/553]"
+              },
+              {
+                "id": "ch-1-t-2-p-9",
+                "text": "Ye maaloom hai ke Ibrahim [AWS] ne Ar ko chhoda aur Harran ki taraf aur phir Palestine ki taraf gaye, jise unhone apne Paighaam ka markaz banaaya. Wo poore ilaaqe mein ghoome. Jab wo Misr gaye, to Pharaoh (Firaun) ne unki biwi Sarah ke saath bura karne ki koshish ki, magar Allah ne use bachaa liya aur Firaun ki badi saazish ulat kar usi par padi. Yun use unke (Sarah ke) Allah ke saath mazboot ta'alluq ka ehsaas ho gaya, aur uski fazeelat ke aitraaf mein Firaun ne apni beti Hagar ko Sarah ki khidmat mein pesh kiya, magar Sarah ne Hagar ko Ibrahim ko biwi ke taur par de diya. [Bukhari 1/474]"
+              },
+              {
+                "id": "ch-1-t-2-p-10",
+                "text": "Ibrahim Palestine wapas aaye jahaan Hagar ne Ismail ko janam diya. Sarah ko Hagar par itni rashk (jealousy) ho gayi ke usne Ibrahim ko majboor kiya ke wo Hagar aur uske bachche ko Hijaz mein ek bekaar (be-shajar) waadi mein ek chhoti pahaadi par bhej dein, Baitullah ke paas, jo daayein-baayein aane waale sailaabon ke nuqsaan mein khula hua tha. Unhone unke liye Zamzam ke qareeb upri samt ek buland darakht ke neeche ek jaghah chuni."
+              }
+            ],
+            "topicSummary": "Arabon ko nasab ke aitbaar se teen guroohon mein taqseem kiya gaya hai: qadeem Baa'ida Arab, Khaalis Arab (Yemen ke Qahtani), aur Musta'rib Arab (Ibrahim (AS) ke zariye Nabi Ismail (AS) ki aulaad). Qahtani qabail Himyar aur Kahlan Yemen par chhaaye rahe, aur aakhirkaar Kahlan Roomi tijaarati dabaao ki wajah se Jazeera-numa mein hijrat kar gaye — jo bikhar kar Madinah, Makkah, Oman, Syria aur Iraq ke qabail bane. Musta'rib Arab apni jad Ibrahim (AS) tak jaate hain, jinke bete Ismail Hijaz mein Baitullah ke qareeb basaaye gaye.",
+            "keyPoints": [
+              "Arabon ko 3 guroohon mein taqseem kiya gaya hai: Baa'ida Arab, Khaalis Arab (Qahtani), aur Musta'rib Arab ('Adnani)",
+              "Khaalis Arab Qahtan ki nasl se the aur Yemen mein rehte the — unke do bade qabail Himyar aur Kahlan the",
+              "Kahlan Bade Sailaab (Ma'rib Dam) se pehle, Roomiyon ke tijaarati raaston par dabaao ki wajah se shumaal ki taraf hijrat kar gaye",
+              "Kahlan 4 hijrat karne waale guroohon mein bata: Azd, Lakhm aur Judham, Banu Tai', aur Kinda",
+              "Azd ki zaili shaakhon ne Madinah (Aws aur Khazraj) ki bunyaad rakhi, Makkah (Khuza'a) mein base, Oman pahunche, aur Syria mein Ghassan ki saltanat qaaim ki",
+              "Musta'rib Arab Nabi Ismail (AS) ki aulaad hain, jo Nabi Ibrahim (AS) ke bete the, jinhein Hijaz mein Zamzam ke kuein ke qareeb basaaya gaya"
+            ],
+            "quiz": [
+              {
+                "id": "ch-1-t-2-q-1",
+                "question": "Arab khaandanon ko nasab ke aitbaar se kitne guroohon mein taqseem kiya gaya hai?",
+                "options": [
+                  "Do",
+                  "Teen",
+                  "Chaar",
+                  "Paanch"
+                ],
+                "answer": "Teen"
+              },
+              {
+                "id": "ch-1-t-2-q-2",
+                "question": "Musta'rib Arab ko aur kis naam se kaha jaata tha?",
+                "options": [
+                  "Qahtani Arab",
+                  "Himyari Arab",
+                  "'Adnani Arab",
+                  "Kahlani Arab"
+                ],
+                "answer": "'Adnani Arab"
+              },
+              {
+                "id": "ch-1-t-2-q-3",
+                "question": "Kahlan ki shaakhon ne Yemen se hijrat kyun ki?",
+                "options": [
+                  "Ek khushksaali (drought) ki wajah se jisne unki faslein tabaah kar deen",
+                  "Samundri aur khushki ke raaston par Roomi dabaao ki wajah se tijaarat ki naakaami ke sabab",
+                  "Qabeela Jurhum ke saath jang ki wajah se",
+                  "Persia ke haathon Yemen ki fatah ki wajah se"
+                ],
+                "answer": "Samundri aur khushki ke raaston par Roomi dabaao ki wajah se tijaarat ki naakaami ke sabab"
+              },
+              {
+                "id": "ch-1-t-2-q-4",
+                "question": "Aws aur Khazraj kis ki aulaad hain?",
+                "options": [
+                  "Jafna bin 'Amr",
+                  "Haritha bin 'Amr (Khuza'a)",
+                  "Tha'labah bin 'Amr",
+                  "'Imran bin 'Amr"
+                ],
+                "answer": "Tha'labah bin 'Amr"
+              },
+              {
+                "id": "ch-1-t-2-q-5",
+                "question": "Musta'rib Arab apna nasab kis Nabi tak pahunchaate hain?",
+                "options": [
+                  "Nabi Ismail (AS)",
+                  "Nabi Ibrahim (AS)",
+                  "Nabi Idrees (AS)",
+                  "Nabi Nuh (AS)"
+                ],
+                "answer": "Nabi Ibrahim (AS)"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

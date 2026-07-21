@@ -21,7 +21,10 @@ import '../providers/display_settings_provider.dart';
 import '../services/app_settings_service.dart';
 import '../widgets/blocked_app_screen.dart';
 import '../widgets/clock_variants.dart';
+import '../widgets/swipe_action_picker.dart';
+import 'app_list_screen.dart';
 import '../widgets/quick_search_overlay.dart';
+import '../providers/quick_action_provider.dart';
 import '../widgets/prayer_time_widget.dart';
 import '../features/prayer_alarm/widgets/prayer_alarm_dashboard_card.dart';
 import '../widgets/app_session_timer_sheet.dart';
@@ -105,7 +108,17 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
         AppSettingsService.expandNotifications();
         break;
       case SwipeAction.quickAccess:
-        showQuickSearchOverlay(context);
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          useSafeArea: false,
+          builder: (_) => const AppListScreen(isOverlay: true, autoOpenSearch: true),
+        ).then((_) {
+          if (mounted) {
+            FocusManager.instance.primaryFocus?.unfocus();
+          }
+        });
         break;
       case SwipeAction.openApp:
         if (appPackage != null && appPackage.isNotEmpty) {
@@ -141,7 +154,17 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
         AppSettingsService.expandNotifications();
         break;
       case DoubleTapAction.quickAccess:
-        showQuickSearchOverlay(context);
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          useSafeArea: false,
+          builder: (_) => const AppListScreen(isOverlay: true, autoOpenSearch: true),
+        ).then((_) {
+          if (mounted) {
+            FocusManager.instance.primaryFocus?.unfocus();
+          }
+        });
         break;
       case DoubleTapAction.openApp:
         if (dtState.appPackage != null && dtState.appPackage!.isNotEmpty) {
@@ -291,6 +314,115 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
     BlockedAppScreen.showAsDialog(context, appName);
   }
 
+  void _showQuickActionAppPicker(BuildContext context, WidgetRef ref, {required bool isPhone}) {
+    final allApps = ref.read(installedAppsProvider);
+    final searchController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF121212),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            final query = searchController.text.toLowerCase();
+            final filtered = query.isEmpty
+                ? allApps
+                : allApps.where((a) => a.appName.toLowerCase().contains(query)).toList();
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.65,
+              minChildSize: 0.4,
+              maxChildSize: 0.85,
+              expand: false,
+              builder: (_, scrollController) => Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: Column(
+                  children: [
+                    Text(
+                      isPhone ? 'Choose Phone App' : 'Choose Camera App',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: searchController,
+                      onChanged: (_) => setState(() {}),
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'Search apps...',
+                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25)),
+                        prefixIcon: Icon(Icons.search, color: Colors.white.withValues(alpha: 0.3), size: 20),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.05),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.builder(
+                        controller: scrollController,
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) {
+                          final app = filtered[i];
+                          return GestureDetector(
+                            onTap: () {
+                              if (isPhone) {
+                                ref.read(quickActionProvider.notifier).setPhoneApp(app.packageName);
+                              } else {
+                                ref.read(quickActionProvider.notifier).setCameraApp(app.packageName);
+                              }
+                              Navigator.pop(ctx);
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.03),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.app_shortcut_rounded, size: 18, color: Colors.white.withValues(alpha: 0.5)),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Text(
+                                      app.appName,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.85),
+                                        fontSize: 14,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
@@ -305,8 +437,28 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
     final displaySettings = ref.watch(displaySettingsProvider);
 
     return _SwipeDetector(
-      onSwipeUp: () => _executeSwipeAction(swipeConfig.swipeUp, appPackage: swipeConfig.swipeUpApp),
-      onSwipeDown: () => _executeSwipeAction(swipeConfig.swipeDown, appPackage: swipeConfig.swipeDownApp),
+      onSwipeUp: () {
+        if (!swipeConfig.hasPromptedSwipeUp) {
+          showSwipeActionPicker(context, ref, direction: 'Swipe Up', current: swipeConfig.swipeUp, onSelect: (action, {appPackage}) {
+            ref.read(swipeGestureProvider.notifier).setSwipeUp(action, appPackage: appPackage);
+            ref.read(swipeGestureProvider.notifier).markSwipeUpPrompted();
+            _executeSwipeAction(action, appPackage: appPackage);
+          });
+        } else {
+          _executeSwipeAction(swipeConfig.swipeUp, appPackage: swipeConfig.swipeUpApp);
+        }
+      },
+      onSwipeDown: () {
+        if (!swipeConfig.hasPromptedSwipeDown) {
+          showSwipeActionPicker(context, ref, direction: 'Swipe Down', current: swipeConfig.swipeDown, onSelect: (action, {appPackage}) {
+            ref.read(swipeGestureProvider.notifier).setSwipeDown(action, appPackage: appPackage);
+            ref.read(swipeGestureProvider.notifier).markSwipeDownPrompted();
+            _executeSwipeAction(action, appPackage: appPackage);
+          });
+        } else {
+          _executeSwipeAction(swipeConfig.swipeDown, appPackage: swipeConfig.swipeDownApp);
+        }
+      },
       child: EdgeToEdge(
         child: SizedBox(
           // viewPadding (NOT padding): the raw safe-area insets, which stay
@@ -451,11 +603,10 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
               ),
 
                   // Favorite apps at the bottom
-                  // SafeArea already consumed bottom padding — no double-add
                   Positioned(
                     left: 20,
                     right: 20,
-                    bottom: 59,
+                    bottom: 110,
                     child: favorites.isNotEmpty
                         ? _buildFavoriteApps(themeColor)
                         : InkWell(
@@ -470,6 +621,45 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
                               child: _buildEmptyFavoritesHint(themeColor),
                             ),
                           ),
+                  ),
+
+                  // ── Bottom Corner Quick Actions (Phone & Camera) ──
+                  Positioned(
+                    left: 32,
+                    bottom: 32,
+                    child: _QuickActionButton(
+                      icon: Icons.phone_rounded,
+                      onTap: () {
+                        final qa = ref.read(quickActionProvider);
+                        if (qa.phoneApp != null) {
+                          _launchApp(qa.phoneApp!);
+                        }
+                      },
+                      onLongPress: () {
+                        // Open app picker to replace phone app
+                        _showQuickActionAppPicker(context, ref, isPhone: true);
+                      },
+                    ),
+                  ),
+                  Positioned(
+                    right: 32,
+                    bottom: 32,
+                    child: _QuickActionButton(
+                      icon: Icons.camera_alt_rounded,
+                      onTap: () {
+                        final qa = ref.read(quickActionProvider);
+                        if (qa.cameraApp != null) {
+                          _launchApp(qa.cameraApp!);
+                        } else {
+                          // Fallback to native intent
+                          _blockerChannel.invokeMethod('openCamera');
+                        }
+                      },
+                      onLongPress: () {
+                        // Open app picker to replace camera app
+                        _showQuickActionAppPicker(context, ref, isPhone: false);
+                      },
+                    ),
                   ),
 
                   // SafeArea already removed bottom padding — use fixed 16px offset only
@@ -500,7 +690,6 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen>
   Widget _buildFavItem(dynamic favoriteApp, AppThemeColor themeColor) {
     return _ScaleTapWidget(
       onTap: () {
-        HapticFeedback.selectionClick();
         _launchApp(favoriteApp.packageName);
       },
       onLongPress: () {
@@ -816,6 +1005,97 @@ class _ScaleTapWidgetState extends State<_ScaleTapWidget>
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: widget.child,
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────
+// _QuickActionButton for Lock Screen style bottom corners
+// ───────────────────────────────────────────────────────────────────
+
+class _QuickActionButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  const _QuickActionButton({
+    required this.icon,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  @override
+  State<_QuickActionButton> createState() => _QuickActionButtonState();
+}
+
+class _QuickActionButtonState extends State<_QuickActionButton> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+      reverseDuration: const Duration(milliseconds: 100),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleTapDown(TapDownDetails details) {
+    _controller.forward();
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    _controller.reverse();
+    widget.onTap();
+    HapticFeedback.lightImpact();
+  }
+
+  void _handleTapCancel() {
+    _controller.reverse();
+  }
+
+  void _handleLongPress() {
+    _controller.reverse();
+    widget.onLongPress();
+    HapticFeedback.heavyImpact();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: _handleTapDown,
+      onTapUp: _handleTapUp,
+      onTapCancel: _handleTapCancel,
+      onLongPress: _handleLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black.withValues(alpha: 0.35),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.0),
+          ),
+          child: Icon(
+            widget.icon,
+            color: Colors.white.withValues(alpha: 0.9),
+            size: 22,
+          ),
+        ),
       ),
     );
   }

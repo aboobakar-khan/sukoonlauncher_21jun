@@ -9,7 +9,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:super_sliver_list/super_sliver_list.dart';
+import '../widgets/pre_review_dialog.dart';
 import '../utils/launcher_physics.dart';
 import '../models/installed_app.dart';
 import '../providers/favorite_apps_provider.dart';
@@ -27,7 +29,10 @@ import '../providers/screen_time_provider.dart';
 import '../providers/launcher_page_provider.dart';
 import '../providers/keyboard_auto_open_provider.dart';
 import '../utils/usage_permission_helper.dart';
+import '../utils/review_helper.dart';
 import 'settings_screen.dart';
+import 'donation_screen.dart';
+import '../providers/app_folder_provider.dart';
 
 /// Apple-style page route — full-width iOS slide with interactive swipe-back.
 class _SmoothForwardRoute<T> extends CupertinoPageRoute<T> {
@@ -48,7 +53,16 @@ class AppListScreen extends ConsumerStatefulWidget {
   /// [isOverlay] = true when pushed as a slide-up route (not in PageView).
   /// Paints a solid black background so the screen behind is hidden.
   final bool isOverlay;
-  const AppListScreen({super.key, this.isOverlay = false});
+
+  /// When true, auto-opens the search bar as soon as the screen mounts.
+  /// Used when swipe-down/up from home navigates here instead of the overlay.
+  final bool autoOpenSearch;
+
+  const AppListScreen({
+    super.key,
+    this.isOverlay = false,
+    this.autoOpenSearch = false,
+  });
 
   @override
   ConsumerState<AppListScreen> createState() => _AppListScreenState();
@@ -95,6 +109,13 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     WidgetsBinding.instance.addObserver(this);
     _searchController.addListener(_onSearchChanged);
 
+    // Auto-open search when launched from swipe gesture on home screen
+    if (widget.autoOpenSearch) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showSearch();
+      });
+    }
+
     // Entry animation — staggered fade+slide for premium feel
     _entryController = AnimationController(
       vsync: this,
@@ -139,7 +160,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
 
     // Page layout: [Islamic(0), Widget(1), Home(2), Apps(3), Productivity(4)]
     const appListIndex = 3;
-    final onAppListPage = (page - appListIndex).abs() < 0.08;
+    final onAppListPage = (page - appListIndex).abs() < 0.4;
 
     if (onAppListPage && !_wasOnAppListPage) {
       _wasOnAppListPage = true;
@@ -520,7 +541,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
           color: const Color(0xFF1A1A1A),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           border: Border(
-            top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.10)),
           ),
         ),
         padding: const EdgeInsets.symmetric(vertical: 20),
@@ -585,6 +606,40 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
               },
             ),
 
+            // Hide app
+            _optionTile(
+              icon: Icons.visibility_off_outlined,
+              label: 'Hide app',
+              color: accent,
+              subtitle: 'Remove from app list',
+              onTap: () async {
+                Navigator.pop(context);
+                await ref.read(installedAppsProvider.notifier).hideApp(app.packageName);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${app.displayName} hidden — unhide in Settings'),
+                    backgroundColor: const Color(0xFF2A2A2A),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              },
+            ),
+
+            // Move to folder
+            if (ref.read(appFolderProvider).enabled)
+              _optionTile(
+                icon: Icons.folder_outlined,
+                label: 'Move to folder',
+                color: accent,
+                subtitle: ref.read(appFolderProvider.notifier).getCategoryFor(app.packageName) ?? 'Uncategorized',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showMoveToFolderSheet(context, app, ref);
+                },
+              ),
+
             // Uninstall
             _optionTile(
               icon: Icons.delete_outline,
@@ -619,11 +674,13 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
   }
 
   Future<void> _confirmUninstall(InstalledApp app) async {
-    // Directly trigger system uninstall per user request
-    ref.read(installedAppsProvider.notifier).removeApp(app.packageName);
+    // Open the system uninstall dialog — do NOT remove the app from the list
+    // prematurely. The user may cancel the uninstall.
     await AppSettingsService.uninstallApp(app.packageName);
     
-    // Refresh list after a delay to catch state changes
+    // Refresh list after a delay to catch the actual uninstall result.
+    // The system dialog runs in a separate activity; when the user returns
+    // (whether they confirmed or cancelled), this refresh picks up the truth.
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) _refreshAppList();
     });
@@ -638,10 +695,15 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
 
     final allApps = ref.watch(installedAppsProvider);
     final installedAppsNotifier = ref.read(installedAppsProvider.notifier);
-    final filteredApps = installedAppsNotifier.filterApps(_searchQuery);
+    final searchFilteredApps = installedAppsNotifier.filterApps(_searchQuery);
     final themeColor = ref.watch(themeColorProvider);
     final accent = themeColor.color;
     final mq = MediaQuery.of(context);
+
+    // Folder filtering
+    final folderState = ref.watch(appFolderProvider);
+    final folderNotifier = ref.read(appFolderProvider.notifier);
+    final filteredApps = folderNotifier.filterByActiveFolder(searchFilteredApps);
 
     // When used as overlay (swipe-up), show the actual wallpaper background
     Widget overlayBg = const SizedBox.shrink();
@@ -654,23 +716,49 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       onPopInvokedWithResult: (didPop, _) {
         _searchFocusNode.unfocus();
       },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Wallpaper background (only for overlay mode)
-          if (widget.isOverlay) overlayBg,
-          FadeTransition(
-            opacity: _contentFade,
-            // top/bottom insets are handled manually inside (the search bar
-            // adds MediaQuery.padding.top; the list adds a top-inset sliver
-            // when the bar is hidden; the float button adds padding.bottom).
-            child: EdgeToEdge(
-              top: false,
-              bottom: false,
-              child: Column(
-                children: [
+      child: Material(
+        color: Colors.transparent,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Wallpaper background (only for overlay mode)
+            if (widget.isOverlay) overlayBg,
+
+            // ── Tap-anywhere-to-dismiss (overlay mode only) ──────────────
+            // Full-screen transparent detector sits behind all content.
+            // Tapping empty space pops the route back to home.
+            if (widget.isOverlay)
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  _searchFocusNode.unfocus();
+                  Navigator.of(context).maybePop();
+                },
+              ),
+
+            FadeTransition(
+              opacity: _contentFade,
+              child: EdgeToEdge(
+                top: false,
+                bottom: false,
+                child: Column(
+                  children: [
+                  // ── Status bar spacer ──
+                  SizedBox(height: math.max(mq.padding.top, 32.0)),
+
+                  // ── Folder category pills (Top of the app list, above search) ──
+                  if (folderState.enabled && _searchQuery.isEmpty && allApps.isNotEmpty)
+                    _buildFolderStrip(
+                      themeColor,
+                      folderState,
+                      folderNotifier,
+                      searchFilteredApps,
+                      mq,
+                    ),
+
                   // ── Top search bar — hidden by default, shown on float tap ──
                   AnimatedSize(
+                    key: const ValueKey('searchBarContainer'),
                     duration: const Duration(milliseconds: 220),
                     curve: Curves.easeOutCubic,
                     alignment: Alignment.topCenter,
@@ -684,6 +772,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
 
                   // ── App list ──
                   Expanded(
+                    key: const ValueKey('appListExpanded'),
                     child: allApps.isEmpty
                         ? _buildLoadingState(accent)
                         : filteredApps.isEmpty
@@ -708,15 +797,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                                           parent: AlwaysScrollableScrollPhysics(),
                                         ),
                                         slivers: [
-                                          // Status-bar inset — only when the
-                                          // search bar (which supplies its own
-                                          // top padding) is hidden, so the list
-                                          // never slides under the status bar.
-                                          if (!_searchVisible)
-                                            SliverToBoxAdapter(
-                                              child: SizedBox(height: mq.padding.top),
-                                            ),
-
                                           // Recently installed
                                           if (_searchQuery.isEmpty)
                                             ..._buildRecentlyInstalledSection(themeColor),
@@ -726,6 +806,49 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                                             padding: const EdgeInsets.only(left: 24, right: 40),
                                             sliver: _buildSuperSliverAppList(filteredApps, themeColor),
                                           ),
+                                          
+                                          // ── App Settings & Support Links ──
+                                          if (_searchQuery.isEmpty)
+                                            SliverPadding(
+                                              padding: const EdgeInsets.only(left: 24, right: 40, top: 16, bottom: 20),
+                                              sliver: SliverToBoxAdapter(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    _buildFooterButton(
+                                                      context: context,
+                                                      icon: Icons.groups_rounded,
+                                                      label: 'Community',
+                                                      onTap: () {
+                                                        launchUrl(Uri.parse('https://chat.whatsapp.com/FY0RsAPri7sENTWFtxC1GK'), mode: LaunchMode.externalApplication);
+                                                      },
+                                                      accent: accent,
+                                                    ),
+                                                    _buildFooterButton(
+                                                      context: context,
+                                                      icon: Icons.settings_rounded,
+                                                      label: 'Settings',
+                                                      onTap: () => Navigator.push(context, _SmoothForwardRoute(child: const SettingsScreen())),
+                                                      accent: accent,
+                                                    ),
+                                                    _buildFooterButton(
+                                                      context: context,
+                                                      icon: Icons.favorite_rounded,
+                                                      label: 'Donate',
+                                                      onTap: () => showDonationScreen(context),
+                                                      accent: accent,
+                                                    ),
+                                                    _buildFooterButton(
+                                                      context: context,
+                                                      icon: Icons.star_rate_rounded,
+                                                      label: 'Rate',
+                                                      onTap: () async => await showPreReviewDialog(context, accent),
+                                                      accent: accent,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
 
                                           // Bottom breathing room
                                           const SliverToBoxAdapter(
@@ -756,6 +879,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -862,13 +986,70 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
   /// Builds the app list using a single SuperSliverList for pixel-perfect
   /// alphabet scrolling via ListController.jumpToItem.
   Widget _buildSuperSliverAppList(List<InstalledApp> apps, AppThemeColor themeColor) {
-    // Search mode: simple flat list, no sections
+    // Search mode: results in a rounded card container with dividers
     if (_searchQuery.isNotEmpty) {
-      return SuperSliverList(
-        listController: _listController,
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildAppItem(apps[index], themeColor),
-          childCount: apps.length,
+      final accent = themeColor.color;
+      return SliverToBoxAdapter(
+        child: Container(
+          margin: const EdgeInsets.only(top: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.06),
+              width: 0.5,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(
+              apps.length > 8 ? 8 : apps.length, // Cap visible results
+              (index) {
+                final app = apps[index];
+                final isBlocked = ref.read(appBlockRuleProvider.notifier).isAppBlocked(app.packageName);
+                final itemColor = isBlocked
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : accent.withValues(alpha: 0.85);
+                return Column(
+                  children: [
+                    _ScaleTapAppItem(
+                      onTap: () => _launchApp(app.packageName),
+                      onLongPress: () => _showAppOptions(context, app, ref),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 15,
+                        ),
+                        child: Text(
+                          app.displayName,
+                          style: TextStyle(
+                            color: itemColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w400,
+                            letterSpacing: 0.1,
+                            decoration: TextDecoration.none,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    // Divider between items (not after last)
+                    if (index < (apps.length > 8 ? 7 : apps.length - 1))
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: Container(
+                          height: 0.5,
+                          color: Colors.white.withValues(alpha: 0.06),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
         ),
       );
     }
@@ -974,104 +1155,139 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
           },
           behavior: HitTestBehavior.translucent,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(20, mq.padding.top + 16, 20, 0),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // ── Search icon ──
-                    Icon(
-                      Icons.search_rounded,
-                      size: 22,
-                      color: Colors.white.withValues(alpha: 0.45),
+                // ── Capsule search bar ──
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    color: Colors.white.withValues(alpha: 0.06),
+                    border: Border.all(
+                      color: hasText
+                          ? accent.withValues(alpha: 0.35)
+                          : Colors.white.withValues(alpha: isFocused ? 0.15 : 0.08),
+                      width: 1,
                     ),
-                    const SizedBox(width: 12),
-                    // ── Text field ──
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        focusNode: _searchFocusNode,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.90),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w300,
-                          letterSpacing: 0.3,
-                          decoration: TextDecoration.none,
-                        ),
-                        textInputAction: TextInputAction.search,
-                        cursorColor: accent.withValues(alpha: 0.65),
-                        cursorWidth: 1.2,
-                        decoration: InputDecoration(
-                          hintText: 'Search apps...',
-                          hintStyle: TextStyle(
-                            color: Colors.white.withValues(
-                              alpha: isFocused ? 0.30 : 0.40,
-                            ),
-                            fontSize: 17,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.90),
+                            fontSize: 16,
                             fontWeight: FontWeight.w300,
                             letterSpacing: 0.3,
+                            decoration: TextDecoration.none,
                           ),
-                          isDense: true,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                          suffixIcon: hasText
-                              ? GestureDetector(
-                                  onTap: () {
-                                    _searchController.clear();
-                                    _searchFocusNode.unfocus();
-                                    setState(() {
-                                      _searchQuery = '';
-                                      _hasAutoLaunched = false;
-                                    });
-                                  },
-                                  child: Icon(
-                                    Icons.close_rounded,
-                                    size: 18,
-                                    color: Colors.white.withValues(alpha: 0.40),
-                                  ),
-                                )
-                              : GestureDetector(
-                                  onTap: _hideSearch,
-                                  child: Icon(
-                                    Icons.keyboard_arrow_up_rounded,
-                                    size: 18,
-                                    color: Colors.white.withValues(alpha: 0.30),
-                                  ),
-                                ),
-                          suffixIconConstraints:
-                              const BoxConstraints(minWidth: 32, minHeight: 32),
+                          textInputAction: TextInputAction.search,
+                          cursorColor: accent.withValues(alpha: 0.65),
+                          cursorWidth: 1.2,
+                          decoration: InputDecoration(
+                            hintText: 'Search apps...',
+                            hintStyle: TextStyle(
+                              color: Colors.white.withValues(
+                                alpha: isFocused ? 0.30 : 0.40,
+                              ),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w300,
+                              letterSpacing: 0.3,
+                            ),
+                            isDense: true,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          onChanged: (val) {
+                            // Update search query without removing focus
+                            if (val != _searchQuery) {
+                              setState(() {
+                                _searchQuery = val;
+                                _hasAutoLaunched = false;
+                              });
+                              _autoLaunchDebounce?.cancel();
+                              if (val.length >= 2) {
+                                _autoLaunchDebounce = Timer(
+                                    const Duration(milliseconds: 300), () {
+                                  _checkAutoLaunch();
+                                });
+                              }
+                            }
+                           },
                         ),
                       ),
-                    ),
-                    // ── Settings gear (always visible) ──
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).push(
-                          _SmoothForwardRoute(child: const SettingsScreen()),
-                        );
-                      },
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 12),
-                        child: Icon(
-                          Icons.settings_outlined,
-                          size: 20,
-                          color: Colors.white.withValues(alpha: 0.30),
+                      if (hasText)
+                        GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() {
+                              _searchQuery = '';
+                              _hasAutoLaunched = false;
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: Colors.white.withValues(alpha: 0.40),
+                            ),
+                          ),
+                        )
+                      else ...[
+                        GestureDetector(
+                          onTap: _hideSearch,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.keyboard_arrow_up_rounded,
+                              size: 18,
+                              color: Colors.white.withValues(alpha: 0.30),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
+                        const SizedBox(width: 4),
+                        // ── Settings gear ──
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              _SmoothForwardRoute(child: const SettingsScreen()),
+                            );
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.settings_outlined,
+                              size: 18,
+                              color: Colors.white.withValues(alpha: 0.30),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                // ── Full-width underline ──
-                Container(
-                  height: 1.0,
-                  color: Colors.white.withValues(alpha: isFocused ? 0.35 : 0.20),
+
+                // ── "Search on" action strip — animated appearance ──
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: hasText
+                      ? _SearchOnStrip(
+                          query: _searchQuery,
+                          accent: accent,
+                        )
+                      : const SizedBox.shrink(),
                 ),
+
                 const SizedBox(height: 4),
               ],
             ),
@@ -1090,7 +1306,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     return RepaintBoundary(
       child: _ScaleTapAppItem(
         onTap: () {
-          HapticFeedback.selectionClick();
           _launchApp(app.packageName);
         },
         onLongPress: () => _showAppOptions(context, app, ref),
@@ -1112,7 +1327,411 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       ),
     );
   }
+
+  // ── Folder pill strip ────────────────────────────────────────────
+  Widget _buildFolderStrip(
+    AppThemeColor themeColor,
+    AppFolderState folderState,
+    AppFolderNotifier folderNotifier,
+    List<InstalledApp> apps,
+    MediaQueryData mq,
+  ) {
+    final accent = themeColor.color;
+    final folders = folderNotifier.getActiveFolders(apps);
+
+    // Count apps per folder for badge
+    final counts = <String, int>{};
+    for (final app in apps) {
+      final cat = folderNotifier.getCategoryFor(app.packageName);
+      if (cat != null) {
+        counts[cat] = (counts[cat] ?? 0) + 1;
+      }
+    }
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      child: SizedBox(
+        height: 64, // taller strip — easier finger reach
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.fromLTRB(
+            24,
+            14, // extra top padding pushes pills lower in strip
+            56, // leave space for alphabet sidebar
+            8,
+          ),
+          itemCount: folders.length + 1, // +1 for "All" pill
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            // First pill is always "All"
+            if (index == 0) {
+              final isActive = folderState.activeFolder == null;
+              return _FolderPill(
+                label: 'All',
+                isActive: isActive,
+                accent: accent,
+                onTap: () => folderNotifier.selectFolder(null),
+              );
+            }
+
+            final folderName = folders[index - 1];
+            final isActive = folderState.activeFolder == folderName;
+            final count = counts[folderName] ?? 0;
+            final isCustom = !folderNotifier.isDefaultFolder(folderName);
+
+            return _FolderPill(
+              label: folderName,
+              isActive: isActive,
+              accent: accent,
+              count: count,
+              onTap: () {
+                folderNotifier.selectFolder(isActive ? null : folderName);
+              },
+              onLongPress: isCustom
+                  ? () => _showFolderOptions(context, folderName, folderNotifier, accent)
+                  : null,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Long-press menu for custom (user-created) folders
+  void _showFolderOptions(
+    BuildContext context,
+    String folderName,
+    AppFolderNotifier notifier,
+    Color accent,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.10))),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36, height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              child: Text(
+                folderName,
+                style: TextStyle(
+                  color: accent.withValues(alpha: 0.9),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+            Divider(color: Colors.white.withValues(alpha: 0.06), height: 24),
+            _optionTile(
+              icon: Icons.edit_outlined,
+              label: 'Rename folder',
+              color: accent,
+              onTap: () {
+                Navigator.pop(ctx);
+                _showRenameFolderDialog(context, folderName, notifier, accent);
+              },
+            ),
+            _optionTile(
+              icon: Icons.delete_outline,
+              label: 'Delete folder',
+              color: const Color(0xFFEF5350),
+              subtitle: 'Apps revert to auto-category',
+              onTap: () async {
+                Navigator.pop(ctx);
+                await notifier.deleteFolder(folderName);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Rename dialog for custom folders
+  void _showRenameFolderDialog(
+    BuildContext context,
+    String folderName,
+    AppFolderNotifier notifier,
+    Color accent,
+  ) {
+    final controller = TextEditingController(text: folderName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Rename Folder',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.9),
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+          decoration: InputDecoration(
+            hintText: 'Folder name',
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25)),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: accent.withValues(alpha: 0.25)),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: accent, width: 2),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+          ),
+          TextButton(
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                await notifier.renameFolder(folderName, newName);
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Text('Save', style: TextStyle(color: accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Bottom sheet for choosing which folder to move an app into
+  void _showMoveToFolderSheet(BuildContext context, InstalledApp app, WidgetRef ref) {
+    final notifier = ref.read(appFolderProvider.notifier);
+    final themeColor = ref.read(themeColorProvider);
+    final accent = themeColor.color;
+    final currentFolder = notifier.getCategoryFor(app.packageName);
+    final allFolders = notifier.getAllFolderNames();
+
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.10))),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36, height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Move "${app.displayName}" to…',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    // Create new folder button
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showCreateFolderDialog(context, app, ref);
+                      },
+                      child: Icon(Icons.add, color: accent.withValues(alpha: 0.7), size: 22),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(color: Colors.white.withValues(alpha: 0.06), height: 20),
+              // "None / Auto" option
+              ListTile(
+                leading: Icon(
+                  Icons.auto_awesome_outlined,
+                  color: currentFolder == null
+                      ? accent
+                      : Colors.white.withValues(alpha: 0.3),
+                  size: 20,
+                ),
+                title: Text(
+                  'Auto (no override)',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 14,
+                  ),
+                ),
+                trailing: currentFolder == null
+                    ? Icon(Icons.check_rounded, color: accent, size: 18)
+                    : null,
+                onTap: () async {
+                  await notifier.removeAppFromFolder(app.packageName);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+              ),
+              // All available folders
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: allFolders.length,
+                  itemBuilder: (_, i) {
+                    final folder = allFolders[i];
+                    final isSelected = currentFolder == folder;
+                    return ListTile(
+                      leading: Icon(
+                        Icons.folder_outlined,
+                        color: isSelected
+                            ? accent
+                            : Colors.white.withValues(alpha: 0.3),
+                        size: 20,
+                      ),
+                      title: Text(
+                        folder,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 14,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? Icon(Icons.check_rounded, color: accent, size: 18)
+                          : null,
+                      onTap: () async {
+                        await notifier.moveAppToFolder(app.packageName, folder);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Create a brand-new custom folder and immediately assign this app to it
+  void _showCreateFolderDialog(BuildContext context, InstalledApp app, WidgetRef ref) {
+    final notifier = ref.read(appFolderProvider.notifier);
+    final themeColor = ref.read(themeColorProvider);
+    final accent = themeColor.color;
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'New Folder',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.9),
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+          decoration: InputDecoration(
+            hintText: 'e.g. Work, Studies, Fun…',
+            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25)),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: accent.withValues(alpha: 0.25)),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: accent, width: 2),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+          ),
+          TextButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                await notifier.createFolder(name);
+                await notifier.moveAppToFolder(app.packageName, name);
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Text('Create', style: TextStyle(color: accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooterButton({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color accent,
+  }) {
+    return _ScaleTapAppItem(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 2),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.88)),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.88),
+                fontSize: 16.5,
+                letterSpacing: 0.1,
+                fontWeight: FontWeight.w300,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
 
 // ───────────────────────────────────────────────────────────────────
 // _ScaleTapAppItem — Micro-interaction: scale-on-tap for app items
@@ -1291,7 +1910,6 @@ class _AlphabetSidebarState extends State<_AlphabetSidebar>
       _isDragging = true;
       _updateSelectionFromPosition(details.globalPosition);
     });
-    HapticFeedback.selectionClick();
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
@@ -1333,7 +1951,6 @@ class _AlphabetSidebarState extends State<_AlphabetSidebar>
 
     // Only fire scroll + haptic when letter actually changes
     if (resolved != prevLetter) {
-      HapticFeedback.selectionClick();
       widget.onScrollToLetter(resolved, widget.apps);
     }
   }
@@ -1506,7 +2123,7 @@ class _FlatItem {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// _GlassSearchButton — frosted-glass FAB with iOS spring-press animation
+// _GlassSearchButton — flat minimalist FAB, no glow, no gradient
 // ═══════════════════════════════════════════════════════════════════════
 
 class _GlassSearchButton extends StatefulWidget {
@@ -1527,8 +2144,7 @@ class _GlassSearchButtonState extends State<_GlassSearchButton> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = widget.accent;
-    const size = 62.0;
+    const size = 56.0; // bigger tap target
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1536,65 +2152,362 @@ class _GlassSearchButtonState extends State<_GlassSearchButton> {
       onTapCancel: () => _setPressed(false),
       onTapUp: (_) {
         _setPressed(false);
-        HapticFeedback.lightImpact();
         widget.onTap();
       },
       child: AnimatedScale(
-        // Quick press-in, springy release for that tactile iOS feel.
-        scale: _pressed ? 0.88 : 1.0,
-        duration: Duration(milliseconds: _pressed ? 90 : 320),
+        scale: _pressed ? 0.90 : 1.0,
+        duration: Duration(milliseconds: _pressed ? 80 : 260),
         curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
         child: Container(
           width: size,
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            boxShadow: [
-              // Soft ambient float
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.38),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-              // Subtle accent glow so it stays discoverable
-              BoxShadow(
-                color: accent.withValues(alpha: _pressed ? 0.32 : 0.20),
-                blurRadius: 22,
-                spreadRadius: -4,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            color: Colors.white.withValues(alpha: _pressed ? 0.12 : 0.08),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.18),
+              width: 1,
+            ),
           ),
-          child: ClipOval(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  // Frosted glass: bright top-left highlight fading into an
-                  // accent-tinted base.
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.24),
-                      accent.withValues(alpha: 0.12),
-                    ],
-                  ),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    width: 1,
-                  ),
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.search_rounded,
-                    size: 26,
-                    color: Colors.white.withValues(alpha: 0.92),
-                  ),
-                ),
+          child: Center(
+            child: Icon(
+              Icons.search_rounded,
+              size: 28, // larger icon
+              color: Colors.white.withValues(alpha: 0.80),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// _FolderPill — Minimalist pill chip for the folder category strip
+// ═══════════════════════════════════════════════════════════════════════
+
+class _FolderPill extends StatefulWidget {
+  final String label;
+  final bool isActive;
+  final Color accent;
+  final int count;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  const _FolderPill({
+    required this.label,
+    required this.isActive,
+    required this.accent,
+    required this.onTap,
+    this.count = 0,
+    this.onLongPress,
+  });
+
+  @override
+  State<_FolderPill> createState() => _FolderPillState();
+}
+
+class _FolderPillState extends State<_FolderPill>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pressCtrl;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressCtrl = AnimationController(
+      duration: const Duration(milliseconds: 80),
+      reverseDuration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnim = Tween<double>(begin: 1.0, end: 0.94).animate(
+      CurvedAnimation(parent: _pressCtrl, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pressCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isActive = widget.isActive;
+    final accent = widget.accent;
+
+    return GestureDetector(
+      onTapDown: (_) => _pressCtrl.forward(),
+      onTapUp: (_) {
+        _pressCtrl.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _pressCtrl.reverse(),
+      onLongPress: widget.onLongPress,
+      child: ScaleTransition(
+        scale: _scaleAnim,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            // Active: soft accent fill; Inactive: very subtle frosted
+            color: isActive
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.transparent,
+            border: Border.all(
+              color: isActive
+                  ? Colors.white.withValues(alpha: 0.25)
+                  : Colors.white.withValues(alpha: 0.12),
+              width: 1,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                color: isActive
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.45),
+                fontSize: 12.5,
+                fontWeight: isActive ? FontWeight.w500 : FontWeight.w300,
+                letterSpacing: 0.3,
+                decoration: TextDecoration.none,
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// _SearchOnStrip — "Search on" action pills (Web, Contacts, Map, Call)
+// Appears below the search bar when the user types a query.
+// Staggered scale+fade animation for each pill.
+// ═══════════════════════════════════════════════════════════════════════
+
+class _SearchOnStrip extends StatefulWidget {
+  final String query;
+  final Color accent;
+
+  const _SearchOnStrip({required this.query, required this.accent});
+
+  @override
+  State<_SearchOnStrip> createState() => _SearchOnStripState();
+}
+
+class _SearchOnStripState extends State<_SearchOnStrip>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _staggerCtrl;
+
+  static const _actions = [
+    (icon: Icons.language_rounded, label: 'Web'),
+    (icon: Icons.contacts_outlined, label: 'Contacts'),
+    (icon: Icons.map_outlined, label: 'Map'),
+    (icon: Icons.call_outlined, label: 'Call'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _staggerCtrl = AnimationController(
+      duration: const Duration(milliseconds: 350),
+      vsync: this,
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _staggerCtrl.dispose();
+    super.dispose();
+  }
+
+  void _handleAction(String label) {
+    final q = Uri.encodeComponent(widget.query);
+    switch (label) {
+      case 'Web':
+        launchUrl(
+          Uri.parse('https://www.google.com/search?q=$q'),
+          mode: LaunchMode.externalApplication,
+        );
+        break;
+      case 'Contacts':
+        launchUrl(
+          Uri.parse('content://com.android.contacts/contacts'),
+          mode: LaunchMode.externalApplication,
+        );
+        break;
+      case 'Map':
+        launchUrl(
+          Uri.parse('geo:0,0?q=$q'),
+          mode: LaunchMode.externalApplication,
+        );
+        break;
+      case 'Call':
+        launchUrl(
+          Uri.parse('tel:${widget.query}'),
+          mode: LaunchMode.externalApplication,
+        );
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accent;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // "✦ Search on" label
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome,
+                  size: 13,
+                  color: accent.withValues(alpha: 0.5),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Search on',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.40),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Action pills row
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: List.generate(_actions.length, (i) {
+              final action = _actions[i];
+              // Stagger: each pill starts after 50ms × index
+              final begin = (i * 0.15).clamp(0.0, 0.6);
+              final end = (begin + 0.5).clamp(0.0, 1.0);
+              final animation = CurvedAnimation(
+                parent: _staggerCtrl,
+                curve: Interval(begin, end, curve: Curves.easeOutBack),
+              );
+
+              return AnimatedBuilder(
+                animation: animation,
+                builder: (context, child) => Transform.scale(
+                  scale: 0.6 + (0.4 * animation.value),
+                  child: Opacity(
+                    opacity: animation.value,
+                    child: child,
+                  ),
+                ),
+                child: _SearchActionPill(
+                  icon: action.icon,
+                  label: action.label,
+                  accent: accent,
+                  onTap: () => _handleAction(action.label),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// _SearchActionPill — Individual action pill with scale-on-tap
+// ═══════════════════════════════════════════════════════════════════════
+
+class _SearchActionPill extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _SearchActionPill({
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  State<_SearchActionPill> createState() => _SearchActionPillState();
+}
+
+class _SearchActionPillState extends State<_SearchActionPill>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _tapCtrl;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _tapCtrl = AnimationController(
+      duration: const Duration(milliseconds: 80),
+      reverseDuration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnim = Tween<double>(begin: 1.0, end: 0.92).animate(
+      CurvedAnimation(parent: _tapCtrl, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _tapCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accent;
+
+    return GestureDetector(
+      onTapDown: (_) => _tapCtrl.forward(),
+      onTapUp: (_) {
+        _tapCtrl.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _tapCtrl.reverse(),
+      child: ScaleTransition(
+        scale: _scaleAnim,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: accent.withValues(alpha: 0.10),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.30),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(widget.icon, size: 15, color: accent.withValues(alpha: 0.75)),
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  color: accent.withValues(alpha: 0.85),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 /// A premium, behavior-shaping interrupter.
 /// Shows a breathing animation for 5 seconds before allowing the user to 
@@ -66,14 +65,12 @@ class _MindfulDelayScreenState extends State<MindfulDelayScreen>
     );
 
     _startTimer();
-    HapticFeedback.mediumImpact();
   }
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_secondsLeft > 1) {
         setState(() => _secondsLeft--);
-        if (_secondsLeft <= 3) HapticFeedback.selectionClick();
       } else {
         _timer?.cancel();
         Navigator.pop(context);
@@ -188,7 +185,6 @@ class _MindfulDelayScreenState extends State<MindfulDelayScreen>
                 padding: const EdgeInsets.only(bottom: 50),
                 child: TextButton(
                   onPressed: () {
-                    HapticFeedback.lightImpact();
                     Navigator.pop(context);
                     widget.onCancel();
                   },

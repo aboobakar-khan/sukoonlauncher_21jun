@@ -204,7 +204,6 @@ class _ZenModeEntryScreenState extends ConsumerState<ZenModeEntryScreen>
       showPremiumPaywall(context, triggerFeature: 'Kahf Mode Focus');
       return;
     }
-    HapticFeedback.heavyImpact();
     Navigator.push(
       context,
       PageRouteBuilder(

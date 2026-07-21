@@ -3,6 +3,9 @@
 
     <uses-permission android:name="android.permission.INTERNET"/>
     
+    <!-- Required to prompt user to uninstall apps -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
+
     <!-- Location for prayer times (GPS + network) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
@@ -198,6 +201,8 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+
     </application>
     <queries>
         <!-- Launcher: query all apps with a launcher activity (replaces QUERY_ALL_PACKAGES) -->

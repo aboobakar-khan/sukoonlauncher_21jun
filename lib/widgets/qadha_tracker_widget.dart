@@ -19,7 +19,7 @@ class QadhaTrackerWidget extends ConsumerStatefulWidget {
 class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
   // Design tokens
   static final Color _cardBg = Colors.white.withValues(alpha: 0.03);
-  static final Color _borderColor = Colors.white.withValues(alpha: 0.06);
+  static final Color _borderColor = Colors.white.withValues(alpha: 0.09);
   static const Color _textPrimary = Color(0xFFE6EDF3);
   static const Color _textSecondary = Color(0xFF8B949E);
   static const Color _textMuted = Color(0xFF484F58);
@@ -77,7 +77,7 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
       decoration: BoxDecoration(
         color: _cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _borderColor),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
         children: [
@@ -180,7 +180,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.mediumImpact();
                 final fajr = int.tryParse(_controllers['fajr']!.text) ?? 0;
                 final dhuhr = int.tryParse(_controllers['dhuhr']!.text) ?? 0;
                 final asr = int.tryParse(_controllers['asr']!.text) ?? 0;
@@ -409,7 +408,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
-                      HapticFeedback.heavyImpact();
                       ref.read(qadhaRecordProvider.notifier).setTotals(
                         fajr: fajr,
                         dhuhr: dhuhr,
@@ -692,7 +690,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
               onTap: isDone
                   ? null
                   : () {
-                      HapticFeedback.lightImpact();
                       ref.read(qadhaRecordProvider.notifier).prayedOne(name);
                     },
               child: Container(
@@ -724,7 +721,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
               onTap: remaining >= total
                   ? null
                   : () {
-                      HapticFeedback.lightImpact();
                       ref.read(qadhaRecordProvider.notifier).undoOne(name);
                     },
               child: Container(
@@ -820,7 +816,6 @@ class _QadhaTrackerWidgetState extends ConsumerState<QadhaTrackerWidget> {
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
-                      HapticFeedback.heavyImpact();
                       ref.read(qadhaRecordProvider.notifier).reset();
                       setState(() => _isSettingUp = false);
                       Navigator.pop(ctx);

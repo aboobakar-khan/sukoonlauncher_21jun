@@ -1,138 +1,176 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/book_models.dart';
 import '../providers/book_provider.dart';
+import '../providers/reader_settings_provider.dart';
 import '../widgets/chapter_card.dart';
-import '../widgets/reader_palette.dart';
-import '../../../providers/islamic_theme_provider.dart';
-import '../../../providers/theme_provider.dart';
+import '../widgets/reader_settings_sheet.dart';
 import 'chapter_screen.dart';
 
-/// Book home screen — book hero + chapter list. Apple Books inspired.
-class BookHomeScreen extends ConsumerWidget {
+/// Book home screen — shows book header + chapter list.
+class BookHomeScreen extends ConsumerStatefulWidget {
   const BookHomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BookHomeScreen> createState() => _BookHomeScreenState();
+}
+
+class _BookHomeScreenState extends ConsumerState<BookHomeScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _progressAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _progressAnim.forward();
+  }
+
+  @override
+  void dispose() {
+    _progressAnim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final bookAsync = ref.watch(bookProvider);
-    final isDark = ref.watch(islamicThemeProvider) == IslamicThemeMode.dark;
-    final accent = ref.watch(themeColorProvider).color;
-    final p = ReaderPalette(isDark, accent);
+    final settings = ref.watch(readerSettingsProvider);
+    final p = settings.palette;
     final progress = ref.watch(readingProgressProvider);
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-        systemNavigationBarColor: p.bg,
-        systemNavigationBarIconBrightness:
-            isDark ? Brightness.light : Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: p.bg,
-        body: bookAsync.when(
-          loading: () => Center(
-            child: CircularProgressIndicator(color: accent, strokeWidth: 2.4),
-          ),
-          error: (e, _) => Center(
-            child: Text('Error loading book: $e',
-                style: TextStyle(color: p.text)),
-          ),
-          data: (book) => CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(
-                child: _BookHeader(book: book, progress: progress, p: p),
+    final gold = p.accent;
+    final bgColor = p.bg;
+    final textColor = p.text;
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      body: bookAsync.when(
+        // Keep the current chapter list on screen while switching language,
+        // instead of flashing a full-screen spinner over a quick local reload.
+        skipLoadingOnReload: true,
+        loading: () => Center(
+          child: CircularProgressIndicator(color: gold),
+        ),
+        error: (e, _) => Center(
+          child: Text('Error loading book: $e',
+              style: TextStyle(color: textColor)),
+        ),
+        data: (book) => CustomScrollView(
+          slivers: [
+            // ══════════════════════════════════════
+            // HEADER
+            // ══════════════════════════════════════
+            SliverToBoxAdapter(
+              child: _BookHeader(
+                book: book,
+                progress: progress,
+                progressAnim: _progressAnim,
+                palette: p,
               ),
-              if (progress.hasProgress)
-                SliverToBoxAdapter(
-                  child: _ContinueReadingBanner(
-                    progress: progress,
-                    p: p,
-                    onTap: () {
-                      final chapter = book.chapters.firstWhere(
-                        (c) => c.id == progress.lastChapterId,
-                        orElse: () => book.chapters.first,
+            ),
+
+            // ══════════════════════════════════════
+            // CONTINUE READING BANNER
+            // ══════════════════════════════════════
+            if (progress.hasProgress)
+              SliverToBoxAdapter(
+                child: _ContinueReadingBanner(
+                  progress: progress,
+                  palette: p,
+                  onTap: () {
+                    final chapter = book.chapters.firstWhere(
+                      (c) => c.id == progress.lastChapterId,
+                      orElse: () => book.chapters.first,
+                    );
+                    if (chapter.hasContent) {
+                      Navigator.push(
+                        context,
+                        _smoothRoute(ChapterScreen(
+                          book: book,
+                          initialChapterId: chapter.id,
+                        )),
                       );
-                      if (chapter.hasContent) {
-                        Navigator.push(
-                          context,
-                          _smoothRoute(ChapterScreen(
-                            book: book,
-                            initialChapterId: chapter.id,
-                          )),
-                        );
-                      }
-                    },
-                  ),
+                    }
+                  },
                 ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 28, 22, 6),
-                  child: Text(
-                    'CHAPTERS',
-                    style: GoogleFonts.nunitoSans(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: p.textTertiary,
-                      letterSpacing: 1.6,
-                    ),
+              ),
+
+            // ══════════════════════════════════════
+            // SECTION TITLE
+            // ══════════════════════════════════════
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 4),
+                child: Text(
+                  'Chapters',
+                  style: GoogleFonts.nunitoSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: p.textFaint,
+                    letterSpacing: 1.4,
                   ),
                 ),
               ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 2, 16, 44),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final ch = book.chapters[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: ChapterCard(
-                          chapter: ch,
-                          p: p,
-                          index: index,
-                          onTap: () {
-                            if (ch.hasContent) {
-                              Navigator.push(
-                                context,
-                                _smoothRoute(ChapterScreen(
-                                  book: book,
-                                  initialChapterId: ch.id,
-                                )),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Content coming soon, stay tuned!',
-                                    style: GoogleFonts.nunitoSans(
-                                        color: p.text),
-                                  ),
-                                  behavior: SnackBarBehavior.floating,
-                                  backgroundColor: p.surfaceHigh,
-                                  duration: const Duration(seconds: 2),
+            ),
+
+            // ══════════════════════════════════════
+            // CHAPTER LIST
+            // ══════════════════════════════════════
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final ch = book.chapters[index];
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: ChapterCard(
+                        chapter: ch,
+                        palette: p,
+                        index: index,
+                        onTap: () {
+                          if (ch.hasContent) {
+                            Navigator.push(
+                              context,
+                              _smoothRoute(ChapterScreen(
+                                book: book,
+                                initialChapterId: ch.id,
+                              )),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Content coming soon, stay tuned!',
+                                  style: GoogleFonts.nunitoSans(),
                                 ),
-                              );
-                            }
-                          },
-                        ),
-                      );
-                    },
-                    childCount: book.chapters.length,
-                  ),
+                                behavior: SnackBarBehavior.floating,
+                                backgroundColor: const Color(0xFF1A2B22),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    );
+                  },
+                  childCount: book.chapters.length,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  static Route _smoothRoute(Widget child) {
+  Route _smoothRoute(Widget child) {
     return PageRouteBuilder(
       pageBuilder: (_, __, ___) => child,
       transitionsBuilder: (_, animation, __, child) {
@@ -140,9 +178,12 @@ class BookHomeScreen extends ConsumerWidget {
           opacity: animation,
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0, 0.04),
+              begin: const Offset(0, 0.05),
               end: Offset.zero,
-            ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOut,
+            )),
             child: child,
           ),
         );
@@ -153,130 +194,134 @@ class BookHomeScreen extends ConsumerWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// BOOK HEADER
+// BOOK HEADER - Premium typography design
 // ═══════════════════════════════════════════════════════════════════════
 
-class _BookHeader extends ConsumerWidget {
+class _BookHeader extends StatelessWidget {
   final BookModel book;
   final ReadingProgress progress;
-  final ReaderPalette p;
+  final AnimationController progressAnim;
+  final ReaderPalette palette;
 
-  const _BookHeader(
-      {required this.book, required this.progress, required this.p});
+  const _BookHeader({
+    required this.book,
+    required this.progress,
+    required this.progressAnim,
+    required this.palette,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final overall = progress.overallProgress(book);
+  Widget build(BuildContext context) {
+    final p = palette;
+    final gold = p.accent;
+    final textColor = p.text;
+    final mutedText = p.textMuted;
 
     return Container(
       width: double.infinity,
       padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       child: Column(
         children: [
-          // ── Top bar ──
+          // ── Top Bar (Back + Language + Theme) ──
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _CircleIconButton(
-                  icon: Icons.arrow_back_ios_new_rounded,
-                  color: p.text,
-                  onTap: () => Navigator.pop(context),
+                IconButton(
+                  icon: Icon(Icons.arrow_back_ios_new_rounded,
+                      color: textColor.withValues(alpha: 0.8), size: 20),
+                  onPressed: () => Navigator.pop(context),
                 ),
-                _CircleIconButton(
-                  icon: p.isDark
-                      ? Icons.dark_mode_rounded
-                      : Icons.light_mode_rounded,
-                  color: p.accent,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    ref.read(islamicThemeProvider.notifier).toggle();
-                  },
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Language picker (English ⇆ Hinglish)
+                      _LanguageHeaderPill(palette: p),
+                      const SizedBox(width: 8),
+                      // Reading-theme picker (Paper · Sepia · Night · Black · Nord · Forest)
+                      GestureDetector(
+                        onTap: () => showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          isScrollControlled: true,
+                          builder: (_) => const ReaderThemeQuickSheet(),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: gold.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child:
+                              Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.palette_outlined, color: gold, size: 17),
+                            const SizedBox(width: 6),
+                            Text('Theme',
+                                style: GoogleFonts.nunitoSans(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: gold)),
+                          ]),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
 
-          // ── Title block ──
+          // ── Premium Typography Header ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(28, 12, 28, 8),
+            padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
             child: Column(
               children: [
                 Text(
                   'الرحيق المختوم',
                   style: GoogleFonts.amiri(
-                    fontSize: 24,
-                    color: p.accent,
+                    fontSize: 22,
+                    color: gold.withValues(alpha: 0.8),
                     height: 1.5,
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 Text(
                   book.title,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.literata(
-                    fontSize: 28,
+                    fontSize: 26,
                     fontWeight: FontWeight.w700,
-                    color: p.text,
-                    height: 1.25,
+                    color: textColor,
+                    height: 1.3,
                     letterSpacing: -0.5,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
                   book.subtitle.toUpperCase(),
                   style: GoogleFonts.nunitoSans(
-                    fontSize: 10.5,
+                    fontSize: 10,
                     fontWeight: FontWeight.w800,
-                    color: p.textSecondary,
-                    letterSpacing: 2.4,
+                    color: mutedText,
+                    letterSpacing: 2,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
                 Text(
                   book.author,
                   style: GoogleFonts.literata(
-                    fontSize: 14.5,
-                    color: p.textSecondary,
+                    fontSize: 14,
+                    color: textColor.withValues(alpha: 0.7),
                     fontStyle: FontStyle.italic,
                   ),
                 ),
               ],
             ),
           ),
-
-          // ── Progress bar (only once started) ──
-          if (progress.hasProgress) ...[
-            const SizedBox(height: 18),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                        value: overall.clamp(0.0, 1.0),
-                        minHeight: 4,
-                        backgroundColor: p.accent.withValues(alpha: 0.14),
-                        valueColor: AlwaysStoppedAnimation(p.accent),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '${(overall * 100).round()}%',
-                    style: GoogleFonts.nunitoSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: p.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -289,40 +334,44 @@ class _BookHeader extends ConsumerWidget {
 
 class _ContinueReadingBanner extends StatelessWidget {
   final ReadingProgress progress;
-  final ReaderPalette p;
+  final ReaderPalette palette;
   final VoidCallback onTap;
 
   const _ContinueReadingBanner({
     required this.progress,
-    required this.p,
+    required this.palette,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final gold = palette.accent;
+    final mutedText = palette.textMuted;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: p.accent.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: p.accent.withValues(alpha: 0.22)),
+            color: gold.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: gold.withValues(alpha: 0.2)),
           ),
           child: Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: p.accent.withValues(alpha: 0.18),
+                  color: gold.withValues(alpha: 0.15),
                 ),
-                child: Icon(Icons.play_arrow_rounded, color: p.accent, size: 24),
+                child: Icon(Icons.play_arrow_rounded,
+                    color: gold, size: 20),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,17 +379,17 @@ class _ContinueReadingBanner extends StatelessWidget {
                     Text(
                       'Continue Reading',
                       style: GoogleFonts.nunitoSans(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: p.accent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: gold,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     Text(
                       'Ch ${progress.lastChapterNumber} · ${progress.lastTopicTitle ?? ''}',
                       style: GoogleFonts.nunitoSans(
-                        fontSize: 12.5,
-                        color: p.textSecondary,
+                        fontSize: 12,
+                        color: mutedText,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -349,7 +398,7 @@ class _ContinueReadingBanner extends StatelessWidget {
                 ),
               ),
               Icon(Icons.chevron_right_rounded,
-                  color: p.accent.withValues(alpha: 0.7), size: 22),
+                  color: gold.withValues(alpha: 0.6), size: 22),
             ],
           ),
         ),
@@ -358,22 +407,38 @@ class _ContinueReadingBanner extends StatelessWidget {
   }
 }
 
-/// Small circular icon button used in the header top bar.
-class _CircleIconButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  const _CircleIconButton(
-      {required this.icon, required this.color, required this.onTap});
+// ═══════════════════════════════════════════════════════════════════════
+// LANGUAGE HEADER PILL — shows the active language, opens the quick picker
+// ═══════════════════════════════════════════════════════════════════════
+
+class _LanguageHeaderPill extends ConsumerWidget {
+  final ReaderPalette palette;
+  const _LanguageHeaderPill({required this.palette});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lang = ref.watch(readerLanguageProvider);
+    final gold = palette.accent;
     return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Icon(icon, color: color, size: 21),
+      onTap: () => showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (_) => const ReaderLanguageQuickSheet(),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: gold.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.translate_rounded, color: gold, size: 17),
+          const SizedBox(width: 6),
+          Text(lang.label,
+              style: GoogleFonts.nunitoSans(
+                  fontSize: 12.5, fontWeight: FontWeight.w700, color: gold)),
+        ]),
       ),
     );
   }

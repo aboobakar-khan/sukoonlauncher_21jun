@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../utils/review_helper.dart';
+import '../widgets/pre_review_dialog.dart';
 import '../providers/theme_provider.dart';
 import '../providers/font_provider.dart';
 import '../providers/font_size_provider.dart';
@@ -24,7 +25,9 @@ import 'privacy_policy_screen.dart';
 import 'credits_screen.dart';
 
 import '../widgets/swipe_back_wrapper.dart';
-import 'screen_time_settings_screen.dart';
+
+import 'folder_settings_screen.dart';
+import 'app_timer_screen.dart';
 import 'notification_feed_screen.dart';
 import 'app_permissions_screen.dart';
 import '../providers/notification_filter_provider.dart';
@@ -40,6 +43,7 @@ import '../providers/zen_mode_provider.dart';
 import '../providers/screen_time_provider.dart';
 import '../providers/fasting_provider.dart';
 import '../services/backup_restore_service.dart';
+import '../widgets/swipe_action_picker.dart';
 import '../utils/smooth_page_route.dart';
 import '../services/offline_content_manager.dart';
 import '../features/hadith_dua/models/hadith_dua_models.dart';
@@ -85,7 +89,7 @@ class SettingsScreen extends ConsumerWidget {
                   const SizedBox(height: 10),
 
                   // Rate Sukoon — in-app review
-                  _buildRateUsBanner(currentTheme.color, isLight: isLight),
+                  _buildRateUsBanner(context, currentTheme.color, isLight: isLight),
                   const SizedBox(height: 24),
 
                   _buildSettingsSection(
@@ -221,7 +225,7 @@ class SettingsScreen extends ConsumerWidget {
                           Navigator.push(
                             context,
                             SmoothForwardRoute(
-                              child: const ScreenTimeSettingsScreen(),
+                              child: const AppTimerScreen(),
                             ),
                           );
                         },
@@ -260,7 +264,16 @@ class SettingsScreen extends ConsumerWidget {
                         onTap: () {
                           _openHomeLauncherSettings(context);
                         },
-                      
+                        isLight: isLight,
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.folder_copy_rounded,
+                        title: 'App Folders',
+                        subtitle: 'Manage folder categorization',
+                        accentColor: currentTheme.color,
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const FolderSettingsScreen()));
+                        },
                         isLight: isLight,
                       ),
                     ],
@@ -271,12 +284,11 @@ class SettingsScreen extends ConsumerWidget {
                     accentColor: currentTheme.color,
                     items: [
                       _buildSettingsItem(
-                        icon: Icons.chat_rounded,
-                        title: 'Request Feature / Contact Admin',
-                        subtitle: 'Chat with us on WhatsApp',
+                        icon: Icons.groups_rounded,
+                        title: 'WhatsApp Community',
+                        subtitle: 'Join our WhatsApp Community',
                         accentColor: currentTheme.color,
-                        onTap: () => _openWhatsAppContact(context),
-                      
+                        onTap: () => launchUrl(Uri.parse('https://chat.whatsapp.com/FY0RsAPri7sENTWFtxC1GK'), mode: LaunchMode.externalApplication),
                         isLight: isLight,
                       ),
                     ],
@@ -892,7 +904,7 @@ class SettingsScreen extends ConsumerWidget {
           title: 'Swipe Down',
           subtitle: subtitleFor(swipeConfig.swipeDown, swipeConfig.swipeDownApp),
           accentColor: accent,
-          onTap: () => _showSwipeActionPicker(
+          onTap: () => showSwipeActionPicker(
             context, ref,
             direction: 'Swipe Down',
             current: swipeConfig.swipeDown,
@@ -907,7 +919,7 @@ class SettingsScreen extends ConsumerWidget {
           title: 'Swipe Up',
           subtitle: subtitleFor(swipeConfig.swipeUp, swipeConfig.swipeUpApp),
           accentColor: accent,
-          onTap: () => _showSwipeActionPicker(
+          onTap: () => showSwipeActionPicker(
             context, ref,
             direction: 'Swipe Up',
             current: swipeConfig.swipeUp,
@@ -931,239 +943,6 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showSwipeActionPicker(
-    BuildContext context,
-    WidgetRef ref, {
-    required String direction,
-    required SwipeAction current,
-    required void Function(SwipeAction, {String? appPackage}) onSelect,
-  }) {
-    final gold = ref.read(themeColorProvider).color;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF121212),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        final bottomPad = MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom + 16;
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(20, 24, 20, bottomPad),
-          child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Title
-            Text(
-              direction,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.85),
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Choose what happens when you $direction on the home screen',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.35),
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Options
-            ...SwipeAction.values.map((action) {
-              final selected = action == current;
-              return GestureDetector(
-                onTap: () {
-                  if (action == SwipeAction.openApp) {
-                    Navigator.pop(ctx);
-                    _showAppPickerForSwipe(context, ref, onSelect: onSelect);
-                  } else {
-                    onSelect(action);
-                    Navigator.pop(ctx);
-                  }
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? gold.withValues(alpha: 0.12)
-                        : Colors.white.withValues(alpha: 0.03),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: selected
-                          ? gold.withValues(alpha: 0.35)
-                          : Colors.white.withValues(alpha: 0.05),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? gold.withValues(alpha: 0.12)
-                              : Colors.white.withValues(alpha: 0.04),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(action.icon, size: 18,
-                            color: selected ? gold : Colors.white.withValues(alpha: 0.55)),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              action.label,
-                              style: TextStyle(
-                                color: selected ? gold : Colors.white.withValues(alpha: 0.8),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              action.description,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.35),
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (selected)
-                        Icon(Icons.check_circle_rounded,
-                            color: gold.withValues(alpha: 0.8), size: 20),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ],
-        ),
-        );
-      },
-    );
-  }
-
-  void _showAppPickerForSwipe(
-    BuildContext context,
-    WidgetRef ref, {
-    required void Function(SwipeAction, {String? appPackage}) onSelect,
-  }) {
-    final allApps = ref.read(installedAppsProvider);
-    final searchController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF121212),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setState) {
-            final query = searchController.text.toLowerCase();
-            final filtered = query.isEmpty
-                ? allApps
-                : allApps.where((a) => a.appName.toLowerCase().contains(query)).toList();
-
-            return DraggableScrollableSheet(
-              initialChildSize: 0.65,
-              minChildSize: 0.4,
-              maxChildSize: 0.85,
-              expand: false,
-              builder: (_, scrollController) => Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                child: Column(
-                  children: [
-                    // Title
-                    Text(
-                      'Choose App',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Select which app to open on swipe',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Search field
-                    TextField(
-                      controller: searchController,
-                      onChanged: (_) => setState(() {}),
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: 'Search apps...',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.25)),
-                        prefixIcon: Icon(Icons.search, color: Colors.white.withValues(alpha: 0.3), size: 20),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.05),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // App list
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: filtered.length,
-                        itemBuilder: (_, i) {
-                          final app = filtered[i];
-                          return GestureDetector(
-                            onTap: () {
-                              onSelect(SwipeAction.openApp, appPackage: app.packageName);
-                              Navigator.pop(ctx);
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.03),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                app.appName,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // ── Double Tap picker ──
 
   void _showDoubleTapActionPicker(BuildContext context, WidgetRef ref) {
     final gold = ref.read(themeColorProvider).color;
@@ -1878,14 +1657,14 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildRateUsBanner(Color accent, {required bool isLight}) {
+  Widget _buildRateUsBanner(BuildContext context, Color accent, {required bool isLight}) {
     final primaryText = isLight ? const Color(0xFF0D0D0D) : Colors.white;
     final bannerBg = isLight
         ? Colors.black.withValues(alpha: 0.02)
         : Colors.white.withValues(alpha: 0.02);
     return InkWell(
       onTap: () async {
-        await requestSukoonReview();
+        await showPreReviewDialog(context, accent);
       },
       borderRadius: BorderRadius.circular(14),
       child: Container(
@@ -2155,3 +1934,4 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 }
+

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/installed_app.dart';
 import '../utils/app_filter_utils.dart';
 import '../utils/hive_box_manager.dart';
@@ -20,9 +21,17 @@ class InstalledAppsNotifier extends StateNotifier<List<InstalledApp>> {
   List<InstalledApp> _recentlyInstalled = [];
   List<InstalledApp> get recentlyInstalled => _recentlyInstalled;
 
+  /// Hidden apps — persisted in SharedPreferences
+  static const _kHiddenAppsKey = 'hidden_app_packages';
+  Set<String> _hiddenPackages = {};
+  Set<String> get hiddenPackages => _hiddenPackages;
+
   /// Load apps from Hive into memory
   Future<void> _loadApps() async {
     _box ??= await HiveBoxManager.get<InstalledApp>('installed_apps');
+
+    // Load hidden apps set
+    await _loadHiddenApps();
 
     // If box is empty, fetch from system
     if (_box!.isEmpty) {
@@ -37,6 +46,46 @@ class InstalledAppsNotifier extends StateNotifier<List<InstalledApp>> {
       await _loadRecentlyInstalled();
     }
   }
+
+  /// Load hidden app packages from SharedPreferences
+  Future<void> _loadHiddenApps() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_kHiddenAppsKey) ?? [];
+      _hiddenPackages = list.toSet();
+    } catch (_) {}
+  }
+
+  /// Save hidden app packages to SharedPreferences
+  Future<void> _saveHiddenApps() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_kHiddenAppsKey, _hiddenPackages.toList());
+    } catch (_) {}
+  }
+
+  /// Hide an app from the app list
+  Future<void> hideApp(String packageName) async {
+    _hiddenPackages.add(packageName);
+    await _saveHiddenApps();
+    // Trigger state rebuild so listeners update
+    state = [...state];
+  }
+
+  /// Unhide an app — make it visible again in the app list
+  Future<void> unhideApp(String packageName) async {
+    _hiddenPackages.remove(packageName);
+    await _saveHiddenApps();
+    // Trigger state rebuild so listeners update
+    state = [...state];
+  }
+
+  /// Check if an app is hidden
+  bool isHidden(String packageName) => _hiddenPackages.contains(packageName);
+
+  /// Get all hidden apps (for settings screen)
+  List<InstalledApp> get hiddenApps =>
+      state.where((app) => _hiddenPackages.contains(app.packageName)).toList();
 
   /// Load recently installed apps from Hive
   Future<void> _loadRecentlyInstalled() async {
@@ -182,14 +231,17 @@ class InstalledAppsNotifier extends StateNotifier<List<InstalledApp>> {
   ///   "wa"    → WhatsApp (tier 2 initials), Waze (tier 1) — NOT "Amazon"
   ///   "tube"  → YouTube (tier 3, word "tube") — NOT unrelated apps
   List<InstalledApp> filterApps(String query) {
-    if (query.isEmpty) return state;
+    // Exclude hidden apps from results
+    final visible = state.where((app) => !_hiddenPackages.contains(app.packageName)).toList();
+
+    if (query.isEmpty) return visible;
 
     final lq = query.toLowerCase().trim();
-    if (lq.isEmpty) return state;
+    if (lq.isEmpty) return visible;
 
     // Score every app; drop those with no match (score == -1).
     final scored = <({InstalledApp app, int score})>[];
-    for (final app in state) {
+    for (final app in visible) {
       final s = _score(app, lq);
       if (s >= 0) scored.add((app: app, score: s));
     }
@@ -278,3 +330,17 @@ final installedAppsProvider =
     StateNotifierProvider<InstalledAppsNotifier, List<InstalledApp>>(
       (ref) => InstalledAppsNotifier(),
     );
+
+/// Provider that exposes hidden apps for the settings screen.
+/// Re-reads whenever the installed apps list changes (which fires on hide/unhide).
+final hiddenAppsProvider = Provider<List<InstalledApp>>((ref) {
+  // Watch the main provider so this re-evaluates on state changes
+  ref.watch(installedAppsProvider);
+  return ref.read(installedAppsProvider.notifier).hiddenApps;
+});
+
+/// Provider that exposes the count of hidden apps.
+final hiddenAppsCountProvider = Provider<int>((ref) {
+  ref.watch(installedAppsProvider);
+  return ref.read(installedAppsProvider.notifier).hiddenPackages.length;
+});

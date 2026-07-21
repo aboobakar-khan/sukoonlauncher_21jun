@@ -178,7 +178,6 @@ class _ZenModeActiveScreenState extends ConsumerState<ZenModeActiveScreen>
     _timer?.cancel();
     _immersiveEnforcer?.cancel();
     _releaseAudio();
-    HapticFeedback.heavyImpact();
 
     // End Zen Mode — calls setZenMode(false) on native side,
     // which also dismisses ZenLockScreenActivity and restores DND.

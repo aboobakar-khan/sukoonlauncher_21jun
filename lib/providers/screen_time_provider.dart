@@ -287,7 +287,11 @@ class ScreenTimeNotifier extends StateNotifier<ScreenTimeState> {
     );
     final updated = Map<String, AppTimerConfig>.from(state.appConfigs);
     updated[packageName] = config;
-    state = state.copyWith(appConfigs: updated);
+    // Adding an app to monitor implies the feature should be active — otherwise
+    // _save() syncs an empty package set to native and nothing is ever watched,
+    // so the "how long?" prompt never fires. Enabling here is the explicit
+    // intent of adding a limit (this is the only caller now).
+    state = state.copyWith(appConfigs: updated, featureEnabled: true);
     await _save();
   }
 

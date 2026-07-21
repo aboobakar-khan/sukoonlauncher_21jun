@@ -95,6 +95,48 @@ class NativeAppBlockerService {
     }
   }
 
+  // ── Special permissions via the shared `app_settings` channel ──
+  // (accessibility / overlay can't be read by permission_handler)
+  static const _settingsChannel = MethodChannel('app_settings');
+
+  /// Whether Sukoon's AccessibilityService (precise foreground detection) is on.
+  static Future<bool> hasAccessibilityPermission() async {
+    try {
+      final r = await _settingsChannel.invokeMethod<bool>(
+          'checkSpecialPermission', {'type': 'accessibility'});
+      return r == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Open the system Accessibility settings so the user can enable our service.
+  static Future<void> requestAccessibilityPermission() async {
+    try {
+      await _settingsChannel
+          .invokeMethod('openPermissionSettings', {'type': 'accessibility'});
+    } catch (_) {}
+  }
+
+  /// Whether "appear on top" / draw-over-other-apps is granted.
+  static Future<bool> hasOverlayPermission() async {
+    try {
+      final r = await _settingsChannel.invokeMethod<bool>(
+          'checkSpecialPermission', {'type': 'overlay'});
+      return r == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Open the "Display over other apps" settings page.
+  static Future<void> requestOverlayPermission() async {
+    try {
+      await _settingsChannel
+          .invokeMethod('openPermissionSettings', {'type': 'overlay'});
+    } catch (_) {}
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 🕐 Timed Session Bridge (App Time Intent feature)
   // ═══════════════════════════════════════════════════════════════════════════

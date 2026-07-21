@@ -1,3 +1,4 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -286,16 +287,8 @@ class _DailyHadithCard extends ConsumerWidget {
         return _Pressable(
           onTap: () {
             ref.read(readHadithsProvider.notifier).markAsRead(hadith);
-            Navigator.of(context, rootNavigator: true).push(
-              PageRouteBuilder(
-                fullscreenDialog: true,
-                transitionDuration: const Duration(milliseconds: 350),
-                reverseTransitionDuration: const Duration(milliseconds: 250),
-                pageBuilder: (context, animation, _) => HadithReaderScreen(hadith: hadith),
-                transitionsBuilder: (context, animation, _, child) =>
-                    FadeTransition(opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut), child: child),
-              ),
-            );
+            ref.read(offlineContentProvider.notifier).cacheSingleHadith(hadith);
+            showHadithGlassModal(context, hadith, [hadith]);
           },
           child: Container(
             padding: const EdgeInsets.all(18),
@@ -443,15 +436,10 @@ class _ChapterList extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Back header ──
+        // ── Header (single back lives in the page chrome) ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
+          padding: const EdgeInsets.fromLTRB(20, 8, 16, 0),
           child: Row(children: [
-            _BackButton(
-              tc: tc,
-              onTap: () => ref.read(hadithNavDepthProvider.notifier).state = 0,
-            ),
-            const SizedBox(width: 4),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(collection.name,
                   style: TextStyle(color: tc.text, fontSize: 18,
@@ -600,20 +588,14 @@ class _HadithListView extends ConsumerWidget {
     final collection = HadithCollection.fromId(collectionId);
     final hadithsAsync = ref.watch(chapterHadithsProvider);
     final currentPage = ref.watch(hadithPageProvider);
-    final gradeFilter = ref.watch(selectedGradeFilterProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header ──
+        // ── Header (single back lives in the page chrome) ──
         Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
+          padding: const EdgeInsets.fromLTRB(20, 8, 16, 0),
           child: Row(children: [
-            _BackButton(
-              tc: tc,
-              onTap: () => ref.read(hadithNavDepthProvider.notifier).state = 1,
-            ),
-            const SizedBox(width: 4),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                 chapter != null ? chapter.chapterEnglish : collection.shortName,
@@ -629,10 +611,7 @@ class _HadithListView extends ConsumerWidget {
                   final count = hadithsAsync.maybeWhen(
                       data: (h) => h.length, orElse: () => null);
                   if (count == null) return base;
-                  final suffix = gradeFilter == null
-                      ? '$count hadith${count == 1 ? '' : 's'}'
-                      : '$count ${gradeFilter.displayName}';
-                  return '$base · $suffix';
+                  return '$base · $count hadith${count == 1 ? '' : 's'}';
                 }(),
                 style: TextStyle(color: tc.textSecondary, fontSize: 11.5),
                 maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -641,31 +620,7 @@ class _HadithListView extends ConsumerWidget {
           ]),
         ),
 
-        // ── Grade filter pills ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-          child: SizedBox(
-            height: 32,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _Pill(label: 'All Grades', isSelected: gradeFilter == null, tc: tc,
-                    onTap: () {
-                      ref.read(selectedGradeFilterProvider.notifier).state = null;
-                    }),
-                ...HadithGrade.values.where((g) => g != HadithGrade.unknown).map((g) => _Pill(
-                  label: g.displayName, isSelected: gradeFilter == g,
-                  tc: tc, color: Color(g.colorValue),
-                  onTap: () {
-                    ref.read(selectedGradeFilterProvider.notifier).state = gradeFilter == g ? null : g;
-                  },
-                )),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 4),
+        const SizedBox(height: 12),
 
         // ── Hadith list ──
         Expanded(
@@ -719,8 +674,7 @@ class _HadithListView extends ConsumerWidget {
 class _Pressable extends StatefulWidget {
   final Widget child;
   final VoidCallback onTap;
-  final double pressedScale;
-  const _Pressable({required this.child, required this.onTap, this.pressedScale = 0.97});
+  const _Pressable({required this.child, required this.onTap});
 
   @override
   State<_Pressable> createState() => _PressableState();
@@ -736,63 +690,13 @@ class _PressableState extends State<_Pressable> {
       onTapUp: (_) => setState(() => _pressed = false),
       onTapCancel: () => setState(() => _pressed = false),
       onTap: () {
-        HapticFeedback.selectionClick();
         widget.onTap();
       },
       child: AnimatedScale(
-        scale: _pressed ? widget.pressedScale : 1.0,
+        scale: _pressed ? 0.97 : 1.0,
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
         child: widget.child,
-      ),
-    );
-  }
-}
-
-/// Consistent back affordance used across navigation depths.
-class _BackButton extends StatelessWidget {
-  final IslamicThemeColors tc;
-  final VoidCallback onTap;
-  const _BackButton({required this.tc, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return _Pressable(
-      onTap: onTap,
-      pressedScale: 0.9,
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Icon(Icons.arrow_back_rounded, color: tc.text.withValues(alpha: 0.8), size: 22),
-      ),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  final String label; final bool isSelected; final IslamicThemeColors tc;
-  final Color? color; final VoidCallback onTap;
-  const _Pill({required this.label, required this.isSelected, required this.tc, this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? tc.green;
-    return _Pressable(
-      onTap: onTap,
-      pressedScale: 0.94,
-      child: Container(
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: isSelected ? c.withValues(alpha: 0.16) : tc.surface.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-              color: isSelected ? c.withValues(alpha: 0.4) : tc.border.withValues(alpha: 0.5),
-              width: 1),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                color: isSelected ? c : tc.textSecondary,
-                fontSize: 12, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500)),
       ),
     );
   }
@@ -873,51 +777,47 @@ class _HadithCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isRead = ref.watch(readHadithsProvider.select(
         (s) => s.contains('${hadith.collection}_${hadith.hadithNumber}')));
+    final narrator = hadith.narrator ?? hadith.extractedNarrator;
     return _Pressable(
       onTap: () => _openReader(context, ref),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(15),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
-          color: tc.surface.withValues(alpha: isRead ? 0.28 : 0.45),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: tc.border.withValues(alpha: 0.5)),
+          color: tc.surface.withValues(alpha: isRead ? 0.24 : 0.42),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: tc.border.withValues(alpha: 0.45)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Top row: number + grade + read
+          // Top row: number · subtle grade · read tick
           Row(children: [
             Text('#${hadith.hadithNumber}',
-                style: TextStyle(color: tc.accent, fontSize: 12, fontWeight: FontWeight.w700)),
+                style: TextStyle(color: tc.accent, fontSize: 12.5, fontWeight: FontWeight.w700)),
             if (hadith.grade != HadithGrade.unknown) ...[
-              const SizedBox(width: 8),
-              _GradeBadge(grade: hadith.grade, tc: tc),
+              const SizedBox(width: 9),
+              Container(width: 5, height: 5,
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle, color: _dotColor(hadith.grade, tc))),
+              const SizedBox(width: 5),
+              Text(hadith.grade.displayName,
+                  style: TextStyle(color: tc.textTertiary, fontSize: 11, fontWeight: FontWeight.w500)),
             ],
             const Spacer(),
             if (isRead)
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.check_circle_rounded, color: tc.green.withValues(alpha: 0.7), size: 13),
-                const SizedBox(width: 4),
-                Text('Read', style: TextStyle(color: tc.textTertiary, fontSize: 11)),
-              ]),
+              Icon(Icons.check_circle_rounded, color: tc.green.withValues(alpha: 0.6), size: 15),
           ]),
-          if (hadith.chapterName != null && hadith.chapterName!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(hadith.chapterName!,
-                style: TextStyle(color: tc.textTertiary, fontSize: 11),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-          ],
-          const SizedBox(height: 9),
+          const SizedBox(height: 10),
           Text(
-            hadith.text.length > 160 ? '${hadith.text.substring(0, 160)}…' : hadith.text,
+            hadith.text,
             style: TextStyle(
-                color: isRead ? tc.textSecondary : tc.text,
+                color: isRead ? tc.textSecondary : tc.text.withValues(alpha: 0.92),
                 fontSize: 14, height: 1.6),
-            maxLines: 3, overflow: TextOverflow.ellipsis,
+            maxLines: 2, overflow: TextOverflow.ellipsis,
           ),
-          if (hadith.narrator != null || hadith.extractedNarrator != null) ...[
+          if (narrator != null && narrator.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('— ${hadith.narrator ?? hadith.extractedNarrator ?? ''}',
-                style: TextStyle(color: tc.textSecondary, fontSize: 11.5,
+            Text('— $narrator',
+                style: TextStyle(color: tc.textTertiary, fontSize: 11.5,
                     fontStyle: FontStyle.italic),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
@@ -926,19 +826,237 @@ class _HadithCard extends ConsumerWidget {
     );
   }
 
+  Color _dotColor(HadithGrade g, IslamicThemeColors tc) => switch (g) {
+        HadithGrade.sahih => tc.green,
+        HadithGrade.hasan => const Color(0xFF00796B),
+        HadithGrade.daif => const Color(0xFFE65100),
+        _ => tc.textSecondary,
+      };
+
   void _openReader(BuildContext context, WidgetRef ref) {
     ref.read(readHadithsProvider.notifier).markAsRead(hadith);
-    // Auto-cache for offline use
     ref.read(offlineContentProvider.notifier).cacheSingleHadith(hadith);
-    Navigator.of(context, rootNavigator: true).push(
-      PageRouteBuilder(
-        fullscreenDialog: true,
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (context, animation, _) =>
-            HadithReaderScreen(hadith: hadith, allHadiths: allHadiths),
-        transitionsBuilder: (context, animation, _, child) =>
-            FadeTransition(opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut), child: child),
+    showHadithGlassModal(context, hadith, allHadiths);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  GLASS HADITH MODAL — centred, blurred, animated quick-reader
+// ═══════════════════════════════════════════════════════════════════════
+
+void showHadithGlassModal(
+    BuildContext context, Hadith hadith, List<Hadith> allHadiths) {
+  showGeneralDialog(
+    context: context,
+    useRootNavigator: true,
+    barrierDismissible: true,
+    barrierLabel: 'Hadith',
+    barrierColor: Colors.black.withValues(alpha: 0.55),
+    transitionDuration: const Duration(milliseconds: 300),
+    pageBuilder: (_, __, ___) =>
+        _HadithGlassModal(initial: hadith, allHadiths: allHadiths),
+    transitionBuilder: (context, anim, _, child) {
+      final curved = CurvedAnimation(
+          parent: anim, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.9, end: 1.0).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
+class _HadithGlassModal extends ConsumerStatefulWidget {
+  final Hadith initial;
+  final List<Hadith> allHadiths;
+  const _HadithGlassModal({required this.initial, required this.allHadiths});
+
+  @override
+  ConsumerState<_HadithGlassModal> createState() => _HadithGlassModalState();
+}
+
+class _HadithGlassModalState extends ConsumerState<_HadithGlassModal> {
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.allHadiths.indexWhere((h) =>
+        h.collection == widget.initial.collection &&
+        h.hadithNumber == widget.initial.hadithNumber);
+    if (_index < 0) _index = 0;
+  }
+
+  void _go(int delta) {
+    final n = _index + delta;
+    if (n < 0 || n >= widget.allHadiths.length) return;
+    setState(() => _index = n);
+    ref.read(readHadithsProvider.notifier).markAsRead(widget.allHadiths[_index]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = ref.watch(islamicThemeColorsProvider);
+    final hadith =
+        widget.allHadiths.isEmpty ? widget.initial : widget.allHadiths[_index];
+    final hasPrev = _index > 0;
+    final hasNext = _index < widget.allHadiths.length - 1;
+    final narrator = hadith.narrator ?? hadith.extractedNarrator;
+
+    return Material(
+      type: MaterialType.transparency,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 44),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 400,
+            maxHeight: MediaQuery.of(context).size.height * 0.78,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: tc.surface.withValues(alpha: 0.82),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: tc.border.withValues(alpha: 0.7)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Header ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                      child: Row(children: [
+                        Text(hadith.collection.toUpperCase(),
+                            style: TextStyle(
+                                color: tc.accent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1)),
+                        const SizedBox(width: 8),
+                        Text('#${hadith.hadithNumber}',
+                            style: TextStyle(
+                                color: tc.textSecondary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
+                        if (hadith.grade != HadithGrade.unknown) ...[
+                          const SizedBox(width: 8),
+                          _GradeBadge(grade: hadith.grade, tc: tc),
+                        ],
+                        const Spacer(),
+                        _Pressable(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 32, height: 32,
+                            decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: tc.text.withValues(alpha: 0.06)),
+                            child: Icon(Icons.close_rounded,
+                                size: 18, color: tc.textSecondary),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    Divider(height: 1, color: tc.border.withValues(alpha: 0.5)),
+                    // ── Content ──
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+                        physics: const BouncingScrollPhysics(),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          child: Column(
+                            key: ValueKey(_index),
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (narrator != null && narrator.isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 13, vertical: 9),
+                                  decoration: BoxDecoration(
+                                    color: tc.accent.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border(
+                                        left: BorderSide(
+                                            color: tc.accent
+                                                .withValues(alpha: 0.5),
+                                            width: 3)),
+                                  ),
+                                  child: Text(narrator,
+                                      style: TextStyle(
+                                          color: tc.textSecondary,
+                                          fontSize: 12.5,
+                                          fontStyle: FontStyle.italic,
+                                          height: 1.5)),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              SelectableText(hadith.text,
+                                  style: TextStyle(
+                                      color: tc.text,
+                                      fontSize: 16,
+                                      height: 1.85,
+                                      letterSpacing: 0.05)),
+                              const SizedBox(height: 16),
+                              Text(
+                                '${hadith.collection.toUpperCase()} · #${hadith.hadithNumber}${hadith.book > 0 ? ' · Book ${hadith.book}' : ''}',
+                                style: TextStyle(
+                                    color: tc.textTertiary,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Divider(height: 1, color: tc.border.withValues(alpha: 0.5)),
+                    // ── Footer actions ──
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      child: Row(children: [
+                        _modalIcon(Icons.chevron_left_rounded, tc,
+                            hasPrev ? () => _go(-1) : null),
+                        const Spacer(),
+                        _modalIcon(Icons.copy_rounded, tc, () {
+                          Clipboard.setData(
+                              ClipboardData(text: hadith.shareableText));
+                        }),
+                        const SizedBox(width: 4),
+                        _modalIcon(Icons.ios_share_rounded, tc,
+                            () => Share.share(hadith.shareableText)),
+                        const Spacer(),
+                        _modalIcon(Icons.chevron_right_rounded, tc,
+                            hasNext ? () => _go(1) : null),
+                      ]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+  }
+
+  Widget _modalIcon(IconData icon, IslamicThemeColors tc, VoidCallback? onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.all(9),
+        child: Icon(icon,
+            size: 22,
+            color: onTap != null
+                ? tc.textSecondary
+                : tc.textTertiary.withValues(alpha: 0.4)),
       ),
     );
   }
@@ -964,731 +1082,3 @@ class _GradeBadge extends StatelessWidget {
     );
   }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-//  READER PREFERENCES  (persisted in memory — extend to Hive if needed)
-// ═══════════════════════════════════════════════════════════════════════
-
-class _ReaderPrefs {
-  final bool showArabic;
-  final bool showMetadata;
-  final double fontSize;       // translation font size multiplier
-  final double arabicFontSize; // arabic font size
-  const _ReaderPrefs({
-    this.showArabic = false,
-    this.showMetadata = true,
-    this.fontSize = 17,
-    this.arabicFontSize = 24,
-  });
-  _ReaderPrefs copyWith({bool? showArabic, bool? showMetadata,
-      double? fontSize, double? arabicFontSize}) => _ReaderPrefs(
-    showArabic: showArabic ?? this.showArabic,
-    showMetadata: showMetadata ?? this.showMetadata,
-    fontSize: fontSize ?? this.fontSize,
-    arabicFontSize: arabicFontSize ?? this.arabicFontSize,
-  );
-}
-
-final _readerPrefsProvider = StateProvider<_ReaderPrefs>((ref) => const _ReaderPrefs());
-
-// ═══════════════════════════════════════════════════════════════════════
-//  HADITH READER — immersive swipeable reading experience
-// ═══════════════════════════════════════════════════════════════════════
-
-class HadithReaderScreen extends ConsumerStatefulWidget {
-  final Hadith hadith;
-  final List<Hadith>? allHadiths;
-  const HadithReaderScreen({super.key, required this.hadith, this.allHadiths});
-
-  @override
-  ConsumerState<HadithReaderScreen> createState() => _HadithReaderScreenState();
-}
-
-class _HadithReaderScreenState extends ConsumerState<HadithReaderScreen> {
-  late PageController _pageController;
-  late int _currentIndex;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentIndex = widget.allHadiths?.indexWhere((h) =>
-        h.hadithNumber == widget.hadith.hadithNumber &&
-        h.collection == widget.hadith.collection) ?? 0;
-    if (_currentIndex < 0) _currentIndex = 0;
-    _pageController = PageController(initialPage: _currentIndex);
-    
-    // Auto-cache first hadith when reader opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final hadiths = widget.allHadiths ?? [widget.hadith];
-      if (hadiths.isNotEmpty) {
-        ref.read(offlineContentProvider.notifier).cacheSingleHadith(hadiths[_currentIndex]);
-      }
-    });
-  }
-
-  @override
-  void dispose() { _pageController.dispose(); super.dispose(); }
-
-  void _openSettings(BuildContext context, IslamicThemeColors tc) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => _ReaderSettingsSheet(tc: tc),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final hadiths = widget.allHadiths ?? [widget.hadith];
-    final tc = ref.watch(islamicThemeColorsProvider);
-    final currentHadith = hadiths[_currentIndex];
-
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: tc.background,
-        statusBarIconBrightness: tc.statusBarBrightness,
-        systemNavigationBarColor: tc.background,
-        systemNavigationBarIconBrightness: tc.statusBarBrightness,
-      ),
-      child: Scaffold(
-        backgroundColor: tc.background,
-        body: SafeArea(
-          child: Column(children: [
-            // ── Top bar ──
-            _ReaderTopBar(
-              hadith: currentHadith,
-              onClose: () => Navigator.pop(context),
-              onSettings: () => _openSettings(context, tc),
-            ),
-            // ── Progress bar ──
-            if (hadiths.length > 1)
-              _ProgressBar(current: _currentIndex, total: hadiths.length, tc: tc),
-            // ── Page content ──
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: hadiths.length,
-                onPageChanged: (i) {
-                  setState(() => _currentIndex = i);
-                  ref.read(readHadithsProvider.notifier).markAsRead(hadiths[i]);
-                  // Auto-cache as user swipes
-                  ref.read(offlineContentProvider.notifier).cacheSingleHadith(hadiths[i]);
-                },
-                itemBuilder: (_, i) => _HadithPage(hadith: hadiths[i], totalInChapter: hadiths.length),
-              ),
-            ),
-            // ── Bottom action bar ──
-            _ReaderActionBar(
-              hadith: currentHadith,
-              currentIndex: _currentIndex,
-              total: hadiths.length,
-              onPrevious: _currentIndex > 0
-                  ? () => _pageController.previousPage(
-                      duration: const Duration(milliseconds: 280),
-                      curve: Curves.easeOutCubic)
-                  : null,
-              onNext: _currentIndex < hadiths.length - 1
-                  ? () => _pageController.nextPage(
-                      duration: const Duration(milliseconds: 280),
-                      curve: Curves.easeOutCubic)
-                  : null,
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  TOP BAR
-// ═══════════════════════════════════════════════════════════════════════
-
-class _ReaderTopBar extends ConsumerWidget {
-  final Hadith hadith;
-  final VoidCallback onClose;
-  final VoidCallback onSettings;
-  const _ReaderTopBar({required this.hadith, required this.onClose, required this.onSettings});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tc = ref.watch(islamicThemeColorsProvider);
-    final isRead = ref.watch(readHadithsProvider
-        .select((s) => s.contains('${hadith.collection}_${hadith.hadithNumber}')));
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(4, 4, 8, 6),
-      decoration: BoxDecoration(
-        color: tc.background,
-        border: Border(bottom: BorderSide(color: tc.surface.withValues(alpha: 0.4))),
-      ),
-      child: Row(children: [
-        // Back
-        _BackButton(tc: tc, onTap: onClose),
-        const SizedBox(width: 4),
-        // Title
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(hadith.collection.toUpperCase(),
-              style: TextStyle(color: tc.textSecondary, fontSize: 10,
-                  fontWeight: FontWeight.w700, letterSpacing: 1.2)),
-          const SizedBox(height: 2),
-          Row(children: [
-            Text('Hadith ${hadith.hadithNumber}',
-                style: TextStyle(color: tc.text, fontSize: 15,
-                    fontWeight: FontWeight.w600)),
-            if (hadith.grade != HadithGrade.unknown) ...[
-              const SizedBox(width: 8),
-              _ReaderGradeBadge(grade: hadith.grade),
-            ],
-          ]),
-        ])),
-        // Bookmark
-        _Pressable(
-          onTap: () => ref.read(readHadithsProvider.notifier).toggleRead(hadith),
-          pressedScale: 0.85,
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Icon(
-              isRead ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
-              color: isRead ? tc.accent : tc.textSecondary,
-              size: 22,
-            ),
-          ),
-        ),
-        // Settings
-        _Pressable(
-          onTap: onSettings,
-          pressedScale: 0.85,
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Icon(Icons.tune_rounded, color: tc.textSecondary, size: 21),
-          ),
-        ),
-      ]),
-    );
-  }
-}
-
-// ── Thin reading-progress bar ──
-class _ProgressBar extends StatelessWidget {
-  final int current; final int total; final IslamicThemeColors tc;
-  const _ProgressBar({required this.current, required this.total, required this.tc});
-
-  @override
-  Widget build(BuildContext context) {
-    final pct = total > 1 ? (current + 1) / total : 1.0;
-    return Container(
-      height: 2,
-      color: tc.surface.withValues(alpha: 0.3),
-      alignment: Alignment.centerLeft,
-      child: FractionallySizedBox(
-        widthFactor: pct,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [
-              tc.green.withValues(alpha: 0.5),
-              tc.accent.withValues(alpha: 0.5),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  GRADE BADGE (shared)
-// ═══════════════════════════════════════════════════════════════════════
-
-class _ReaderGradeBadge extends ConsumerWidget {
-  final HadithGrade grade;
-  const _ReaderGradeBadge({required this.grade});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tc = ref.watch(islamicThemeColorsProvider);
-    final color = switch (grade) {
-      HadithGrade.sahih  => tc.green,
-      HadithGrade.hasan  => const Color(0xFF00796B),
-      HadithGrade.daif   => const Color(0xFFE65100),
-      _                  => tc.textSecondary,
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-      decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: color.withValues(alpha: 0.3))),
-      child: Text(grade.displayName,
-          style: TextStyle(color: color.withValues(alpha: 0.95), fontSize: 10,
-              fontWeight: FontWeight.w600)),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  HADITH PAGE  — clean, readable, respects prefs
-// ═══════════════════════════════════════════════════════════════════════
-
-class _HadithPage extends ConsumerWidget {
-  final Hadith hadith;
-  final int totalInChapter;
-  const _HadithPage({required this.hadith, this.totalInChapter = 1});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tc    = ref.watch(islamicThemeColorsProvider);
-    final prefs = ref.watch(_readerPrefsProvider);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      physics: const ClampingScrollPhysics(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-
-        // ══ Arabic block ══
-        if (prefs.showArabic && hadith.arabicText != null && hadith.arabicText!.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
-            decoration: BoxDecoration(
-              color: tc.surface.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: tc.border.withValues(alpha: 0.6)),
-            ),
-            child: Text(
-              hadith.arabicText!,
-              style: TextStyle(
-                color: tc.arabicText,
-                fontSize: prefs.arabicFontSize,
-                height: 2.1,
-                fontFamily: 'Amiri',
-              ),
-              textDirection: TextDirection.rtl,
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 24),
-        ],
-
-        // ══ Narrator ══
-        if (hadith.narrator != null || hadith.extractedNarrator != null) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            decoration: BoxDecoration(
-              color: tc.accent.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border(left: BorderSide(color: tc.accent.withValues(alpha: 0.5), width: 3)),
-            ),
-            child: Text(
-              hadith.narrator ?? hadith.extractedNarrator ?? '',
-              style: TextStyle(
-                color: tc.textSecondary,
-                fontSize: 13,
-                fontStyle: FontStyle.italic,
-                height: 1.5,
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-        ],
-
-        // ══ Translation text ══
-        SelectableText(
-          hadith.text,
-          style: TextStyle(
-            color: tc.text,
-            fontSize: prefs.fontSize,
-            height: 1.9,
-            letterSpacing: 0.05,
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // ══ Metadata card ══
-        if (prefs.showMetadata) ...[
-          Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: tc.surface.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: tc.border.withValues(alpha: 0.5)),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _MetaRow(label: 'Reference',
-                  value: '${hadith.collection.toUpperCase()} · #${hadith.hadithNumber}', tc: tc),
-              if (hadith.book > 0) ...[
-                _MetaDivider(tc: tc),
-                _MetaRow(label: 'Book', value: '${hadith.book}', tc: tc),
-              ],
-              if (hadith.chapterName != null && hadith.chapterName!.isNotEmpty) ...[
-                _MetaDivider(tc: tc),
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Chapter',
-                      style: TextStyle(color: tc.textSecondary, fontSize: 11.5)),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(hadith.chapterName!,
-                      style: TextStyle(color: tc.text, fontSize: 11.5, fontWeight: FontWeight.w500),
-                      textAlign: TextAlign.end, maxLines: 2, overflow: TextOverflow.ellipsis)),
-                ]),
-              ],
-              if (hadith.grade != HadithGrade.unknown) ...[
-                _MetaDivider(tc: tc),
-                Row(children: [
-                  Text('Authenticity',
-                      style: TextStyle(color: tc.textSecondary, fontSize: 11.5)),
-                  const Spacer(),
-                  _ReaderGradeBadge(grade: hadith.grade),
-                ]),
-              ],
-              if (hadith.scholarGrades.isNotEmpty) ...[
-                _MetaDivider(tc: tc),
-                ...hadith.scholarGrades.map((sg) => Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(sg.displayText,
-                      style: TextStyle(color: tc.textSecondary, fontSize: 11)),
-                )),
-              ],
-            ]),
-          ),
-        ],
-
-        const SizedBox(height: 20),
-        // Swipe hint
-        if (totalInChapter > 1)
-          Center(child: Row(mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.swipe_rounded,
-                color: tc.textTertiary, size: 14),
-            const SizedBox(width: 7),
-            Text('Swipe for next hadith',
-                style: TextStyle(color: tc.textTertiary,
-                    fontSize: 11.5, letterSpacing: 0.3)),
-          ])),
-        const SizedBox(height: 32),
-      ]),
-    );
-  }
-}
-
-class _MetaDivider extends StatelessWidget {
-  final IslamicThemeColors tc;
-  const _MetaDivider({required this.tc});
-  @override
-  Widget build(BuildContext context) => Divider(
-      color: tc.border.withValues(alpha: 0.5), height: 20);
-}
-
-class _MetaRow extends StatelessWidget {
-  final String label; final String value; final IslamicThemeColors tc;
-  const _MetaRow({required this.label, required this.value, required this.tc});
-  @override
-  Widget build(BuildContext context) => Row(children: [
-    Text(label,
-        style: TextStyle(color: tc.textSecondary, fontSize: 11.5)),
-    const Spacer(),
-    Text(value,
-        style: TextStyle(color: tc.text, fontSize: 11.5,
-            fontWeight: FontWeight.w600)),
-  ]);
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  BOTTOM ACTION BAR
-// ═══════════════════════════════════════════════════════════════════════
-
-class _ReaderActionBar extends ConsumerWidget {
-  final Hadith hadith;
-  final int currentIndex;
-  final int total;
-  final VoidCallback? onPrevious;
-  final VoidCallback? onNext;
-  const _ReaderActionBar({required this.hadith, required this.currentIndex,
-      required this.total, this.onPrevious, this.onNext});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tc = ref.watch(islamicThemeColorsProvider);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      decoration: BoxDecoration(
-        color: tc.background,
-        border: Border(top: BorderSide(color: tc.surface.withValues(alpha: 0.4))),
-      ),
-      child: Row(children: [
-        // Prev
-        _NavBtn(icon: Icons.chevron_left_rounded, onTap: onPrevious,
-            enabled: onPrevious != null, tc: tc),
-        const Spacer(),
-        // Copy
-        _ActBtn(icon: Icons.copy_outlined, tc: tc, tooltip: 'Copy', onTap: () {
-          Clipboard.setData(ClipboardData(text: hadith.shareableText));
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: const Text('Copied to clipboard',
-                  style: TextStyle(color: Colors.white, fontSize: 13)),
-              backgroundColor: tc.accent.withValues(alpha: 0.9),
-              duration: const Duration(seconds: 1),
-              behavior: SnackBarBehavior.floating,
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
-        }),
-        const SizedBox(width: 6),
-        // Counter pill
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-          decoration: BoxDecoration(
-            color: tc.surface.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text('${currentIndex + 1} / $total',
-              style: TextStyle(color: tc.textSecondary,
-                  fontSize: 12, fontWeight: FontWeight.w600)),
-        ),
-        const SizedBox(width: 6),
-        // Share
-        _ActBtn(icon: Icons.share_outlined, tc: tc, tooltip: 'Share',
-            onTap: () => Share.share(hadith.shareableText)),
-        const Spacer(),
-        // Next
-        _NavBtn(icon: Icons.chevron_right_rounded, onTap: onNext,
-            enabled: onNext != null, tc: tc),
-      ]),
-    );
-  }
-}
-
-class _NavBtn extends StatelessWidget {
-  final IconData icon; final VoidCallback? onTap;
-  final bool enabled; final IslamicThemeColors tc;
-  const _NavBtn({required this.icon, this.onTap,
-      this.enabled = true, required this.tc});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: enabled ? onTap : null,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.all(9),
-      decoration: BoxDecoration(
-        color: enabled
-            ? tc.surface.withValues(alpha: 0.5)
-            : tc.surface.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Icon(icon,
-          color: enabled
-              ? tc.text.withValues(alpha: 0.8)
-              : tc.textTertiary.withValues(alpha: 0.4),
-          size: 20),
-    ),
-  );
-}
-
-class _ActBtn extends StatelessWidget {
-  final IconData icon; final VoidCallback? onTap;
-  final IslamicThemeColors tc; final String tooltip;
-  const _ActBtn({required this.icon, this.onTap,
-      required this.tc, this.tooltip = ''});
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: tooltip,
-    child: GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Icon(icon, color: tc.textSecondary, size: 21),
-      ),
-    ),
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  READER SETTINGS  — bottom sheet
-// ═══════════════════════════════════════════════════════════════════════
-
-class _ReaderSettingsSheet extends ConsumerWidget {
-  final IslamicThemeColors tc;
-  const _ReaderSettingsSheet({required this.tc});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final prefs = ref.watch(_readerPrefsProvider);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: tc.background,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        border: Border(top: BorderSide(color: tc.surface.withValues(alpha: 0.5))),
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Handle
-        Center(child: Container(width: 36, height: 3,
-            decoration: BoxDecoration(color: tc.textSecondary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4)))),
-        const SizedBox(height: 16),
-
-        // Title
-        Text('Reading Settings',
-            style: TextStyle(color: tc.text, fontSize: 17,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 18),
-
-        // ── Display section ──
-        _SheetSection(label: 'DISPLAY', tc: tc),
-        const SizedBox(height: 10),
-
-        _ToggleRow(
-          icon: Icons.translate_rounded,
-          label: 'Show Arabic Text',
-          sub: 'Original Arabic of the hadith',
-          value: prefs.showArabic,
-          tc: tc,
-          onChanged: (v) => ref.read(_readerPrefsProvider.notifier)
-              .state = prefs.copyWith(showArabic: v),
-        ),
-        _ToggleRow(
-          icon: Icons.info_outline_rounded,
-          label: 'Show Metadata',
-          sub: 'Reference, grade, scholar notes',
-          value: prefs.showMetadata,
-          tc: tc,
-          onChanged: (v) => ref.read(_readerPrefsProvider.notifier)
-              .state = prefs.copyWith(showMetadata: v),
-        ),
-
-        const SizedBox(height: 18),
-
-        // ── Font size section ──
-        _SheetSection(label: 'FONT SIZE', tc: tc),
-        const SizedBox(height: 12),
-
-        // Translation size
-        _SliderRow(
-          label: 'Translation',
-          value: prefs.fontSize,
-          min: 13, max: 22,
-          displayValue: '${prefs.fontSize.round()}pt',
-          tc: tc,
-          onChanged: (v) => ref.read(_readerPrefsProvider.notifier)
-              .state = prefs.copyWith(fontSize: v),
-        ),
-
-        const SizedBox(height: 8),
-
-        // Arabic size
-        if (prefs.showArabic)
-          _SliderRow(
-            label: 'Arabic',
-            value: prefs.arabicFontSize,
-            min: 18, max: 34,
-            displayValue: '${prefs.arabicFontSize.round()}pt',
-            tc: tc,
-            onChanged: (v) => ref.read(_readerPrefsProvider.notifier)
-                .state = prefs.copyWith(arabicFontSize: v),
-          ),
-
-        const SizedBox(height: 20),
-
-        // Reset button
-        GestureDetector(
-          onTap: () {
-            ref.read(_readerPrefsProvider.notifier).state = const _ReaderPrefs();
-          },
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: tc.surface.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text('Reset to Defaults',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: tc.textSecondary,
-                    fontSize: 13, fontWeight: FontWeight.w600)),
-          ),
-        ),
-      ]),
-    );
-  }
-}
-
-class _SheetSection extends StatelessWidget {
-  final String label; final IslamicThemeColors tc;
-  const _SheetSection({required this.label, required this.tc});
-  @override
-  Widget build(BuildContext context) => Text(label,
-      style: TextStyle(color: tc.textSecondary, fontSize: 11,
-          fontWeight: FontWeight.w700, letterSpacing: 1.2));
-}
-
-class _ToggleRow extends StatelessWidget {
-  final IconData icon; final String label; final String sub;
-  final bool value; final IslamicThemeColors tc;
-  final ValueChanged<bool> onChanged;
-  const _ToggleRow({required this.icon, required this.label, required this.sub,
-      required this.value, required this.tc, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 4),
-    child: Row(children: [
-      Container(
-        width: 34, height: 34,
-        decoration: BoxDecoration(
-            color: tc.surface.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(9)),
-        child: Icon(icon, color: tc.textSecondary.withValues(alpha: 0.45), size: 17),
-      ),
-      const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(color: tc.text,
-            fontSize: 14, fontWeight: FontWeight.w500)),
-        Text(sub, style: TextStyle(color: tc.textSecondary, fontSize: 11.5)),
-      ])),
-      Switch(
-        value: value,
-        onChanged: onChanged,
-        activeThumbColor: tc.green,
-        activeTrackColor: tc.green.withValues(alpha: 0.25),
-        inactiveThumbColor: tc.textSecondary.withValues(alpha: 0.3),
-        inactiveTrackColor: tc.surface.withValues(alpha: 0.6),
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-    ]),
-  );
-}
-
-class _SliderRow extends StatelessWidget {
-  final String label; final double value; final double min; final double max;
-  final String displayValue; final IslamicThemeColors tc;
-  final ValueChanged<double> onChanged;
-  const _SliderRow({required this.label, required this.value, required this.min,
-      required this.max, required this.displayValue, required this.tc,
-      required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) => Row(children: [
-    SizedBox(width: 80,
-        child: Text(label, style: TextStyle(color: tc.text,
-            fontSize: 13, fontWeight: FontWeight.w500))),
-    Expanded(child: SliderTheme(
-      data: SliderThemeData(
-        trackHeight: 2,
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-        overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-        activeTrackColor: tc.green.withValues(alpha: 0.5),
-        inactiveTrackColor: tc.surface.withValues(alpha: 0.5),
-        thumbColor: tc.green.withValues(alpha: 0.75),
-        overlayColor: tc.green.withValues(alpha: 0.12),
-      ),
-      child: Slider(value: value, min: min, max: max,
-          onChanged: (v) => onChanged(v.roundToDouble())),
-    )),
-    SizedBox(width: 38,
-        child: Text(displayValue, textAlign: TextAlign.right,
-            style: TextStyle(color: tc.textSecondary.withValues(alpha: 0.45),
-                fontSize: 11, fontWeight: FontWeight.w500))),
-  ]);
-}
-

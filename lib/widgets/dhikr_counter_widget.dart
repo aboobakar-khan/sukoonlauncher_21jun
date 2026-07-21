@@ -116,7 +116,7 @@ class _DhikrCounterWidgetState extends ConsumerState<DhikrCounterWidget>
   }
 
   void _incrementCount() {
-    HapticFeedback.mediumImpact();
+    HapticFeedback.selectionClick(); // light tactile tick for each dhikr
     _countAnimController.forward().then((_) => _countAnimController.reverse());
     ref.read(tasbihProvider.notifier).increment();
   }

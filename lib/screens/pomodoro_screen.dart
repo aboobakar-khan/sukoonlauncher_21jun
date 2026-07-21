@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/productivity_provider.dart';
 import '../providers/ambient_sound_provider.dart';
@@ -733,75 +732,39 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
                       ignoring: !_uiVisible,
                       child: Padding(
                     padding: const EdgeInsets.only(bottom: 44),
-                    child: Column(children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _circleBtn(
-                            icon: Icons.skip_previous_rounded,
-                            color: sub, size: 50,
-                            onTap: () {
-                              ref.read(pomodoroProvider.notifier).skipBackward();
-                            },
-                          ),
-                          const SizedBox(width: 20),
-                          _circleBtn(
-                            icon: Icons.stop_rounded,
-                            color: sub, size: 50,
-                            onTap: () {
-                              ref.read(pomodoroProvider.notifier).reset();
-                              setState(() => _focusTag = null);
-                            },
-                          ),
-                          const SizedBox(width: 20),
-                          _circleBtn(
-                            icon: isPaused
-                                ? Icons.play_arrow_rounded
-                                : Icons.pause_rounded,
-                            color: accent, size: 64, filled: true,
-                            onTap: () {
-                              if (isPaused) {
-                                ref.read(pomodoroProvider.notifier).resume();
-                              } else {
-                                ref.read(pomodoroProvider.notifier).pause();
-                              }
-                              // Tapping a control resets auto-hide countdown
-                              _revealUi();
-                            },
-                          ),
-                          const SizedBox(width: 20),
-                          _circleBtn(
-                            icon: Icons.skip_next_rounded,
-                            color: sub, size: 50,
-                            onTap: () {
-                              final wasBreak =
-                                  pomo.state == PomodoroState.shortBreak;
-                              final totalMins = wasBreak
-                                  ? pomo.settings.shortBreakMinutes
-                                  : pomo.settings.focusMinutes;
-                              final elapsed = totalMins -
-                                  (pomo.remainingSeconds ~/ 60);
-                              ref.read(pomodoroProvider.notifier).skipForward();
-                              _showTransition(_TransitionInfo(
-                                isFocusDone: !wasBreak,
-                                minutes: elapsed.clamp(0, totalMins),
-                              ));
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        isFocusing
-                            ? '⏭  next → short break'
-                            : isShort
-                                ? '⏭  next → focus'
-                                : '',
-                        style: TextStyle(
-                            color: sub.withValues(alpha: 0.50),
-                            fontSize: 11),
-                      ),
-                    ]),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _iosControl(
+                          icon: Icons.stop_rounded,
+                          label: 'End',
+                          color: sub,
+                          onTap: () {
+                            ref.read(pomodoroProvider.notifier).reset();
+                            setState(() => _focusTag = null);
+                          },
+                        ),
+                        const SizedBox(width: 44),
+                        _iosControl(
+                          icon: isPaused
+                              ? Icons.play_arrow_rounded
+                              : Icons.pause_rounded,
+                          label: isPaused ? 'Resume' : 'Pause',
+                          color: accent,
+                          primary: true,
+                          onTap: () {
+                            if (isPaused) {
+                              ref.read(pomodoroProvider.notifier).resume();
+                            } else {
+                              ref.read(pomodoroProvider.notifier).pause();
+                            }
+                            // Tapping a control resets the auto-hide countdown.
+                            _revealUi();
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                     ),
                   ),
@@ -845,35 +808,62 @@ class _PomodoroScreenState extends ConsumerState<PomodoroScreen>
     );             // Scaffold
   }
 
-  Widget _circleBtn({
+  /// A single iOS-style control: an equal-size circular button with its label
+  /// set beneath it. The primary action is an accent-filled disc with a soft
+  /// glow; secondary actions stay a quiet translucent circle.
+  Widget _iosControl({
     required IconData icon,
+    required String label,
     required VoidCallback onTap,
     required Color color,
-    required double size,
-    bool filled = false,
+    bool primary = false,
   }) {
+    const double d = 74;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        width: size, height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: filled
-              ? color
-              : color.withValues(alpha: 0.10),
-          border: filled
-              ? null
-              : Border.all(color: color.withValues(alpha: 0.22), width: 1.2),
-          boxShadow: filled
-              ? [BoxShadow(
-                  color: color.withValues(alpha: 0.28),
-                  blurRadius: 14, offset: const Offset(0, 4))]
-              : null,
-        ),
-        child: Icon(icon, size: size * 0.44,
-            color: filled ? Colors.white : color),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            width: d,
+            height: d,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: primary ? color : color.withValues(alpha: 0.08),
+              border: primary
+                  ? null
+                  : Border.all(color: color.withValues(alpha: 0.16), width: 1),
+              boxShadow: primary
+                  ? [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.33),
+                        blurRadius: 22,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 6),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Icon(
+              icon,
+              size: primary ? 32 : 26,
+              color: primary ? Colors.white : color,
+            ),
+          ),
+          const SizedBox(height: 11),
+          Text(
+            label,
+            style: TextStyle(
+              color: primary ? color : color.withValues(alpha: 0.85),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
       ),
     );
   }

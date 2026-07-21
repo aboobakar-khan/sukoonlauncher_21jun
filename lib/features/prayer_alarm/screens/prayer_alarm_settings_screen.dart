@@ -44,8 +44,10 @@ class _PrayerAlarmSettingsScreenState
   bool _showCalcMethod = false;
   bool _showAsrSchool = false;
   String? _autoDetectedCity;
-  bool? _hasNotifPermission;
-  bool? _hasExactAlarmPermission;
+  
+  final LayerLink _searchLayerLink = LayerLink();
+  final FocusNode _searchFocusNode = FocusNode();
+  OverlayEntry? _searchOverlay;
 
   // Date navigation
   DateTime _viewDate = DateTime.now();
@@ -66,7 +68,6 @@ class _PrayerAlarmSettingsScreenState
   @override
   void initState() {
     super.initState();
-    _checkPermissions();
     _loadFastingModes(); // load persisted Suhoor/Iftar alarm modes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final config = ref.read(prayerAlarmProvider).config;
@@ -76,17 +77,19 @@ class _PrayerAlarmSettingsScreenState
       _loadViewDate(DateTime.now());
       _startCountdown();
     });
+    
+    _searchFocusNode.addListener(() {
+      if (!_searchFocusNode.hasFocus) {
+        _removeSearchOverlay();
+      } else if (_searchResults.isNotEmpty) {
+        _showSearchOverlay();
+      }
+    });
   }
 
-  Future<void> _checkPermissions() async {
-    final notif = await Permission.notification.isGranted;
-    final exact = await PrayerAlarmService.canScheduleExactAlarms();
-    if (mounted) {
-      setState(() {
-        _hasNotifPermission = notif;
-        _hasExactAlarmPermission = exact;
-      });
-    }
+  void _removeSearchOverlay() {
+    _searchOverlay?.remove();
+    _searchOverlay = null;
   }
 
   // ── FASTING ALARM MODE PERSISTENCE ──
@@ -172,6 +175,8 @@ class _PrayerAlarmSettingsScreenState
 
   @override
   void dispose() {
+    _removeSearchOverlay();
+    _searchFocusNode.dispose();
     _countdownTimer?.cancel();
     _cityController.dispose();
     super.dispose();
@@ -194,14 +199,17 @@ class _PrayerAlarmSettingsScreenState
               _buildSettingsBar(state),
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-                  physics: const ClampingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 40),
+                  physics: const BouncingScrollPhysics(),
                   children: [
-                    _buildPermissionBanner(),
+                    _buildNextPrayerHero(state),
+                    const SizedBox(height: 14),
                     _buildDateNavigator(),
                     const SizedBox(height: 10),
                     ..._buildPrayerRows(state, s),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
+                    _sectionLabel('DISPLAY'),
+                    const SizedBox(height: 10),
                     _buildWidgetToggle(),
                     const SizedBox(height: 16),
                   ],
@@ -220,7 +228,7 @@ class _PrayerAlarmSettingsScreenState
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 10, 16, 4),
+      padding: const EdgeInsets.fromLTRB(8, 12, 16, 6),
       child: Row(
         children: [
           // Circular back button — larger, clearer tap target.
@@ -232,10 +240,10 @@ class _PrayerAlarmSettingsScreenState
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withAlpha(8),
+                color: Colors.white.withAlpha(10),
               ),
               child: Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 15, color: kSwTextPrimary.withAlpha(165)),
+                  size: 15, color: kSwTextPrimary.withAlpha(180)),
             ),
           ),
           const SizedBox(width: 12),
@@ -244,13 +252,13 @@ class _PrayerAlarmSettingsScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Salah Wake', style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w700,
-                  color: kSwTextPrimary.withAlpha(235), letterSpacing: -0.4,
+                  fontSize: 25, fontWeight: FontWeight.w700,
+                  color: kSwTextPrimary, letterSpacing: -0.6, height: 1.05,
                 )),
-                const SizedBox(height: 1),
+                const SizedBox(height: 2),
                 Text('Prayer times & alarms', style: TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w500,
-                  color: kSwTextSecondary.withAlpha(155),
+                  fontSize: 12, fontWeight: FontWeight.w500,
+                  color: kSwTextSecondary.withAlpha(160),
                 )),
               ],
             ),
@@ -266,7 +274,7 @@ class _PrayerAlarmSettingsScreenState
 
   Widget _buildSettingsBar(PrayerAlarmState state) {
     final hasLoc = state.config.locationLabel.isNotEmpty;
-    final locLabel = hasLoc ? state.config.locationLabel : 'Set location';
+    final locLabel = hasLoc ? _shortCity(state.config.locationLabel) : 'Set location';
     final calcName = _calcMethodName(state.config.calculationMethod);
     final asrName = state.config.asrCalculationSchool == 1 ? 'Hanafi' : "Shafi'i";
 
@@ -276,66 +284,79 @@ class _PrayerAlarmSettingsScreenState
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             decoration: BoxDecoration(
               color: kSwCard,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withAlpha(13)),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withAlpha(12)),
             ),
-            child: Row(
-              children: [
-                Expanded(flex: 5, child: SettingsPill(
-                  icon: hasLoc ? Icons.location_on_rounded : Icons.location_off_rounded,
-                  label: locLabel,
-                  active: _showLocationSearch,
-                  iconColor: hasLoc ? kSwActive.withAlpha(180) : kSwTextMuted,
-                  trailing: _isLocating
-                      ? SizedBox(width: 10, height: 10,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 1.2, color: kSwActive.withAlpha(100)))
-                      : GestureDetector(
-                          onTap: _enableLocationInApp,
-                          child: Icon(Icons.my_location_rounded,
-                              size: 12, color: kSwTextMuted.withAlpha(80)),
-                        ),
-                  onTap: () async {
-                    // If device location (GPS) is off, turn it on in-app.
-                    final serviceEnabled = await _isLocationServiceEnabled();
-                    if (!serviceEnabled) {
-                      await _enableLocationInApp();
-                      return;
-                    }
-                    setState(() {
-                      _showLocationSearch = !_showLocationSearch;
-                      if (_showLocationSearch) { _showCalcMethod = false; _showAsrSchool = false; }
-                    });
-                  },
-                )),
-                const SettingsDivider(),
-                Expanded(flex: 4, child: SettingsPill(
-                  icon: Icons.calculate_outlined,
-                  label: calcName,
-                  active: _showCalcMethod,
-                  onTap: () {
-                    setState(() {
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _configCell(
+                    flex: 5,
+                    icon: hasLoc
+                        ? Icons.location_on_rounded
+                        : Icons.location_off_rounded,
+                    iconColor: hasLoc ? kSwActive : kSwTextMuted,
+                    label: 'LOCATION',
+                    value: locLabel,
+                    active: _showLocationSearch,
+                    trailing: _isLocating
+                        ? SizedBox(
+                            width: 12, height: 12,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 1.3, color: kSwActive.withAlpha(130)))
+                        : GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _detectLocation,
+                            child: Icon(Icons.gps_fixed_rounded,
+                                size: 14, color: kSwActive.withAlpha(150)),
+                          ),
+                    onTap: () async {
+                      final on = await _ensureLocationOn();
+                      if (!on) return;
+                      setState(() {
+                        _showLocationSearch = !_showLocationSearch;
+                        if (_showLocationSearch) {
+                          _showCalcMethod = false;
+                          _showAsrSchool = false;
+                        }
+                      });
+                    },
+                  ),
+                  _cellDivider(),
+                  _configCell(
+                    flex: 4,
+                    icon: Icons.menu_book_rounded,
+                    label: 'METHOD',
+                    value: calcName,
+                    active: _showCalcMethod,
+                    onTap: () => setState(() {
                       _showCalcMethod = !_showCalcMethod;
-                      if (_showCalcMethod) { _showLocationSearch = false; _showAsrSchool = false; }
-                    });
-                  },
-                )),
-                const SettingsDivider(),
-                Expanded(flex: 3, child: SettingsPill(
-                  icon: Icons.wb_cloudy_outlined,
-                  label: asrName,
-                  active: _showAsrSchool,
-                  onTap: () {
-                    setState(() {
+                      if (_showCalcMethod) {
+                        _showLocationSearch = false;
+                        _showAsrSchool = false;
+                      }
+                    }),
+                  ),
+                  _cellDivider(),
+                  _configCell(
+                    flex: 3,
+                    icon: Icons.brightness_4_rounded,
+                    label: 'MADHAB',
+                    value: asrName,
+                    active: _showAsrSchool,
+                    onTap: () => setState(() {
                       _showAsrSchool = !_showAsrSchool;
-                      if (_showAsrSchool) { _showLocationSearch = false; _showCalcMethod = false; }
-                    });
-                  },
-                )),
-              ],
+                      if (_showAsrSchool) {
+                        _showLocationSearch = false;
+                        _showCalcMethod = false;
+                      }
+                    }),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -344,6 +365,88 @@ class _PrayerAlarmSettingsScreenState
         _animatedPanel(_showCalcMethod, _buildCalcMethodPanel(state)),
         _animatedPanel(_showAsrSchool, _buildAsrSchoolPanel(state)),
       ],
+    );
+  }
+
+  String _shortCity(String s) => s.split(',').first.trim();
+
+  Widget _cellDivider() => Container(
+        width: 1,
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        color: Colors.white.withAlpha(12),
+      );
+
+  // One modern cell of the config strip: small caps label over its value.
+  Widget _configCell({
+    required int flex,
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool active,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Widget? trailing,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          margin: const EdgeInsets.all(4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: active ? kSwActive.withAlpha(20) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(icon,
+                      size: 13,
+                      color: iconColor ?? (active ? kSwActive : kSwTextMuted)),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: kSwTextMuted)),
+                  ),
+                  Icon(
+                      active
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 14,
+                      color: kSwTextMuted.withAlpha(130)),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: active ? kSwTextPrimary : kSwTextSecondary)),
+                  ),
+                  if (trailing != null) ...[const SizedBox(width: 5), trailing],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -611,60 +714,157 @@ class _PrayerAlarmSettingsScreenState
 
 
 
-  Widget _buildPermissionBanner() {
-    final notifOk = _hasNotifPermission ?? true;
-    final exactOk = _hasExactAlarmPermission ?? true;
-    if (notifOk && exactOk) return const SizedBox.shrink();
-
-    final missing = <String>[];
-    if (!notifOk) missing.add('Notifications');
-    if (!exactOk) missing.add('Exact Alarms');
-
+  // ── Small caps section label (iOS grouped-list style) ──
+  Widget _sectionLabel(String label, {String? subtitle}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: GestureDetector(
-        onTap: _openPermissionSetup,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: Colors.amber.withAlpha(15),
-            border: Border.all(color: Colors.amber.withAlpha(40)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.amber.withAlpha(25),
-                ),
-                child: Icon(Icons.warning_amber_rounded,
-                    size: 16, color: Colors.amber.withAlpha(180)),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Permissions Required', style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600,
-                      color: Colors.amber.withAlpha(220),
-                    )),
-                    const SizedBox(height: 2),
-                    Text('${missing.join(' & ')} not granted. Tap to fix.',
-                      style: TextStyle(fontSize: 10, color: Colors.amber.withAlpha(120))),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios_rounded,
-                  size: 12, color: Colors.amber.withAlpha(100)),
-            ],
-          ),
-        ),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text(label, style: TextStyle(
+            fontSize: 11.5, fontWeight: FontWeight.w700,
+            letterSpacing: 1.4, color: kSwTextSecondary.withAlpha(150))),
+          if (subtitle != null) ...[
+            const Spacer(),
+            Text(subtitle, style: TextStyle(
+              fontSize: 10.5, color: kSwTextMuted, fontWeight: FontWeight.w500)),
+          ],
+        ],
       ),
     );
   }
+
+  // ══════════════════════════════════════════════════════
+  //  NEXT PRAYER HERO — the page's focal point
+  // ══════════════════════════════════════════════════════
+
+  Widget _buildNextPrayerHero(PrayerAlarmState state) {
+    final times = state.todayTimes;
+    if (times == null) {
+      return GestureDetector(
+        onTap: () {
+          setState(() {
+            _showLocationSearch = true;
+            _showCalcMethod = false;
+            _showAsrSchool = false;
+          });
+        },
+        child: _heroShell(
+          icon: Icons.location_searching_rounded,
+          title: 'Set your location',
+          subtitle: 'Auto-detect or search a city to load prayer times',
+          accent: kSwTextSecondary,
+        ),
+      );
+    }
+    if (_nextPrayerName.isEmpty) {
+      return _heroShell(
+        icon: Icons.nightlight_round,
+        title: 'All prayers complete',
+        subtitle: 'Rest well — Fajr is the next call',
+        accent: kSwActive,
+      );
+    }
+    final h = _timeUntilNext.inHours;
+    final m = _timeUntilNext.inMinutes.remainder(60);
+    final countdown = h > 0 ? '${h}h ${m}m' : '${m}m';
+    final timeStr = swFmt12h(times.timeFor(_nextPrayerName));
+    final icon = kPrayerIcons[_nextPrayerName] ?? Icons.access_time_rounded;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: kSwCardNext,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kSwActive.withAlpha(45)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46, height: 46,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle, color: kSwActive.withAlpha(28)),
+            child: Icon(icon, size: 22, color: kSwActive),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('NEXT PRAYER', style: TextStyle(
+                  fontSize: 10, fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5, color: kSwActive.withAlpha(180))),
+                const SizedBox(height: 3),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Flexible(
+                      child: Text(_nextPrayerName,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.w700,
+                          color: kSwTextPrimary, letterSpacing: -0.4)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(timeStr, style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w500,
+                      color: kSwTextSecondary,
+                      fontFeatures: const [FontFeature.tabularFigures()])),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('in', style: TextStyle(fontSize: 10, color: kSwTextMuted)),
+              Text(countdown, style: TextStyle(
+                fontSize: 18, fontWeight: FontWeight.w700, color: kSwActive,
+                fontFeatures: const [FontFeature.tabularFigures()])),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroShell({
+    required IconData icon, required String title,
+    required String subtitle, required Color accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: kSwCard,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withAlpha(10)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 46, height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle, color: accent.withAlpha(22)),
+          child: Icon(icon, size: 22, color: accent.withAlpha(210))),
+        const SizedBox(width: 16),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w700,
+              color: kSwTextPrimary.withAlpha(230))),
+            const SizedBox(height: 2),
+            Text(subtitle, style: TextStyle(
+              fontSize: 12, height: 1.3,
+              color: kSwTextSecondary.withAlpha(160))),
+          ])),
+      ]),
+    );
+  }
+
 
   // ══════════════════════════════════════════════════════
   //  FASTING FOOTER
@@ -717,76 +917,105 @@ class _PrayerAlarmSettingsScreenState
             ),
             const SizedBox(height: 8),
           ],
-          TextField(
-            controller: _cityController,
-            style: TextStyle(color: kSwTextPrimary.withAlpha(220), fontSize: 13),
-            decoration: InputDecoration(
-              hintText: 'Search city...',
-              hintStyle: TextStyle(color: kSwTextMuted.withAlpha(80), fontSize: 13),
-              prefixIcon: Icon(Icons.search_rounded, size: 15, color: kSwTextMuted.withAlpha(60)),
-              suffixIcon: _isLocating || _isSearching
-                  ? const Padding(padding: EdgeInsets.all(12),
-                      child: SizedBox(width: 14, height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 1.5)))
-                  : _cityController.text.isNotEmpty
-                      ? IconButton(
-                          icon: Icon(Icons.close_rounded, size: 14, color: kSwTextMuted),
-                          onPressed: () {
-                            _cityController.clear();
-                            setState(() { _searchResults = []; _autoDetectedCity = null; });
-                          },
-                        )
-                      : IconButton(
-                          icon: Icon(Icons.my_location_rounded, size: 16, color: kSwTextMuted),
-                          tooltip: 'Auto-detect location',
-                          onPressed: _enableLocationInApp,
-                        ),
-              filled: true,
-              fillColor: Colors.white.withAlpha(6),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              isDense: true,
+          CompositedTransformTarget(
+            link: _searchLayerLink,
+            child: TextField(
+              controller: _cityController,
+              focusNode: _searchFocusNode,
+              style: TextStyle(color: kSwTextPrimary.withAlpha(220), fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Search city...',
+                hintStyle: TextStyle(color: kSwTextMuted.withAlpha(80), fontSize: 13),
+                prefixIcon: Icon(Icons.search_rounded, size: 15, color: kSwTextMuted.withAlpha(60)),
+                suffixIcon: _isLocating || _isSearching
+                    ? const Padding(padding: EdgeInsets.all(12),
+                        child: SizedBox(width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.5)))
+                    : _cityController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.close_rounded, size: 14, color: kSwTextMuted),
+                            onPressed: () {
+                              _cityController.clear();
+                              setState(() { _searchResults = []; _autoDetectedCity = null; });
+                              _removeSearchOverlay();
+                            },
+                          )
+                        : IconButton(
+                            icon: Icon(Icons.my_location_rounded, size: 16, color: kSwTextMuted),
+                            tooltip: 'Auto-detect location',
+                            onPressed: _detectLocation,
+                          ),
+                filled: true,
+                fillColor: const Color(0xFF131313),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white.withAlpha(15))),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white.withAlpha(15))),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: kSwActive.withAlpha(100))),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                isDense: true,
+              ),
+              onChanged: (v) {
+                if (_autoDetectedCity != null && v != _autoDetectedCity) {
+                  setState(() => _autoDetectedCity = null);
+                }
+                _onCitySearch(v);
+              },
             ),
-            onChanged: (v) {
-              if (_autoDetectedCity != null && v != _autoDetectedCity) {
-                setState(() => _autoDetectedCity = null);
-              }
-              _onCitySearch(v);
-            },
           ),
-          if (_searchResults.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Container(
-              constraints: const BoxConstraints(maxHeight: 130),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0C0C10),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: _searchResults.length,
-                itemBuilder: (_, i) {
-                  final r = _searchResults[i];
-                  return InkWell(
-                    onTap: () => _selectSearchResult(r),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      child: Text(r['name'] as String,
-                        style: TextStyle(fontSize: 12, color: kSwTextPrimary.withAlpha(170)),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
           const SizedBox(height: 6),
         ],
       ),
     );
+  }
+
+  void _showSearchOverlay() {
+    if (_searchOverlay != null || _searchResults.isEmpty) return;
+    _searchOverlay = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          width: MediaQuery.of(context).size.width - 60, // Match panel width minus margins
+          child: CompositedTransformFollower(
+            link: _searchLayerLink,
+            showWhenUnlinked: false,
+            offset: const Offset(0, 48),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 220),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF151515),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withAlpha(25)),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withAlpha(150), blurRadius: 15, offset: const Offset(0, 8))
+                  ],
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  itemCount: _searchResults.length,
+                  itemBuilder: (_, i) {
+                    final r = _searchResults[i];
+                    return InkWell(
+                      onTap: () => _selectSearchResult(r),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Text(r['name'] as String,
+                          style: TextStyle(fontSize: 13, color: kSwTextPrimary.withAlpha(220)),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    Overlay.of(context).insert(_searchOverlay!);
   }
 
   // ══════════════════════════════════════════════════════
@@ -940,7 +1169,6 @@ class _PrayerAlarmSettingsScreenState
         fullscreenDialog: true,
       ),
     );
-    _checkPermissions();
   }
 
   Future<bool> _isLocationServiceEnabled() async {
@@ -951,69 +1179,16 @@ class _PrayerAlarmSettingsScreenState
     }
   }
 
-  /// Enables device location WITHOUT leaving the app:
-  ///   1. `requestService()` shows the in-app Android "turn on GPS" dialog
-  ///   2. the location permission is requested via the in-app system prompt
-  ///   3. on success we auto-detect the city immediately
-  /// Falls back gracefully to city search if the user declines.
-  Future<void> _enableLocationInApp() async {
-    final location = loc.Location();
-
-    // 1. Turn on the GPS service via the in-app dialog (one tap, no settings).
-    bool serviceOn = false;
+  /// Turns the device GPS on with a single system tap (the Google Play
+  /// "Turn on location?" dialog) — no manual trip to Settings. Returns true
+  /// once the location service is enabled.
+  Future<bool> _ensureLocationOn() async {
+    if (await _isLocationServiceEnabled()) return true;
     try {
-      serviceOn = await location.serviceEnabled();
-      if (!serviceOn) serviceOn = await location.requestService();
+      return await loc.Location().requestService();
     } catch (_) {
-      serviceOn = await _isLocationServiceEnabled();
+      return false;
     }
-    if (!serviceOn) {
-      if (!mounted) return;
-      // User left GPS off — open the search panel so they can pick manually.
-      setState(() {
-        _showLocationSearch = true;
-        _showCalcMethod = false;
-        _showAsrSchool = false;
-      });
-      _toast('Location is off — search your city instead.');
-      return;
-    }
-
-    // 2. Request the location permission with the in-app system prompt.
-    try {
-      var perm = await location.hasPermission();
-      if (perm == loc.PermissionStatus.denied) {
-        perm = await location.requestPermission();
-      }
-      if (perm == loc.PermissionStatus.deniedForever) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Location permission is blocked. Enable it in Settings.'),
-          backgroundColor: Colors.red.shade800,
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'SETTINGS', textColor: Colors.white,
-            onPressed: openAppSettings),
-        ));
-        return;
-      }
-      if (perm != loc.PermissionStatus.granted &&
-          perm != loc.PermissionStatus.grantedLimited) {
-        return; // user declined the prompt
-      }
-    } catch (_) {/* fall through to detection, which re-checks */}
-
-    // 3. We have GPS + permission — detect the city right away.
-    await _detectLocation();
-  }
-
-  void _toast(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: kSwCard,
-      behavior: SnackBarBehavior.floating,
-    ));
   }
 
   Future<void> _detectLocation() async {
@@ -1033,6 +1208,8 @@ class _PrayerAlarmSettingsScreenState
       locationStatus = await Permission.location.request();
       if (!locationStatus.isGranted) return;
     }
+    // Turn the GPS service on with one system tap if it's off.
+    if (!await _ensureLocationOn()) return;
     setState(() {
       _isLocating = true;
       _showLocationSearch = true;
@@ -1041,9 +1218,7 @@ class _PrayerAlarmSettingsScreenState
       _autoDetectedCity = null;
     });
     try {
-      // Note: we intentionally do NOT request notification permission here —
-      // setting a location should never trigger an unrelated permission prompt.
-      // Notifications are only requested when a Notify/Adhan alarm is chosen.
+      await PrayerAlarmService.requestNotificationPermission();
       final coords = await LocationService.getCurrentLocation();
       final lat = coords['lat']!;
       final lng = coords['lng']!;
@@ -1084,9 +1259,19 @@ class _PrayerAlarmSettingsScreenState
       final results = await LocationService.searchCity(query);
       if (!mounted) return;
       setState(() { _searchResults = results; _isSearching = false; });
+      if (results.isNotEmpty && _searchFocusNode.hasFocus) {
+        if (_searchOverlay == null) {
+          _showSearchOverlay();
+        } else {
+          _searchOverlay!.markNeedsBuild();
+        }
+      } else {
+        _removeSearchOverlay();
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _isSearching = false);
+      _removeSearchOverlay();
     }
   }
 
@@ -1096,8 +1281,9 @@ class _PrayerAlarmSettingsScreenState
     final name = result['name'] as String;
     _cityController.text = name;
     setState(() => _searchResults = []);
+    _removeSearchOverlay();
     FocusScope.of(context).unfocus();
-    // Picking a city must not trigger a notification permission prompt.
+    await PrayerAlarmService.requestNotificationPermission();
     ref.read(prayerAlarmProvider.notifier).updateConfig(
       latitude: lat, longitude: lng,
       timezone: DateTime.now().timeZoneName, locationLabel: name);

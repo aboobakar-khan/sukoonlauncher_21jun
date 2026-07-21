@@ -1,17 +1,29 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/book_models.dart';
+import 'reader_settings_provider.dart';
 
 // ══════════════════════════════════════════════════════════════════════
 // BOOK DATA PROVIDER
 // ══════════════════════════════════════════════════════════════════════
 
-/// Loads the book from both separate JSON asset files and merges chapters.
+/// Loads the book from separate JSON asset files and merges chapters.
+/// Language-aware: re-loads from the Hinglish asset set when the reader
+/// language changes (English ⇆ Hinglish share identical chapter/topic IDs,
+/// so reading progress carries across a language switch).
 final bookProvider = FutureProvider<BookModel>((ref) async {
+  // KeepAlive: once parsed, the BookModel stays in memory so re-opening
+  // Seerah doesn't re-parse 48 JSON files each time.
+  ref.keepAlive();
+
+  final lang = ref.watch(readerLanguageProvider);
+  final prefix = lang.assetPrefix; // 'ar_raheeq' or 'ar_raheeq_hi'
+
   // Load ch1 (has book envelope)
-  final ch1Raw = await rootBundle.loadString('assets/ar_raheeq_ch1_v2.json');
+  final ch1Raw = await rootBundle.loadString('assets/${prefix}_ch1_v2.json');
   final ch1Json = jsonDecode(ch1Raw) as Map<String, dynamic>;
   final bookJson = ch1Json['book'] as Map<String, dynamic>;
 
@@ -21,30 +33,35 @@ final bookProvider = FutureProvider<BookModel>((ref) async {
   // Start with chapter 1
   final allChapters = [...book.chapters];
 
-  // Dynamically load available chapters or yield placeholders
-  for (int i = 2; i <= 30; i++) {
-    try {
-      final chRaw = await rootBundle.loadString('assets/ar_raheeq_ch$i.json');
-      final chJson = jsonDecode(chRaw) as Map<String, dynamic>;
-      allChapters.add(ChapterModel.fromJson(chJson));
-    } catch (_) {
+  // Load all remaining chapters IN PARALLEL (not sequentially)
+  // I/O is parallelised; JSON decode is offloaded via compute() so the main
+  // thread stays free to paint the DeferredFade placeholder during navigation.
+  final chapterFutures = List.generate(47, (i) {
+    final chNum = i + 2; // chapters 2..48
+    return rootBundle.loadString('assets/${prefix}_ch$chNum.json').then((chRaw) {
+      return compute(_decodeChapter, chRaw);
+    }).catchError((_) {
       // File not found; fallback to placeholder "Coming Soon" chapter
-      allChapters.add(ChapterModel(
-        id: 'ch-$i',
-        title: _placeholderChapterTitle(i),
+      return ChapterModel(
+        id: 'ch-$chNum',
+        title: _placeholderChapterTitle(chNum, lang),
         arabicTitle: '',
-        number: i,
+        number: chNum,
         totalTopics: 0,
         topics: const [],
-      ));
-    }
-  }
+      );
+    });
+  });
 
-  // Renumber all topics sequentially from 1 to N
+  final loadedChapters = await Future.wait(chapterFutures);
+  allChapters.addAll(loadedChapters);
+
+  // Renumber all topics sequentially from 1 to N (pure CPU work, fast enough
+  // after the I/O+parse is done)
   int globalTopicNumber = 1;
   final renumberedChapters = allChapters.map((ch) {
     if (ch.topics.isEmpty) return ch;
-    
+
     final renumberedTopics = ch.topics.map((t) {
       return TopicModel(
         id: t.id,
@@ -56,7 +73,7 @@ final bookProvider = FutureProvider<BookModel>((ref) async {
         quiz: t.quiz,
       );
     }).toList();
-    
+
     return ChapterModel(
       id: ch.id,
       title: ch.title,
@@ -76,39 +93,99 @@ final bookProvider = FutureProvider<BookModel>((ref) async {
   );
 });
 
-/// Placeholder chapter titles for locked chapters
-String _placeholderChapterTitle(int number) {
-  const titles = {
+/// Top-level function required by [compute] — runs JSON decode + model
+/// construction in a background isolate so the main thread isn't blocked.
+ChapterModel _decodeChapter(String raw) {
+  final json = jsonDecode(raw) as Map<String, dynamic>;
+  return ChapterModel.fromJson(json);
+}
+
+/// Placeholder chapter titles for locked ("Coming Soon") chapters.
+/// English titles mirror the authoritative table of contents in
+/// assets/ar_raheeq_index.json (sourced from the official Seerah app).
+String _placeholderChapterTitle(int number, ReaderLanguage lang) {
+  const en = {
+    2: 'Rulership and Princeship among the Arabs',
     3: 'Religions of the Arabs',
-    4: 'The Lineage and Family of Muhammad ﷺ',
-    5: 'Muhammad ﷺ from Birth to Prophethood',
-    6: 'From Prophethood to the Migration',
-    7: 'The Early Converts to Islam',
-    8: 'The Persecution and Torture',
-    9: 'The Migration to Abyssinia',
-    10: 'The Year of Grief',
-    11: 'Al-Isra and Al-Mi\'raj',
-    12: 'The First Pledge of Al-Aqabah',
-    13: 'The Second Pledge of Al-Aqabah',
-    14: 'The Hijrah — Migration to Madinah',
-    15: 'The Establishment of the Islamic State',
-    16: 'The Battles Begin',
-    17: 'The Battle of Badr',
-    18: 'The Battle of Uhud',
-    19: 'The Battle of the Trench',
-    20: 'The Treaty of Al-Hudaybiyah',
-    21: 'The Conquest of Khaybar',
-    22: 'The Spread of Islam',
-    23: 'The Conquest of Makkah',
-    24: 'The Battle of Hunayn',
-    25: 'The Expedition of Tabuk',
-    26: 'The Year of Delegations',
-    27: 'The Farewell Pilgrimage',
-    28: 'The Journey to the Highest Companion',
-    29: 'The Prophet\'s ﷺ Attributes and Manners',
-    30: 'The Prophetic Household',
+    4: 'Aspects of Pre-Islamic Arabian Society',
+    5: 'The Lineage and Family of Muhammad [pbuh]',
+    6: 'Muhammad\'s Birth and Forty years prior Prophethood',
+    7: 'In the Shade of the Message and Prophethood',
+    8: 'Phases and stages of the call: The First Stage: Strife in the Way of the Call',
+    9: 'The Second Phase: Open Preaching',
+    10: 'The Third Phase: Calling unto Islam beyond Makkah',
+    11: 'Al-Isra\' and Al-Mir\'raj',
+    12: 'The First \'Aqabah Pledge',
+    13: 'The Second \'Aqabah Pledge',
+    14: 'The Vanguard of Migration (in the Cause of Allah)',
+    15: 'In An-Nadwah (Council) House The Parliament of Quraish',
+    16: 'Migration of the Prophet [pbuh]',
+    17: 'Life in Madinah',
+    18: 'The First Phase: The Status Quo in Madinah at the Time of Emigration',
+    19: 'The Military Activities between Badr and Uhud',
+    20: 'The Battle of Uhud',
+    21: 'Military Platoons and Missions between the Battle of Uhud and the Battle of the Confederates',
+    22: 'Al-Ahzab (the Confederates) Invasion',
+    23: 'Invading Banu Quraiza',
+    24: 'Military Activities continued',
+    25: 'Bani Al-Mustaliq (Muraisi\') Ghazwah Sha\'ban 6 Hijri',
+    26: 'Delegations and Expeditions following Al-Muraisi\' Ghazwah',
+    27: 'Al-Hudaibiyah Treaty (Dhul Qu\'dah 6 A.H.)',
+    28: 'The Second Stage: A New Phase of Islamic Action',
+    29: 'The Prophet\'s Plans to spread the Message of Islam to beyond Arabia',
+    30: 'Post-Hudaibiyah Hostilities',
+    31: 'The Conquest of Khaibar (in Moharram, 7 A.H.)',
+    32: 'Sporadic Invasions',
+    33: 'The Compensatory Umrah (Lesser Pilgrimage)',
+    34: 'The Battle of Mu\'tah',
+    35: 'The Conquest of Makkah',
+    36: 'The Third Stage Hunain Ghazwah',
+    37: 'Missions and Platoons After the Conquest',
+    38: 'The Invasion of Tabuk in Rajab, in the year 9 A.H.',
+    39: 'Abu Bakr [R] performs the Pilgrimage',
+    40: 'A Meditation on the Ghazawat',
+    41: 'People embrace the Religion of Allah in Large Crowds',
+    42: 'The Delegations',
+    43: 'The Success and Impact of the Call',
+    44: 'The Farewell Pilgrimage',
+    45: 'The Last Expeditions',
+    46: 'The Journey to Allah, the Sublime',
+    47: 'The Prophet Household',
+    48: 'The Prophet [pbuh], Attributes and Manners',
   };
-  return titles[number] ?? 'Chapter $number';
+  const hi = {
+    3: 'Arab ke Adyaan-o-Mazaahib',
+    4: 'Muhammad ﷺ ka Khaandaan aur Nasab',
+    5: 'Muhammad ﷺ — Wiladat se Nubuwwat tak',
+    6: 'Nubuwwat se Hijrat tak',
+    7: 'Islam ke Ibtidaai Qubool karne waale',
+    8: 'Zulm-o-Sitam ka Daur',
+    9: 'Habsha ki Hijrat',
+    10: 'Gham ka Saal (Aam-ul-Huzn)',
+    11: 'Isra aur Mi\'raj',
+    12: 'Pehli Bai\'at-e-Aqabah',
+    13: 'Doosri Bai\'at-e-Aqabah',
+    14: 'Hijrat — Madinah ki taraf',
+    15: 'Islami Riyaasat ka Qiyaam',
+    16: 'Ghazwaat ka Aaghaz',
+    17: 'Ghazwa-e-Badr',
+    18: 'Ghazwa-e-Uhud',
+    19: 'Ghazwa-e-Khandaq (Ahzaab)',
+    20: 'Sulah-e-Hudaibiyah',
+    21: 'Khaybar ki Fatah',
+    22: 'Islam ka Phailaao',
+    23: 'Fatah-e-Makkah',
+    24: 'Ghazwa-e-Hunain',
+    25: 'Ghazwa-e-Tabook',
+    26: 'Wufood ka Saal (Aam-ul-Wufood)',
+    27: 'Hujjat-ul-Wida (Alvidaai Hajj)',
+    28: 'Rafeeq-e-A\'la ki taraf Safar',
+    29: 'Nabi ﷺ ke Akhlaaq-o-Ausaaf',
+    30: 'Khaandaan-e-Nubuwwat',
+  };
+  final titles = lang == ReaderLanguage.hinglish ? hi : en;
+  return titles[number] ??
+      (lang == ReaderLanguage.hinglish ? 'Baab $number' : 'Chapter $number');
 }
 
 /// Provides a single chapter by ID.

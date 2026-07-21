@@ -75,7 +75,7 @@ class _PrayerAlarmDashboardCardState
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               color: accent.withValues(alpha: 0.04),
-              border: Border.all(color: accent.withValues(alpha: 0.10)),
+              border: Border.all(color: accent.withValues(alpha: 0.18)),
             ),
             child: isSetup
                 ? _buildTimeline(accent, alarmState)

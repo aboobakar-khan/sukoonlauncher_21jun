@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 /// ════════════════════════════════════════════════════════════════════════
 /// MOTION & GESTURE TUNING — single source of truth
@@ -57,15 +56,17 @@ class Motion {
       reduced(context) ? const Duration(milliseconds: 1) : full;
 }
 
-/// Gesture haptics — thin, semantic wrappers over [HapticFeedback] so swipe
-/// completions feel tactile and consistent everywhere. Centralising the intent
-/// (not the raw impact level) means the whole app can be re-tuned in one place.
+/// Gesture haptics — the central seam for swipe / navigation feedback.
+///
+/// Haptics are intentionally disabled app-wide, so these are no-ops: the call
+/// sites (swipe-to-home, edge-back, page-turn) stay wired but stay silent.
+/// Flip a body back to `HapticFeedback` here to re-enable everywhere at once.
 class GestureHaptics {
   GestureHaptics._();
 
   /// A committed navigational swipe (back, home, page-turn, drawer open).
-  static void swipeCommit() => HapticFeedback.lightImpact();
+  static void swipeCommit() {}
 
   /// A discrete selection or toggle.
-  static void select() => HapticFeedback.selectionClick();
+  static void select() {}
 }

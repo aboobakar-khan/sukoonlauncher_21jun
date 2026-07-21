@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">Sukoon App Timer</string>
+    <string name="accessibility_service_summary">Detects which app is open so your time limits work instantly.</string>
+    <string name="accessibility_service_description">Sukoon uses this only to know which app is currently open, so your App Timer limits trigger the moment you reach them. It never reads screen content, and nothing is collected, stored, or shared — everything stays on your device, 100% offline.</string>
+</resources>

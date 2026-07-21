@@ -750,6 +750,8 @@ class MainActivity : FlutterActivity() {
                             }
                             // Usage access → Usage data access page
                             "usage_access" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                            // Accessibility → Accessibility services list
+                            "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                             // Do Not Disturb access → DND policy access page
                             "dnd" -> Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
                             // Battery optimisation → Battery optimisation page for this app
@@ -804,6 +806,10 @@ class MainActivity : FlutterActivity() {
                                 )
                             }
                             mode == android.app.AppOpsManager.MODE_ALLOWED
+                        }
+                        "accessibility" -> {
+                            // Accessibility service removed — no longer required
+                            false
                         }
                         else -> false
                     }

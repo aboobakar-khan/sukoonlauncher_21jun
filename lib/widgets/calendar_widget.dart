@@ -209,7 +209,6 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
   }
 
   void _goToday() {
-    HapticFeedback.selectionClick();
     final now = DateTime.now();
     setState(() => _selectedDate = now);
     _scrollToDate(now);
@@ -229,7 +228,6 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
       final date = DateTime.now().subtract(Duration(days: _pastDays - index));
       if (!_isSameDay(date, _selectedDate)) {
         setState(() => _selectedDate = date);
-        HapticFeedback.selectionClick();
       }
     } else if (notification is ScrollEndNotification) {
       final centerOffset = notification.metrics.pixels + (containerWidth / 2);
@@ -265,7 +263,7 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
       ),
       padding: const EdgeInsets.symmetric(vertical: 24),
       child: Column(
@@ -396,7 +394,6 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
 
     return GestureDetector(
       onTap: () {
-        HapticFeedback.selectionClick();
         setState(() => _selectedDate = date);
         _scrollToDate(date);
       },
@@ -577,7 +574,6 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
   }
 
   void _showEventDetails(_HijriEvent event) {
-    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF111111),
@@ -696,11 +692,9 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
   Widget _buildTodoEvent(TodoItem todo) {
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
         ref.read(todoProvider.notifier).toggleTodo(todo.id);
       },
       onLongPress: () {
-        HapticFeedback.mediumImpact();
         showModalBottomSheet(
           context: context,
           backgroundColor: const Color(0xFF1E1E1E),
@@ -896,7 +890,6 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
         final isDone = provider['${dateKey}_${sunnah['id']}'] ?? false;
         return GestureDetector(
           onTap: () {
-            HapticFeedback.lightImpact();
             notifier.toggleSunnah(dateKey, sunnah['id']!);
           },
           behavior: HitTestBehavior.opaque,
